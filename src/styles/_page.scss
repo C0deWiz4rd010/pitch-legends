@@ -1,0 +1,33 @@
+// Shared page-level styles, used via @use in feature components.
+
+.page-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+}
+.page-head h1 {
+  font-size: 26px;
+  font-weight: 800;
+}
+
+.card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+.link {
+  color: var(--accent-2);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.gold {
+  color: var(--accent-3);
+}
+.accent {
+  color: var(--accent);
+}
