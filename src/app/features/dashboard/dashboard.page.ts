@@ -1,8 +1,9 @@
 import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { GameStateService } from '../../core/services/game-state.service';
-import { formatCoins } from '../../shared/rating-color';
+import { formatCoins, ratingColor, moraleIcon } from '../../shared/rating-color';
 import { playerName } from '../../core/ratings';
+import { Player } from '../../models/player.model';
 
 @Component({
   selector: 'app-dashboard',
@@ -15,6 +16,8 @@ export class DashboardPage {
   protected readonly gs = inject(GameStateService);
   protected readonly playerName = playerName;
   protected readonly formatCoins = formatCoins;
+  protected readonly ratingColor = ratingColor;
+  protected readonly moraleIcon = moraleIcon;
 
   protected readonly rank = computed(() => {
     const team = this.gs.playerTeam();
@@ -22,11 +25,41 @@ export class DashboardPage {
     return this.gs.standings().findIndex((r) => r.teamId === team.id) + 1;
   });
 
-  protected readonly squadRating = computed(() => {
+  protected readonly totalTeams = computed(() => this.gs.game()?.teams.length ?? 0);
+
+  protected readonly squadRating = computed(() => this.teamRating(this.gs.squad()));
+
+  private teamRating(players: Player[]): number {
+    if (!players.length) return 0;
+    const top = [...players].sort((a, b) => b.overall - a.overall).slice(0, 11);
+    return Math.round(top.reduce((s, p) => s + p.overall, 0) / top.length);
+  }
+
+  protected readonly seasonProgress = computed(() => {
+    const total = this.gs.totalWeeks();
+    if (!total) return 0;
+    return Math.min(100, Math.round(((this.gs.currentWeek() - 1) / total) * 100));
+  });
+
+  protected readonly avgMorale = computed(() => {
     const squad = this.gs.squad();
     if (!squad.length) return 0;
-    const top = [...squad].sort((a, b) => b.overall - a.overall).slice(0, 11);
-    return Math.round(top.reduce((s, p) => s + p.overall, 0) / top.length);
+    return Math.round(squad.reduce((s, p) => s + p.morale, 0) / squad.length);
+  });
+
+  protected readonly form = computed<('W' | 'D' | 'L')[]>(() => {
+    const g = this.gs.game();
+    const team = this.gs.playerTeam();
+    if (!g || !team) return [];
+    return g.league.fixtures
+      .filter((f) => f.played && (f.homeTeamId === team.id || f.awayTeamId === team.id))
+      .sort((a, b) => a.week - b.week)
+      .slice(-5)
+      .map((f) => {
+        const gf = f.homeTeamId === team.id ? f.homeScore! : f.awayScore!;
+        const ga = f.homeTeamId === team.id ? f.awayScore! : f.homeScore!;
+        return gf > ga ? 'W' : gf < ga ? 'L' : 'D';
+      });
   });
 
   protected readonly nextOpponent = computed(() => {
@@ -35,7 +68,21 @@ export class DashboardPage {
     if (!fx || !team) return null;
     const oppId = fx.homeTeamId === team.id ? fx.awayTeamId : fx.homeTeamId;
     const opp = this.gs.teamById(oppId);
-    return opp ? { name: opp.name, short: opp.shortName, home: fx.homeTeamId === team.id } : null;
+    if (!opp) return null;
+    return {
+      name: opp.name,
+      short: opp.shortName,
+      color: opp.kit.primary,
+      secondary: opp.kit.secondary,
+      home: fx.homeTeamId === team.id,
+      rating: this.teamRating(opp.players),
+    };
+  });
+
+  protected readonly starPlayer = computed<Player | null>(() => {
+    const squad = this.gs.squad();
+    if (!squad.length) return null;
+    return [...squad].sort((a, b) => b.overall + b.form * 1.5 - (a.overall + a.form * 1.5))[0];
   });
 
   protected readonly injuredCount = computed(
@@ -45,4 +92,8 @@ export class DashboardPage {
   protected readonly skillPointsAvailable = computed(() =>
     this.gs.squad().reduce((s, p) => s + p.skillPoints, 0),
   );
+
+  protected rankSuffix(n: number): string {
+    return n === 1 ? 'st' : n === 2 ? 'nd' : n === 3 ? 'rd' : 'th';
+  }
 }

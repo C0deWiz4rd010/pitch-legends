@@ -1,96 +1,148 @@
-<header class="page-head fade-up">
-  <div>
-    <p class="eyebrow">Season {{ gs.season() }} · Week {{ gs.currentWeek() }}</p>
-    <h1>Welcome back, {{ gs.game()?.managerName }}</h1>
-  </div>
-  <a routerLink="/match" class="btn btn--primary">Go to Match Day ▶</a>
-</header>
-
-<section class="stat-grid fade-up">
-  <div class="card stat">
-    <span class="ico">🏆</span>
-    <div>
-      <strong>{{ rank() }}<small>{{ rank() === 1 ? 'st' : rank() === 2 ? 'nd' : rank() === 3 ? 'rd' : 'th' }}</small></strong>
-      <span class="muted">League position</span>
+<!-- Hero banner -->
+<section class="hero fade-up" [style.--club]="gs.playerTeam()?.kit?.primary">
+  <div class="hero-glow"></div>
+  <div class="hero-main">
+    <span class="crest" [style.background]="gs.playerTeam()?.kit?.primary" [style.color]="gs.playerTeam()?.kit?.secondary">
+      {{ gs.playerTeam()?.shortName }}
+    </span>
+    <div class="hero-text">
+      <p class="eyebrow">Season {{ gs.season() }} · Matchweek {{ gs.currentWeek() }} of {{ gs.totalWeeks() }}</p>
+      <h1>{{ gs.playerTeam()?.name }}</h1>
+      <div class="hero-meta">
+        <span class="manager">👔 {{ gs.game()?.managerName }}</span>
+        @if (form().length) {
+          <span class="form">
+            @for (r of form(); track $index) {
+              <span class="form-pill" [class.w]="r === 'W'" [class.d]="r === 'D'" [class.l]="r === 'L'">{{ r }}</span>
+            }
+          </span>
+        }
+      </div>
     </div>
   </div>
-  <div class="card stat">
-    <span class="ico">⭐</span>
-    <div>
-      <strong>{{ squadRating() }}</strong>
-      <span class="muted">Squad rating</span>
+  <div class="hero-side">
+    <div class="pos-badge">
+      <span class="pos-num">{{ rank() }}<small>{{ rankSuffix(rank()) }}</small></span>
+      <span class="pos-label">of {{ totalTeams() }}</span>
     </div>
-  </div>
-  <div class="card stat">
-    <span class="ico">🪙</span>
-    <div>
-      <strong class="gold">{{ formatCoins(gs.coins()) }}</strong>
-      <span class="muted">Transfer budget</span>
-    </div>
-  </div>
-  <div class="card stat">
-    <span class="ico">✨</span>
-    <div>
-      <strong class="accent">{{ skillPointsAvailable() }}</strong>
-      <span class="muted">Skill points to spend</span>
+    <div class="progress">
+      <div class="progress-bar"><i [style.width.%]="seasonProgress()"></i></div>
+      <span class="muted">Season {{ seasonProgress() }}% complete</span>
     </div>
   </div>
 </section>
 
+<!-- Key stats -->
+<section class="stat-grid fade-up">
+  <div class="stat">
+    <span class="ico">⭐</span>
+    <div class="stat-body">
+      <strong [style.color]="ratingColor(squadRating())">{{ squadRating() }}</strong>
+      <span class="muted">Squad rating</span>
+    </div>
+  </div>
+  <div class="stat">
+    <span class="ico">🪙</span>
+    <div class="stat-body">
+      <strong class="gold">{{ formatCoins(gs.coins()) }}</strong>
+      <span class="muted">Budget</span>
+    </div>
+  </div>
+  <div class="stat">
+    <span class="ico">{{ moraleIcon(avgMorale()) }}</span>
+    <div class="stat-body">
+      <strong>{{ avgMorale() }}</strong>
+      <span class="muted">Team morale</span>
+    </div>
+  </div>
+  <a routerLink="/squad" class="stat action" [class.pulse]="skillPointsAvailable() > 0">
+    <span class="ico">✨</span>
+    <div class="stat-body">
+      <strong class="accent">{{ skillPointsAvailable() }}</strong>
+      <span class="muted">Skill points {{ skillPointsAvailable() > 0 ? 'to spend ›' : '' }}</span>
+    </div>
+  </a>
+</section>
+
 <div class="cols">
   <div class="col">
+    <!-- Next match -->
     <div class="card next-match fade-up">
-      <p class="eyebrow">Next fixture</p>
+      <div class="card-head"><p class="eyebrow">Next fixture</p></div>
       @if (nextOpponent(); as opp) {
         <div class="matchup">
-          <div class="team">
-            <span class="crest">{{ gs.playerTeam()?.shortName }}</span>
-            <span>{{ gs.playerTeam()?.name }}</span>
+          <div class="mt">
+            <span class="mt-crest" [style.background]="gs.playerTeam()?.kit?.primary" [style.color]="gs.playerTeam()?.kit?.secondary">{{ gs.playerTeam()?.shortName }}</span>
+            <span class="mt-name">{{ gs.playerTeam()?.name }}</span>
+            <span class="mt-rating" [style.color]="ratingColor(squadRating())">{{ squadRating() }}</span>
           </div>
-          <span class="vs">{{ opp.home ? 'vs' : '@' }}</span>
-          <div class="team right">
-            <span class="crest alt">{{ opp.short }}</span>
-            <span>{{ opp.name }}</span>
+          <div class="mt-vs">
+            <span>{{ opp.home ? 'VS' : '@' }}</span>
+            <small class="muted">{{ opp.home ? 'Home' : 'Away' }}</small>
+          </div>
+          <div class="mt right">
+            <span class="mt-crest" [style.background]="opp.color" [style.color]="opp.secondary">{{ opp.short }}</span>
+            <span class="mt-name">{{ opp.name }}</span>
+            <span class="mt-rating" [style.color]="ratingColor(opp.rating)">{{ opp.rating }}</span>
           </div>
         </div>
         <div class="match-actions">
-          <span class="chip">{{ opp.home ? '🏠 Home' : '✈️ Away' }}</span>
-          <a routerLink="/tactics" class="btn btn--ghost btn--sm">Set tactics</a>
+          <a routerLink="/tactics" class="btn btn--ghost btn--sm">📋 Tactics</a>
           <a routerLink="/match" class="btn btn--primary btn--sm">Play match ▶</a>
         </div>
       } @else {
-        <p class="muted">The season is complete. Head to Settings to start the next one.</p>
+        <div class="season-done">
+          <span class="big-emoji">🏁</span>
+          <p>Season complete — start the next one from Settings.</p>
+          <a routerLink="/league" class="btn btn--ghost btn--sm">View final table</a>
+        </div>
       }
     </div>
 
+    <!-- News -->
     <div class="card fade-up">
-      <div class="card-head">
-        <p class="eyebrow">Club news</p>
-      </div>
-      <div class="news">
+      <div class="card-head"><p class="eyebrow">Club news</p></div>
+      <div class="news scroll">
         @for (item of gs.news(); track item.id) {
           <div class="news-item">
             <span class="news-ico">{{ item.icon }}</span>
-            <div>
+            <div class="news-body">
               <strong>{{ item.title }}</strong>
               <p class="muted">{{ item.body }}</p>
             </div>
           </div>
         } @empty {
-          <p class="muted">No news yet.</p>
+          <p class="muted">No news yet — play your first match!</p>
         }
       </div>
     </div>
   </div>
 
   <div class="col">
+    <!-- Star player -->
+    @if (starPlayer(); as star) {
+      <a routerLink="/squad" class="card star fade-up">
+        <div class="card-head"><p class="eyebrow">Star player</p><span class="link">Squad ›</span></div>
+        <div class="star-body">
+          <span class="rating big" [style.background]="ratingColor(star.overall)">{{ star.overall }}</span>
+          <div class="star-info">
+            <strong>{{ playerName(star) }}</strong>
+            <span class="muted">{{ star.position }} · Lv {{ star.level }} · {{ moraleIcon(star.morale) }}</span>
+            <div class="star-stats">
+              <span>⚽ {{ star.seasonStats.goals }}</span>
+              <span>🅰️ {{ star.seasonStats.assists }}</span>
+              <span>🏅 {{ star.seasonStats.motmAwards }}</span>
+            </div>
+          </div>
+        </div>
+      </a>
+    }
+
+    <!-- Top scorers -->
     <div class="card fade-up">
-      <div class="card-head">
-        <p class="eyebrow">Top scorers</p>
-        <a routerLink="/league" class="link">League ›</a>
-      </div>
+      <div class="card-head"><p class="eyebrow">Top scorers</p><a routerLink="/league" class="link">League ›</a></div>
       <ol class="scorers">
-        @for (entry of gs.topScorers().slice(0, 6); track entry.player.id) {
+        @for (entry of gs.topScorers().slice(0, 5); track entry.player.id) {
           <li>
             <span class="name">{{ playerName(entry.player) }}</span>
             <span class="team-tag">{{ entry.teamName }}</span>
@@ -102,15 +154,16 @@
       </ol>
     </div>
 
+    <!-- Alerts / quick actions -->
     <div class="card quick fade-up">
-      <p class="eyebrow">Quick actions</p>
-      <a routerLink="/training" class="quick-link">🏋️ Train players <span class="muted">develop stats</span></a>
-      <a routerLink="/squad" class="quick-link">👥 Manage squad <span class="muted">spend skill points</span></a>
-      <a routerLink="/transfer" class="quick-link">💱 Transfer market <span class="muted">buy & sell</span></a>
-      <a routerLink="/facilities" class="quick-link">🏟️ Upgrade facilities <span class="muted">grow the club</span></a>
+      <div class="card-head"><p class="eyebrow">Get things done</p></div>
       @if (injuredCount() > 0) {
-        <div class="alert">🚑 {{ injuredCount() }} player(s) currently injured.</div>
+        <div class="alert">🚑 {{ injuredCount() }} player(s) injured — rotate your lineup.</div>
       }
+      <a routerLink="/training" class="quick-link"><span>🏋️</span> Train players <em class="muted">develop stats</em></a>
+      <a routerLink="/tactics" class="quick-link"><span>📋</span> Set up tactics <em class="muted">roles & shape</em></a>
+      <a routerLink="/transfer" class="quick-link"><span>💱</span> Transfer market <em class="muted">buy & sell</em></a>
+      <a routerLink="/facilities" class="quick-link"><span>🏟️</span> Upgrade facilities <em class="muted">grow the club</em></a>
     </div>
   </div>
 </div>

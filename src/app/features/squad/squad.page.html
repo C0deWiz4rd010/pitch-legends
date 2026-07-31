@@ -3,64 +3,87 @@
     <p class="eyebrow">{{ gs.playerTeam()?.name }}</p>
     <h1>Squad</h1>
   </div>
-  <div class="head-stats">
-    <span class="chip">{{ gs.squad().length }} players</span>
+  <div class="summary">
+    <div class="sum">
+      <span class="sum-val" [style.color]="ratingColor(squadRating())">{{ squadRating() }}</span>
+      <span class="muted">Rating</span>
+    </div>
+    <div class="sum">
+      <span class="sum-val">{{ gs.squad().length }}</span>
+      <span class="muted">Players</span>
+    </div>
     @if (totalSkillPoints() > 0) {
-      <span class="chip sp">✨ {{ totalSkillPoints() }} skill points to spend</span>
+      <div class="sum sp">
+        <span class="sum-val accent">✨ {{ totalSkillPoints() }}</span>
+        <span class="muted">Skill points</span>
+      </div>
     }
   </div>
 </header>
 
 <div class="toolbar fade-up">
-  <div class="segmented">
-    @for (f of filters; track f) {
-      <button [class.active]="filter() === f" (click)="filter.set(f)">{{ f }}</button>
+  <div class="search">
+    <span class="s-ico">🔍</span>
+    <input type="text" placeholder="Search players…" [ngModel]="search()" (ngModelChange)="search.set($event)" />
+    @if (search()) { <button class="s-clear" (click)="search.set('')" aria-label="Clear">✕</button> }
+  </div>
+  <div class="chips">
+    @for (f of filters; track f.key) {
+      <button class="chip-btn" [class.active]="filter() === f.key" (click)="filter.set(f.key)">
+        {{ f.label }} <span class="cnt">{{ counts()[f.key] }}</span>
+      </button>
     }
   </div>
   <div class="sort">
-    <span class="muted">Sort</span>
     <select [value]="sort()" (change)="sort.set($any($event.target).value)">
-      <option value="overall">Overall</option>
-      <option value="level">Level</option>
-      <option value="value">Value</option>
-      <option value="position">Position</option>
+      <option value="overall">Sort: Overall</option>
+      <option value="potential">Sort: Potential</option>
+      <option value="level">Sort: Level</option>
+      <option value="value">Sort: Value</option>
+      <option value="position">Sort: Position</option>
     </select>
   </div>
 </div>
 
-<div class="card table-card fade-up">
-  <div class="table">
-    <div class="thead">
-      <span>#</span>
-      <span>Player</span>
-      <span>Pos</span>
-      <span class="c">OVR</span>
-      <span class="c">Lvl</span>
-      <span class="c hide-sm">Fitness</span>
-      <span class="c hide-sm">Morale</span>
-      <span class="c hide-md">Value</span>
-      <span></span>
-    </div>
-    @for (p of players(); track p.id) {
-      <button class="trow" (click)="select(p.id)">
-        <span class="kit">{{ p.kitNumber }}</span>
-        <span class="pname">
-          {{ p.firstName }} <strong>{{ p.lastName }}</strong>
-          @if (p.injuryWeeks > 0) { <span class="inj">🚑</span> }
-          @if (p.skillPoints > 0) { <span class="spdot" title="Skill points available">✨</span> }
-        </span>
-        <span class="pos">{{ p.position }}</span>
-        <span class="c"><span class="rating" [style.background]="ratingColor(p.overall)">{{ p.overall }}</span></span>
-        <span class="c lvl">{{ p.level }}</span>
-        <span class="c hide-sm">
+<div class="list fade-up">
+  @for (p of players(); track p.id) {
+    <button class="pcard" (click)="select(p.id)" [class.injured]="p.injuryWeeks > 0">
+      <span class="kit" [style.background]="gs.playerTeam()?.kit?.primary" [style.color]="gs.playerTeam()?.kit?.secondary">
+        {{ p.kitNumber }}
+      </span>
+
+      <span class="ovr rating" [style.background]="ratingColor(p.overall)">{{ p.overall }}</span>
+
+      <div class="who">
+        <div class="who-top">
+          <strong>{{ p.firstName }} {{ p.lastName }}</strong>
+          <span class="pos-chip">{{ p.position }}</span>
+          @if (p.skillPoints > 0) { <span class="badge sp" title="Skill points to spend">✨ {{ p.skillPoints }}</span> }
+          @if (p.injuryWeeks > 0) { <span class="badge inj" title="Injured">🚑 {{ p.injuryWeeks }}w</span> }
+          @if (p.traitIds.length) { <span class="badge trait" title="Traits">⭐ {{ p.traitIds.length }}</span> }
+        </div>
+        <div class="who-sub muted">
+          Lv {{ p.level }} · {{ p.age }}y
+          @if (p.potential > p.overall) { <span class="pot">↑ {{ p.potential }} potential</span> }
+        </div>
+        <div class="xp-mini"><i [style.width.%]="xpPercent(p)"></i></div>
+      </div>
+
+      <div class="cond hide-sm">
+        <div class="cond-item" title="Fitness">
+          <span class="cond-ico">⚡</span>
           <span class="mini-bar"><i [style.width.%]="p.fitness" [style.background]="ratingColor(p.fitness)"></i></span>
-        </span>
-        <span class="c hide-sm mor">{{ moraleIcon(p.morale) }}</span>
-        <span class="c hide-md gold">{{ formatCoins(p.marketValue) }}</span>
-        <span class="chev">›</span>
-      </button>
-    }
-  </div>
+        </div>
+        <div class="cond-item mor" title="Morale">{{ moraleIcon(p.morale) }}</div>
+      </div>
+
+      <span class="value gold hide-md">{{ formatCoins(p.marketValue) }}</span>
+
+      <span class="chev">›</span>
+    </button>
+  } @empty {
+    <div class="empty muted">No players match your search.</div>
+  }
 </div>
 
 @if (selectedId(); as id) {
