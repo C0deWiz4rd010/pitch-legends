@@ -1,0 +1,98 @@
+@if (player(); as p) {
+  <div class="overlay" (click)="close.emit()">
+    <div class="modal" (click)="$event.stopPropagation()">
+      <button class="close" (click)="close.emit()" aria-label="Close">✕</button>
+
+      <div class="head">
+        <div class="rating big" [style.background]="ratingColor(p.overall)">{{ p.overall }}</div>
+        <div class="who">
+          <h2>{{ p.firstName }} {{ p.lastName }}</h2>
+          <div class="tags">
+            <span class="chip">{{ p.position }}</span>
+            <span class="chip">Lv {{ p.level }}</span>
+            <span class="chip">{{ p.age }}y · {{ p.foot }}</span>
+            <span class="chip">{{ p.nationality }}</span>
+            @if (p.injuryWeeks > 0) { <span class="chip injury">🚑 {{ p.injuryWeeks }}w</span> }
+          </div>
+        </div>
+      </div>
+
+      <div class="meta">
+        <div class="meta-cell">
+          <span class="muted">Potential</span>
+          <strong>{{ p.potential }}</strong>
+        </div>
+        <div class="meta-cell">
+          <span class="muted">Morale</span>
+          <strong>{{ moraleIcon(p.morale) }} {{ p.morale }}</strong>
+        </div>
+        <div class="meta-cell">
+          <span class="muted">Fitness</span>
+          <strong>{{ p.fitness }}%</strong>
+        </div>
+        <div class="meta-cell">
+          <span class="muted">Value</span>
+          <strong class="gold">{{ (p.marketValue / 1000) | number: '1.0-0' }}k</strong>
+        </div>
+      </div>
+
+      <div class="xp">
+        <div class="xp-top">
+          <span>Level {{ p.level }}</span>
+          <span class="sp">✨ {{ p.skillPoints }} skill points</span>
+        </div>
+        <div class="xp-track"><div class="xp-fill" [style.width.%]="xpPercent()"></div></div>
+        <span class="muted xp-label">{{ p.xp }} / {{ p.xpToNext }} XP to next level</span>
+      </div>
+
+      <div class="body">
+        <div class="radar-wrap">
+          <app-radar-chart [attributes]="p.attributes" [size]="230" />
+        </div>
+
+        <div class="attrs">
+          <p class="eyebrow">Attributes — spend skill points to push your stats</p>
+          @for (key of attrKeys; track key) {
+            <div class="attr-row">
+              <span class="attr-name">{{ labels[key] }}</span>
+              <div class="attr-track">
+                <div class="attr-fill" [style.width.%]="p.attributes[key]" [style.background]="ratingColor(p.attributes[key])"></div>
+              </div>
+              <span class="attr-val tabular" [style.color]="ratingColor(p.attributes[key])">{{ p.attributes[key] }}</span>
+              <button class="up" [disabled]="!canUpgrade(key)" (click)="upgrade(key)" [title]="'Cost: ' + costFor(key) + ' SP'">
+                +<small>{{ costFor(key) }}</small>
+              </button>
+            </div>
+          }
+        </div>
+      </div>
+
+      <div class="traits">
+        <p class="eyebrow">Traits</p>
+        <div class="trait-list">
+          @for (t of ownedTraits(); track t.id) {
+            <div class="trait owned" [title]="t.description">⭐ {{ t.name }}</div>
+          }
+          @for (t of lockedTraits(); track t.id) {
+            <button class="trait locked" [disabled]="!canUnlock(t.id)" (click)="unlockTrait(t.id)" [title]="t.description">
+              {{ canUnlock(t.id) ? '🔓' : '🔒' }} {{ t.name }}
+              <small>Lv {{ t.unlockLevel }} · 4 SP</small>
+            </button>
+          }
+        </div>
+      </div>
+
+      <div class="season">
+        <p class="eyebrow">This season</p>
+        <div class="season-grid">
+          <span>⚽ {{ p.seasonStats.goals }} goals</span>
+          <span>🅰️ {{ p.seasonStats.assists }} assists</span>
+          <span>👕 {{ p.seasonStats.appearances }} apps</span>
+          <span>🧤 {{ p.seasonStats.cleanSheets }} CS</span>
+          <span>🟨 {{ p.seasonStats.yellowCards }}</span>
+          <span>🏅 {{ p.seasonStats.motmAwards }} MOTM</span>
+        </div>
+      </div>
+    </div>
+  </div>
+}

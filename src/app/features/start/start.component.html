@@ -1,0 +1,69 @@
+<div class="start">
+  <div class="hero fade-up">
+    <div class="badge">⚽</div>
+    <h1>Pitch Legends</h1>
+    <p class="tagline">Build your club. Master the tactics. Forge legends.</p>
+  </div>
+
+  <div class="panel fade-up">
+    @if (hasSave) {
+      <button class="btn btn--primary btn--block continue" (click)="continueGame()">
+        ▶ Continue Career
+      </button>
+      <div class="divider"><span>or start fresh</span></div>
+    }
+
+    <div class="form">
+      <label>
+        <span class="eyebrow">Manager name</span>
+        <input [ngModel]="managerName()" (ngModelChange)="managerName.set($event)" placeholder="e.g. Alex Stone" />
+      </label>
+      <div class="two">
+        <label>
+          <span class="eyebrow">Club name</span>
+          <input [ngModel]="clubName()" (ngModelChange)="clubName.set($event)" placeholder="e.g. Harbour City" />
+        </label>
+        <label>
+          <span class="eyebrow">Short (3)</span>
+          <input maxlength="3" [ngModel]="clubShort()" (ngModelChange)="clubShort.set($event)" placeholder="HBC" />
+        </label>
+      </div>
+
+      <div>
+        <span class="eyebrow">Club colours</span>
+        <div class="presets">
+          @for (p of presets; track p.primary) {
+            <button
+              class="preset"
+              [class.active]="primary() === p.primary"
+              [style.background]="p.primary"
+              [style.borderColor]="p.secondary"
+              (click)="primary.set(p.primary); secondary.set(p.secondary)"
+              aria-label="Choose kit colour"
+            ></button>
+          }
+        </div>
+      </div>
+
+      <div>
+        <span class="eyebrow">Difficulty</span>
+        <div class="segmented">
+          @for (d of ['easy', 'normal', 'hard']; track d) {
+            <button [class.active]="difficulty() === d" (click)="difficulty.set($any(d))">{{ d }}</button>
+          }
+        </div>
+      </div>
+
+      @if (error()) {
+        <p class="error">{{ error() }}</p>
+      }
+
+      <button class="btn btn--primary btn--block big" (click)="start()">Start Career ⚽</button>
+
+      <label class="import btn btn--ghost btn--block">
+        Import save (.json)
+        <input type="file" accept="application/json" (change)="onImport($event)" hidden />
+      </label>
+    </div>
+  </div>
+</div>

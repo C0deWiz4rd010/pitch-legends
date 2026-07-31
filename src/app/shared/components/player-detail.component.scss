@@ -1,0 +1,248 @@
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  background: rgba(4, 8, 14, 0.72);
+  backdrop-filter: blur(4px);
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  animation: fadeUp 160ms ease;
+}
+.modal {
+  position: relative;
+  width: min(680px, 96vw);
+  max-height: 92vh;
+  overflow: auto;
+  background: linear-gradient(180deg, var(--surface-2), var(--surface));
+  border: 1px solid var(--border);
+  border-radius: var(--r-xl);
+  box-shadow: var(--shadow-2);
+  padding: 22px;
+  animation: pop 200ms ease;
+}
+.close {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface-3);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.rating.big {
+  width: 60px;
+  height: 60px;
+  border-radius: 14px;
+  display: grid;
+  place-items: center;
+  font-size: 28px;
+  font-weight: 900;
+  color: #04240f;
+}
+.who h2 {
+  font-size: 22px;
+}
+.tags {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+.chip.injury {
+  background: rgba(245, 69, 92, 0.18);
+  color: #ffb4bf;
+}
+
+.meta {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+  margin: 16px 0;
+}
+.meta-cell {
+  background: var(--bg-800);
+  border-radius: var(--r-md);
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.meta-cell .muted {
+  font-size: 11px;
+}
+.meta-cell strong {
+  font-size: 16px;
+}
+.gold {
+  color: var(--accent-3);
+}
+
+.xp {
+  margin-bottom: 18px;
+}
+.xp-top {
+  display: flex;
+  justify-content: space-between;
+  font-size: 13px;
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+.xp-top .sp {
+  color: var(--accent);
+}
+.xp-track {
+  height: 10px;
+  border-radius: 6px;
+  background: var(--bg-800);
+  overflow: hidden;
+}
+.xp-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--accent-2), var(--accent));
+  transition: width 300ms ease;
+}
+.xp-label {
+  font-size: 11px;
+}
+
+.body {
+  display: grid;
+  grid-template-columns: 240px 1fr;
+  gap: 18px;
+  align-items: center;
+}
+.radar-wrap {
+  background: var(--bg-800);
+  border-radius: var(--r-lg);
+  padding: 10px;
+}
+.attrs {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+.attr-row {
+  display: grid;
+  grid-template-columns: 92px 1fr 26px 42px;
+  align-items: center;
+  gap: 8px;
+}
+.attr-name {
+  font-size: 12px;
+  color: var(--text-dim);
+}
+.attr-track {
+  height: 8px;
+  border-radius: 6px;
+  background: var(--bg-900);
+  overflow: hidden;
+}
+.attr-fill {
+  height: 100%;
+  border-radius: 6px;
+  transition: width 300ms ease;
+}
+.attr-val {
+  text-align: right;
+  font-weight: 800;
+  font-size: 13px;
+}
+.up {
+  height: 26px;
+  border-radius: 7px;
+  border: 1px solid var(--accent);
+  background: rgba(56, 224, 123, 0.12);
+  color: var(--accent);
+  font-weight: 800;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+}
+.up small {
+  font-size: 9px;
+}
+.up:disabled {
+  border-color: var(--border);
+  color: var(--text-mute);
+  background: transparent;
+  cursor: not-allowed;
+}
+
+.traits {
+  margin-top: 18px;
+}
+.trait-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+.trait {
+  padding: 8px 12px;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 600;
+  border: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  line-height: 1.3;
+}
+.trait small {
+  color: var(--text-mute);
+  font-size: 10px;
+}
+.trait.owned {
+  background: rgba(56, 224, 123, 0.14);
+  border-color: rgba(56, 224, 123, 0.4);
+  color: var(--accent);
+}
+.trait.locked {
+  background: var(--bg-800);
+  color: var(--text-dim);
+  cursor: pointer;
+}
+.trait.locked:not(:disabled):hover {
+  border-color: var(--accent);
+}
+.trait.locked:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.season {
+  margin-top: 18px;
+}
+.season-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-top: 8px;
+  font-size: 13px;
+}
+.season-grid span {
+  background: var(--bg-800);
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+
+@media (max-width: 620px) {
+  .body {
+    grid-template-columns: 1fr;
+  }
+  .meta,
+  .season-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
