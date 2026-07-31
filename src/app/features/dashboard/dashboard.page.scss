@@ -1,0 +1,188 @@
+@use '../../../styles/page' as *;
+
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 14px;
+  margin-bottom: 18px;
+}
+.stat {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 16px 18px;
+}
+.stat .ico {
+  font-size: 26px;
+}
+.stat strong {
+  display: block;
+  font-size: 24px;
+  font-weight: 800;
+}
+.stat strong small {
+  font-size: 13px;
+  color: var(--text-mute);
+}
+.stat .muted {
+  font-size: 12px;
+}
+
+.cols {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr;
+  gap: 16px;
+  align-items: start;
+}
+.col {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.next-match .matchup {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin: 14px 0;
+}
+.team {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 700;
+}
+.team.right {
+  flex-direction: row-reverse;
+  text-align: right;
+}
+.crest {
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  border-radius: 12px;
+  background: linear-gradient(180deg, var(--accent), #24b862);
+  color: #04240f;
+  font-weight: 900;
+  font-size: 13px;
+}
+.crest.alt {
+  background: linear-gradient(180deg, var(--surface-3), var(--surface-2));
+  color: var(--text);
+}
+.vs {
+  color: var(--text-mute);
+  font-weight: 700;
+}
+.match-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.news {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-height: 320px;
+  overflow: auto;
+}
+.news-item {
+  display: flex;
+  gap: 12px;
+}
+.news-ico {
+  font-size: 20px;
+}
+.news-item strong {
+  font-size: 14px;
+}
+.news-item p {
+  margin: 3px 0 0;
+  font-size: 13px;
+}
+
+.scorers {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  counter-reset: rank;
+}
+.scorers li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+}
+.scorers li::before {
+  counter-increment: rank;
+  content: counter(rank);
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  border-radius: 6px;
+  background: var(--surface-3);
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-dim);
+}
+.scorers .name {
+  flex: 1;
+  font-weight: 600;
+}
+.scorers .team-tag {
+  color: var(--text-mute);
+  font-size: 12px;
+}
+.scorers .goals {
+  font-weight: 800;
+  color: var(--accent);
+}
+
+.quick {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.quick-link {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 11px 12px;
+  border-radius: var(--r-md);
+  background: var(--surface);
+  font-weight: 600;
+  font-size: 14px;
+  transition: background var(--t-fast);
+}
+.quick-link:hover {
+  background: var(--surface-3);
+}
+.quick-link .muted {
+  margin-left: auto;
+  font-size: 12px;
+}
+.alert {
+  margin-top: 4px;
+  padding: 10px 12px;
+  border-radius: var(--r-md);
+  background: rgba(245, 69, 92, 0.12);
+  color: #ffb4bf;
+  font-size: 13px;
+}
+
+@media (max-width: 980px) {
+  .stat-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .cols {
+    grid-template-columns: 1fr;
+  }
+}

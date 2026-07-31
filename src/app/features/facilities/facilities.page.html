@@ -1,0 +1,51 @@
+<header class="page-head fade-up">
+  <div>
+    <p class="eyebrow">Club Infrastructure</p>
+    <h1>Facilities</h1>
+  </div>
+  <div class="budget">
+    <span class="muted">Budget</span>
+    <strong class="gold">🪙 {{ formatCoins(gs.coins()) }}</strong>
+  </div>
+</header>
+
+@if (message()) {
+  <div class="toast fade-up">{{ message() }}</div>
+}
+
+<div class="grid fade-up">
+  @for (f of facilities; track f.key) {
+    <div class="fcard">
+      <div class="fc-head">
+        <span class="fico">{{ f.icon }}</span>
+        <div>
+          <strong>{{ f.name }}</strong>
+          <p class="muted">{{ f.description }}</p>
+        </div>
+      </div>
+
+      <div class="levels">
+        @for (l of levels; track l) {
+          <span class="pip" [class.on]="l <= level(f.key)"></span>
+        }
+        <span class="lvl-num">Lv {{ level(f.key) }}</span>
+      </div>
+
+      <div class="effect">
+        <span class="muted">Current effect</span>
+        <strong class="accent">{{ f.effect(level(f.key)) }}</strong>
+      </div>
+
+      <div class="fc-foot">
+        @if (level(f.key) >= maxLevel) {
+          <span class="chip max">MAX LEVEL</span>
+        } @else {
+          <span class="next muted">Next: {{ f.effect(level(f.key) + 1) }}</span>
+          <button class="btn btn--primary btn--sm" [disabled]="!canUpgrade(f.key)" (click)="upgrade(f.key, f.name)">
+            Upgrade · 🪙 {{ formatCoins(cost(f.key)) }}
+          </button>
+        }
+      </div>
+    </div>
+  }
+</div>

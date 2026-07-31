@@ -1,0 +1,62 @@
+<header class="page-head fade-up">
+  <div>
+    <p class="eyebrow">{{ gs.playerTeam()?.name }}</p>
+    <h1>Settings</h1>
+  </div>
+</header>
+
+@if (message()) {
+  <div class="toast fade-up">{{ message() }}</div>
+}
+
+<div class="cards fade-up">
+  <div class="card">
+    <p class="eyebrow">Career</p>
+    <div class="info-row"><span class="muted">Manager</span><strong>{{ gs.game()?.managerName }}</strong></div>
+    <div class="info-row"><span class="muted">Club</span><strong>{{ gs.playerTeam()?.name }}</strong></div>
+    <div class="info-row"><span class="muted">Season</span><strong>{{ gs.season() }}</strong></div>
+    <div class="info-row"><span class="muted">Week</span><strong>{{ gs.currentWeek() }} / {{ gs.totalWeeks() }}</strong></div>
+
+    @if (gs.seasonOver()) {
+      <button class="btn btn--primary btn--block" (click)="startNextSeason()">🎬 Start Next Season</button>
+    }
+  </div>
+
+  <div class="card">
+    <p class="eyebrow">Gameplay</p>
+    <div class="setting">
+      <span>Difficulty</span>
+      <div class="mini-seg">
+        @for (d of difficulties; track d) {
+          <button [class.active]="gs.game()?.settings?.difficulty === d" (click)="setDifficulty(d)">{{ d }}</button>
+        }
+      </div>
+    </div>
+    <label class="toggle">
+      <input type="checkbox" [checked]="gs.game()?.settings?.autoSave" (change)="toggleAutosave()" />
+      <span>Auto-save after each action</span>
+    </label>
+    <label class="toggle">
+      <input type="checkbox" [checked]="gs.game()?.settings?.soundEnabled" (change)="toggleSound()" />
+      <span>Sound effects</span>
+    </label>
+  </div>
+
+  <div class="card">
+    <p class="eyebrow">Save data</p>
+    <button class="btn btn--ghost btn--block" (click)="saveNow()">💾 Save now</button>
+    <button class="btn btn--ghost btn--block" (click)="exportSave()">📤 Export save (.json)</button>
+    <label class="btn btn--ghost btn--block import">
+      📥 Import save (.json)
+      <input type="file" accept="application/json" (change)="onImport($event)" hidden />
+    </label>
+  </div>
+
+  <div class="card danger-zone">
+    <p class="eyebrow">Danger zone</p>
+    <p class="muted">Starting a new career permanently deletes your current save.</p>
+    <button class="btn btn--danger btn--block" (click)="newGame()">
+      {{ confirmNew() ? '⚠️ Tap again to confirm — delete & start new' : '🗑️ New career' }}
+    </button>
+  </div>
+</div>

@@ -1,0 +1,151 @@
+@use '../../../styles/page' as *;
+
+.drill-picker {
+  margin-bottom: 14px;
+}
+.drills {
+  display: grid;
+  grid-template-columns: repeat(9, 1fr);
+  gap: 8px;
+  margin: 12px 0 10px;
+}
+.drill {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  padding: 12px 6px;
+  border-radius: var(--r-md);
+  border: 1px solid var(--border);
+  background: var(--bg-800);
+  color: var(--text-dim);
+  cursor: pointer;
+  transition: all var(--t-fast);
+}
+.drill .d-ico {
+  font-size: 22px;
+}
+.drill .d-name {
+  font-size: 11px;
+  font-weight: 700;
+}
+.drill:hover {
+  border-color: var(--surface-3);
+}
+.drill.active {
+  border-color: var(--accent);
+  background: rgba(56, 224, 123, 0.12);
+  color: var(--accent);
+}
+.drill-desc {
+  margin: 0;
+  font-size: 13px;
+}
+
+.toast {
+  background: rgba(56, 224, 123, 0.14);
+  border: 1px solid rgba(56, 224, 123, 0.35);
+  color: var(--accent);
+  padding: 11px 14px;
+  border-radius: var(--r-md);
+  font-weight: 600;
+  font-size: 14px;
+  margin-bottom: 14px;
+}
+
+.list-card {
+  padding: 8px;
+}
+.plist {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.prow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: var(--r-md);
+  transition: background var(--t-med);
+}
+.prow:hover {
+  background: var(--surface);
+}
+.prow.highlight {
+  background: rgba(56, 224, 123, 0.1);
+}
+.prow.injured {
+  opacity: 0.7;
+}
+.prow .rating {
+  min-width: 34px;
+  height: 32px;
+}
+.pinfo {
+  flex: 1;
+  min-width: 0;
+}
+.pline {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  margin-bottom: 6px;
+  flex-wrap: wrap;
+}
+.pos {
+  color: var(--text-mute);
+  font-size: 12px;
+  font-weight: 700;
+}
+.lvl {
+  font-size: 12px;
+  color: var(--text-dim);
+  font-weight: 700;
+}
+.sp {
+  font-size: 12px;
+  color: var(--accent);
+  font-weight: 700;
+}
+.inj {
+  font-size: 12px;
+  color: #ffb4bf;
+}
+.bars {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.bar {
+  height: 6px;
+  border-radius: 4px;
+  background: var(--bg-900);
+  overflow: hidden;
+}
+.bar i {
+  display: block;
+  height: 100%;
+}
+.bar.xp i {
+  background: linear-gradient(90deg, var(--accent-2), var(--accent));
+}
+.pactions {
+  display: flex;
+  gap: 6px;
+}
+
+@media (max-width: 720px) {
+  .drills {
+    grid-template-columns: repeat(5, 1fr);
+  }
+}
+@media (max-width: 480px) {
+  .drills {
+    grid-template-columns: repeat(3, 1fr);
+  }
+  .pline strong {
+    width: 100%;
+  }
+}

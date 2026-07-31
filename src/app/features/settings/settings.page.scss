@@ -1,0 +1,85 @@
+@use '../../../styles/page' as *;
+
+.toast {
+  background: rgba(56, 224, 123, 0.14);
+  border: 1px solid rgba(56, 224, 123, 0.35);
+  color: var(--accent);
+  padding: 11px 14px;
+  border-radius: var(--r-md);
+  font-weight: 600;
+  font-size: 14px;
+  margin-bottom: 14px;
+}
+
+.cards {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 14px;
+  align-items: start;
+}
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.info-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 14px;
+  padding: 4px 0;
+  border-bottom: 1px solid var(--border-soft);
+}
+.info-row:last-of-type {
+  border-bottom: none;
+}
+
+.setting {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.mini-seg {
+  display: inline-flex;
+  gap: 3px;
+  background: var(--bg-800);
+  border-radius: 8px;
+  padding: 3px;
+}
+.mini-seg button {
+  padding: 6px 12px;
+  border: none;
+  background: transparent;
+  color: var(--text-dim);
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: capitalize;
+  cursor: pointer;
+}
+.mini-seg button.active {
+  background: var(--accent);
+  color: #04240f;
+}
+.toggle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+  cursor: pointer;
+}
+.import {
+  cursor: pointer;
+}
+.danger-zone {
+  border-color: rgba(245, 69, 92, 0.3);
+}
+
+@media (max-width: 720px) {
+  .cards {
+    grid-template-columns: 1fr;
+  }
+}

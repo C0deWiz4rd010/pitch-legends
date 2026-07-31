@@ -1,0 +1,78 @@
+<header class="page-head fade-up">
+  <div>
+    <p class="eyebrow">Transfer Market · {{ gs.squad().length }}/{{ maxSquad }} squad</p>
+    <h1>Transfers</h1>
+  </div>
+  <div class="budget">
+    <span class="muted">Budget</span>
+    <strong class="gold">🪙 {{ formatCoins(gs.coins()) }}</strong>
+  </div>
+</header>
+
+<div class="toolbar fade-up">
+  <div class="segmented">
+    <button [class.active]="tab() === 'buy'" (click)="tab.set('buy')">Buy</button>
+    <button [class.active]="tab() === 'sell'" (click)="tab.set('sell')">Sell</button>
+  </div>
+  @if (tab() === 'buy') {
+    <button class="btn btn--ghost btn--sm" (click)="refresh()">🔍 Scout new ({{ formatCoins(transfers.refreshCost) }})</button>
+  }
+</div>
+
+@if (message()) {
+  <div class="toast fade-up">{{ message() }}</div>
+}
+
+<div class="grid fade-up">
+  @if (tab() === 'buy') {
+    @for (p of market(); track p.id) {
+      <div class="pcard">
+        <div class="pc-top">
+          <span class="rating" [style.background]="ratingColor(p.overall)">{{ p.overall }}</span>
+          <div class="pc-id">
+            <strong>{{ playerName(p) }}</strong>
+            <span class="muted">{{ p.position }} · {{ p.age }}y · {{ p.nationality }}</span>
+          </div>
+        </div>
+        <div class="pc-attrs">
+          <span>PAC {{ p.attributes.pace }}</span>
+          <span>SHO {{ p.attributes.shooting }}</span>
+          <span>PAS {{ p.attributes.passing }}</span>
+          <span>DRI {{ p.attributes.dribbling }}</span>
+          <span>DEF {{ p.attributes.defending }}</span>
+          <span>PHY {{ p.attributes.physical }}</span>
+        </div>
+        <div class="pc-foot">
+          <span class="value gold">🪙 {{ formatCoins(p.marketValue) }}</span>
+          <button class="btn btn--primary btn--sm" [disabled]="gs.coins() < p.marketValue" (click)="buy(p)">Sign</button>
+        </div>
+      </div>
+    } @empty {
+      <p class="muted">No players available. Scout for more.</p>
+    }
+  } @else {
+    @for (p of squad(); track p.id) {
+      <div class="pcard">
+        <div class="pc-top">
+          <span class="rating" [style.background]="ratingColor(p.overall)">{{ p.overall }}</span>
+          <div class="pc-id">
+            <strong>{{ playerName(p) }}</strong>
+            <span class="muted">{{ p.position }} · {{ p.age }}y · Lv {{ p.level }}</span>
+          </div>
+        </div>
+        <div class="pc-attrs">
+          <span>PAC {{ p.attributes.pace }}</span>
+          <span>SHO {{ p.attributes.shooting }}</span>
+          <span>PAS {{ p.attributes.passing }}</span>
+          <span>DRI {{ p.attributes.dribbling }}</span>
+          <span>DEF {{ p.attributes.defending }}</span>
+          <span>PHY {{ p.attributes.physical }}</span>
+        </div>
+        <div class="pc-foot">
+          <span class="value">Sell for <strong class="gold">🪙 {{ formatCoins(p.marketValue * 0.9) }}</strong></span>
+          <button class="btn btn--danger btn--sm" (click)="sell(p)">Sell</button>
+        </div>
+      </div>
+    }
+  }
+</div>

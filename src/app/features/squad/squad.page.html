@@ -1,0 +1,68 @@
+<header class="page-head fade-up">
+  <div>
+    <p class="eyebrow">{{ gs.playerTeam()?.name }}</p>
+    <h1>Squad</h1>
+  </div>
+  <div class="head-stats">
+    <span class="chip">{{ gs.squad().length }} players</span>
+    @if (totalSkillPoints() > 0) {
+      <span class="chip sp">✨ {{ totalSkillPoints() }} skill points to spend</span>
+    }
+  </div>
+</header>
+
+<div class="toolbar fade-up">
+  <div class="segmented">
+    @for (f of filters; track f) {
+      <button [class.active]="filter() === f" (click)="filter.set(f)">{{ f }}</button>
+    }
+  </div>
+  <div class="sort">
+    <span class="muted">Sort</span>
+    <select [value]="sort()" (change)="sort.set($any($event.target).value)">
+      <option value="overall">Overall</option>
+      <option value="level">Level</option>
+      <option value="value">Value</option>
+      <option value="position">Position</option>
+    </select>
+  </div>
+</div>
+
+<div class="card table-card fade-up">
+  <div class="table">
+    <div class="thead">
+      <span>#</span>
+      <span>Player</span>
+      <span>Pos</span>
+      <span class="c">OVR</span>
+      <span class="c">Lvl</span>
+      <span class="c hide-sm">Fitness</span>
+      <span class="c hide-sm">Morale</span>
+      <span class="c hide-md">Value</span>
+      <span></span>
+    </div>
+    @for (p of players(); track p.id) {
+      <button class="trow" (click)="select(p.id)">
+        <span class="kit">{{ p.kitNumber }}</span>
+        <span class="pname">
+          {{ p.firstName }} <strong>{{ p.lastName }}</strong>
+          @if (p.injuryWeeks > 0) { <span class="inj">🚑</span> }
+          @if (p.skillPoints > 0) { <span class="spdot" title="Skill points available">✨</span> }
+        </span>
+        <span class="pos">{{ p.position }}</span>
+        <span class="c"><span class="rating" [style.background]="ratingColor(p.overall)">{{ p.overall }}</span></span>
+        <span class="c lvl">{{ p.level }}</span>
+        <span class="c hide-sm">
+          <span class="mini-bar"><i [style.width.%]="p.fitness" [style.background]="ratingColor(p.fitness)"></i></span>
+        </span>
+        <span class="c hide-sm mor">{{ moraleIcon(p.morale) }}</span>
+        <span class="c hide-md gold">{{ formatCoins(p.marketValue) }}</span>
+        <span class="chev">›</span>
+      </button>
+    }
+  </div>
+</div>
+
+@if (selectedId(); as id) {
+  <app-player-detail [playerId]="id" (close)="selectedId.set(null)" />
+}

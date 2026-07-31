@@ -1,0 +1,143 @@
+@if (phase() === 'preview') {
+  <header class="page-head fade-up">
+    <div>
+      <p class="eyebrow">Match Day · Week {{ gs.currentWeek() }}</p>
+      <h1>Match Centre</h1>
+    </div>
+  </header>
+
+  @if (homeTeam() && awayTeam()) {
+    <div class="card preview fade-up">
+      <div class="pv-teams">
+        <div class="pv-team">
+          <span class="crest" [style.background]="homeTeam()?.kit?.primary" [style.color]="homeTeam()?.kit?.secondary">
+            {{ homeTeam()?.shortName }}
+          </span>
+          <strong>{{ homeTeam()?.name }}</strong>
+          <span class="chip">{{ homeTeam()?.formation?.name }}</span>
+        </div>
+        <div class="pv-vs">
+          <span>VS</span>
+          <small class="muted">{{ isHome() ? '🏠 Home' : '✈️ Away' }}</small>
+        </div>
+        <div class="pv-team">
+          <span class="crest" [style.background]="awayTeam()?.kit?.primary" [style.color]="awayTeam()?.kit?.secondary">
+            {{ awayTeam()?.shortName }}
+          </span>
+          <strong>{{ awayTeam()?.name }}</strong>
+          <span class="chip">{{ awayTeam()?.formation?.name }}</span>
+        </div>
+      </div>
+
+      <div class="pv-actions">
+        <a routerLink="/tactics" class="btn btn--ghost">📋 Adjust tactics</a>
+        <button class="btn btn--primary big" (click)="kickOff()">⚽ Kick Off</button>
+      </div>
+    </div>
+  } @else {
+    <div class="card fade-up empty">
+      <p>🏁 The season is complete! Head to the League page to review the final table, then start a new season from Settings.</p>
+      <a routerLink="/league" class="btn btn--primary">View League</a>
+    </div>
+  }
+}
+
+@if (phase() === 'live' || phase() === 'result') {
+  <div class="scoreboard fade-up">
+    <div class="sb-team">
+      <span class="crest sm" [style.background]="homeTeam()?.kit?.primary" [style.color]="homeTeam()?.kit?.secondary">{{ homeTeam()?.shortName }}</span>
+      <strong class="hide-sm">{{ homeTeam()?.name }}</strong>
+    </div>
+    <div class="sb-score">
+      <span class="score">{{ liveHome() }}</span>
+      <span class="clock">{{ minute() }}'</span>
+      <span class="score">{{ liveAway() }}</span>
+    </div>
+    <div class="sb-team right">
+      <strong class="hide-sm">{{ awayTeam()?.name }}</strong>
+      <span class="crest sm" [style.background]="awayTeam()?.kit?.primary" [style.color]="awayTeam()?.kit?.secondary">{{ awayTeam()?.shortName }}</span>
+    </div>
+  </div>
+}
+
+@if (phase() === 'live') {
+  <div class="live fade-up">
+    <div class="pitch-panel">
+      <div class="canvas-wrap">
+        <canvas #pitch></canvas>
+        @if (flash(); as f) {
+          <div class="goal-flash">GOAL! <span>{{ f }}</span></div>
+        }
+      </div>
+      <div class="controls">
+        <button class="btn btn--ghost btn--sm" (click)="togglePlay()">{{ playing() ? '⏸ Pause' : '▶ Play' }}</button>
+        <button class="btn btn--ghost btn--sm" (click)="cycleSpeed()">⏩ {{ speed() }}×</button>
+        <button class="btn btn--ghost btn--sm" (click)="skip()">⏭ Skip to end</button>
+      </div>
+    </div>
+
+    <div class="ticker card">
+      <p class="eyebrow">Live commentary</p>
+      <div class="events scroll">
+        @for (e of tickerEvents(); track $index) {
+          <div class="event" [class.goal]="e.type === 'goal'" [class.card-ev]="e.type === 'yellow'">
+            <span class="min">{{ e.minute }}'</span>
+            <span class="txt">{{ e.text }}</span>
+          </div>
+        }
+      </div>
+    </div>
+  </div>
+}
+
+@if (phase() === 'result') {
+  @if (result(); as r) {
+    <div class="result fade-up">
+      <div class="card final">
+        <p class="eyebrow">Full time</p>
+        <div class="final-score">
+          <span>{{ homeTeam()?.shortName }}</span>
+          <strong>{{ r.homeScore }} — {{ r.awayScore }}</strong>
+          <span>{{ awayTeam()?.shortName }}</span>
+        </div>
+        <div class="motm">🏅 Man of the Match: <strong>{{ motmName() }}</strong></div>
+      </div>
+
+      <div class="card stats">
+        <p class="eyebrow">Match stats</p>
+        @for (row of [
+          { label: 'Possession', h: r.homeStats.possession, a: r.awayStats.possession, suffix: '%' },
+          { label: 'Shots', h: r.homeStats.shots, a: r.awayStats.shots, suffix: '' },
+          { label: 'On target', h: r.homeStats.shotsOnTarget, a: r.awayStats.shotsOnTarget, suffix: '' },
+          { label: 'Corners', h: r.homeStats.corners, a: r.awayStats.corners, suffix: '' },
+          { label: 'Fouls', h: r.homeStats.fouls, a: r.awayStats.fouls, suffix: '' },
+          { label: 'Pass %', h: r.homeStats.passAccuracy, a: r.awayStats.passAccuracy, suffix: '%' }
+        ]; track row.label) {
+          <div class="stat-row">
+            <span class="sh tabular">{{ row.h }}{{ row.suffix }}</span>
+            <div class="stat-bar">
+              <div class="fill home" [style.width.%]="(row.h / (row.h + row.a || 1)) * 100"></div>
+              <div class="fill away" [style.width.%]="(row.a / (row.h + row.a || 1)) * 100"></div>
+            </div>
+            <span class="sa tabular">{{ row.a }}{{ row.suffix }}</span>
+          </div>
+          <div class="stat-label">{{ row.label }}</div>
+        }
+      </div>
+
+      <div class="card ratings">
+        <p class="eyebrow">Your player ratings</p>
+        <div class="rlist">
+          @for (pr of playerRatings(); track pr.player.id) {
+            <div class="rrow">
+              <span class="rname">{{ playerName(pr.player) }} @if (pr.motm) { <span class="motm-tag">🏅</span> }</span>
+              <span class="rval" [style.background]="ratingColor(pr.rating * 10)">{{ pr.rating | number: '1.1-1' }}</span>
+            </div>
+          }
+        </div>
+      </div>
+
+      <button class="btn btn--primary big continue" (click)="confirm()">Continue ▶</button>
+    </div>
+  }
+}

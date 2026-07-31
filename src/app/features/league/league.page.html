@@ -1,0 +1,90 @@
+<header class="page-head fade-up">
+  <div>
+    <p class="eyebrow">{{ gs.game()?.league?.name }} · Season {{ gs.season() }}</p>
+    <h1>League</h1>
+  </div>
+  <div class="segmented">
+    <button [class.active]="tab() === 'table'" (click)="tab.set('table')">Table</button>
+    <button [class.active]="tab() === 'fixtures'" (click)="tab.set('fixtures')">Fixtures</button>
+    <button [class.active]="tab() === 'scorers'" (click)="tab.set('scorers')">Scorers</button>
+  </div>
+</header>
+
+@switch (tab()) {
+  @case ('table') {
+    <div class="card table-card fade-up">
+      <div class="table">
+        <div class="thead">
+          <span class="c">#</span>
+          <span>Club</span>
+          <span class="c">P</span>
+          <span class="c">W</span>
+          <span class="c">D</span>
+          <span class="c">L</span>
+          <span class="c hide-sm">GF</span>
+          <span class="c hide-sm">GA</span>
+          <span class="c">GD</span>
+          <span class="c">Pts</span>
+        </div>
+        @for (row of gs.standings(); track row.teamId; let i = $index) {
+          <div class="trow" [class.me]="row.teamId === clubId()" [class.top]="i < 3">
+            <span class="c pos">{{ i + 1 }}</span>
+            <span class="club">
+              <span class="dot" [style.background]="gs.teamById(row.teamId)?.kit?.primary"></span>
+              {{ row.teamName }}
+            </span>
+            <span class="c">{{ row.played }}</span>
+            <span class="c">{{ row.won }}</span>
+            <span class="c">{{ row.drawn }}</span>
+            <span class="c">{{ row.lost }}</span>
+            <span class="c hide-sm">{{ row.goalsFor }}</span>
+            <span class="c hide-sm">{{ row.goalsAgainst }}</span>
+            <span class="c">{{ row.goalsFor - row.goalsAgainst }}</span>
+            <span class="c pts">{{ row.points }}</span>
+          </div>
+        }
+      </div>
+    </div>
+  }
+
+  @case ('fixtures') {
+    <div class="card fade-up">
+      <div class="week-nav">
+        <button class="btn btn--ghost btn--sm" (click)="prevWeek()">‹</button>
+        <strong>Matchweek {{ viewWeek() }}</strong>
+        <button class="btn btn--ghost btn--sm" (click)="nextWeek()">›</button>
+      </div>
+      <div class="fixtures">
+        @for (f of weekFixtures(); track f.id) {
+          <div class="fixture" [class.me]="f.homeTeamId === clubId() || f.awayTeamId === clubId()">
+            <span class="ft home">{{ teamName(f.homeTeamId) }}</span>
+            @if (f.played) {
+              <span class="ft-score">{{ f.homeScore }} - {{ f.awayScore }}</span>
+            } @else {
+              <span class="ft-score vs">vs</span>
+            }
+            <span class="ft away">{{ teamName(f.awayTeamId) }}</span>
+          </div>
+        }
+      </div>
+    </div>
+  }
+
+  @case ('scorers') {
+    <div class="card fade-up">
+      <p class="eyebrow">Top scorers</p>
+      <ol class="scorers">
+        @for (entry of gs.topScorers(); track entry.player.id) {
+          <li>
+            <span class="name">{{ playerName(entry.player) }}</span>
+            <span class="team-tag">{{ entry.teamName }}</span>
+            <span class="stat">{{ entry.player.seasonStats.assists }} A</span>
+            <span class="goals tabular">{{ entry.player.seasonStats.goals }}</span>
+          </li>
+        } @empty {
+          <li class="muted">No goals scored yet this season.</li>
+        }
+      </ol>
+    </div>
+  }
+}

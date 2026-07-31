@@ -1,0 +1,56 @@
+<header class="page-head fade-up">
+  <div>
+    <p class="eyebrow">Training Ground · Level {{ trainingGround() }}</p>
+    <h1>Training</h1>
+  </div>
+</header>
+
+<div class="drill-picker card fade-up">
+  <p class="eyebrow">Select a drill, then train players to earn XP and push their stats</p>
+  <div class="drills">
+    @for (d of drills; track d.id) {
+      <button class="drill" [class.active]="activeDrill().id === d.id" (click)="selectDrill(d)">
+        <span class="d-ico">{{ d.icon }}</span>
+        <span class="d-name">{{ d.name }}</span>
+      </button>
+    }
+  </div>
+  <p class="drill-desc muted">{{ activeDrill().icon }} {{ activeDrill().description }}</p>
+</div>
+
+@if (message()) {
+  <div class="toast fade-up">{{ message() }}</div>
+}
+
+<div class="card list-card fade-up">
+  <div class="plist">
+    @for (p of squad(); track p.id) {
+      <div class="prow" [class.highlight]="lastTrainedId() === p.id" [class.injured]="p.injuryWeeks > 0">
+        <span class="rating" [style.background]="ratingColor(p.overall)">{{ p.overall }}</span>
+        <div class="pinfo">
+          <div class="pline">
+            <strong>{{ p.firstName }} {{ p.lastName }}</strong>
+            <span class="pos">{{ p.position }}</span>
+            <span class="lvl">Lv {{ p.level }}</span>
+            @if (p.skillPoints > 0) { <span class="sp">✨ {{ p.skillPoints }}</span> }
+            @if (p.injuryWeeks > 0) { <span class="inj">🚑 {{ p.injuryWeeks }}w</span> }
+          </div>
+          <div class="bars">
+            <div class="bar xp" title="XP">
+              <i [style.width.%]="xpPercent(p)"></i>
+            </div>
+            <div class="bar fit" [title]="'Fitness ' + p.fitness + '%'">
+              <i [style.width.%]="p.fitness" [style.background]="ratingColor(p.fitness)"></i>
+            </div>
+          </div>
+        </div>
+        <div class="pactions">
+          <button class="btn btn--ghost btn--sm" (click)="recover(p.id)" title="Recover fitness">🧊</button>
+          <button class="btn btn--primary btn--sm" [disabled]="p.injuryWeeks > 0" (click)="train(p.id)">
+            Train {{ activeDrill().icon }}
+          </button>
+        </div>
+      </div>
+    }
+  </div>
+</div>

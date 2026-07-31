@@ -1,0 +1,116 @@
+<header class="page-head fade-up">
+  <div>
+    <p class="eyebrow">Season {{ gs.season() }} · Week {{ gs.currentWeek() }}</p>
+    <h1>Welcome back, {{ gs.game()?.managerName }}</h1>
+  </div>
+  <a routerLink="/match" class="btn btn--primary">Go to Match Day ▶</a>
+</header>
+
+<section class="stat-grid fade-up">
+  <div class="card stat">
+    <span class="ico">🏆</span>
+    <div>
+      <strong>{{ rank() }}<small>{{ rank() === 1 ? 'st' : rank() === 2 ? 'nd' : rank() === 3 ? 'rd' : 'th' }}</small></strong>
+      <span class="muted">League position</span>
+    </div>
+  </div>
+  <div class="card stat">
+    <span class="ico">⭐</span>
+    <div>
+      <strong>{{ squadRating() }}</strong>
+      <span class="muted">Squad rating</span>
+    </div>
+  </div>
+  <div class="card stat">
+    <span class="ico">🪙</span>
+    <div>
+      <strong class="gold">{{ formatCoins(gs.coins()) }}</strong>
+      <span class="muted">Transfer budget</span>
+    </div>
+  </div>
+  <div class="card stat">
+    <span class="ico">✨</span>
+    <div>
+      <strong class="accent">{{ skillPointsAvailable() }}</strong>
+      <span class="muted">Skill points to spend</span>
+    </div>
+  </div>
+</section>
+
+<div class="cols">
+  <div class="col">
+    <div class="card next-match fade-up">
+      <p class="eyebrow">Next fixture</p>
+      @if (nextOpponent(); as opp) {
+        <div class="matchup">
+          <div class="team">
+            <span class="crest">{{ gs.playerTeam()?.shortName }}</span>
+            <span>{{ gs.playerTeam()?.name }}</span>
+          </div>
+          <span class="vs">{{ opp.home ? 'vs' : '@' }}</span>
+          <div class="team right">
+            <span class="crest alt">{{ opp.short }}</span>
+            <span>{{ opp.name }}</span>
+          </div>
+        </div>
+        <div class="match-actions">
+          <span class="chip">{{ opp.home ? '🏠 Home' : '✈️ Away' }}</span>
+          <a routerLink="/tactics" class="btn btn--ghost btn--sm">Set tactics</a>
+          <a routerLink="/match" class="btn btn--primary btn--sm">Play match ▶</a>
+        </div>
+      } @else {
+        <p class="muted">The season is complete. Head to Settings to start the next one.</p>
+      }
+    </div>
+
+    <div class="card fade-up">
+      <div class="card-head">
+        <p class="eyebrow">Club news</p>
+      </div>
+      <div class="news">
+        @for (item of gs.news(); track item.id) {
+          <div class="news-item">
+            <span class="news-ico">{{ item.icon }}</span>
+            <div>
+              <strong>{{ item.title }}</strong>
+              <p class="muted">{{ item.body }}</p>
+            </div>
+          </div>
+        } @empty {
+          <p class="muted">No news yet.</p>
+        }
+      </div>
+    </div>
+  </div>
+
+  <div class="col">
+    <div class="card fade-up">
+      <div class="card-head">
+        <p class="eyebrow">Top scorers</p>
+        <a routerLink="/league" class="link">League ›</a>
+      </div>
+      <ol class="scorers">
+        @for (entry of gs.topScorers().slice(0, 6); track entry.player.id) {
+          <li>
+            <span class="name">{{ playerName(entry.player) }}</span>
+            <span class="team-tag">{{ entry.teamName }}</span>
+            <span class="goals tabular">{{ entry.player.seasonStats.goals }}</span>
+          </li>
+        } @empty {
+          <li class="muted">No goals scored yet.</li>
+        }
+      </ol>
+    </div>
+
+    <div class="card quick fade-up">
+      <p class="eyebrow">Quick actions</p>
+      <a routerLink="/training" class="quick-link">🏋️ Train players <span class="muted">develop stats</span></a>
+      <a routerLink="/squad" class="quick-link">👥 Manage squad <span class="muted">spend skill points</span></a>
+      <a routerLink="/transfer" class="quick-link">💱 Transfer market <span class="muted">buy & sell</span></a>
+      <a routerLink="/facilities" class="quick-link">🏟️ Upgrade facilities <span class="muted">grow the club</span></a>
+      @if (injuredCount() > 0) {
+        <div class="alert">🚑 {{ injuredCount() }} player(s) currently injured.</div>
+      }
+    </div>
+  </div>
+</div>
