@@ -79,6 +79,46 @@ export class MatchPage implements OnDestroy {
   });
   protected readonly isHome = computed(() => this.homeTeam()?.id === this.gs.playerTeam()?.id);
 
+  /** Average overall of a team's best XI. */
+  protected teamRating(team: Team | null): number {
+    if (!team) return 0;
+    const top = [...team.players].sort((a, b) => b.overall - a.overall).slice(0, 11);
+    return top.length ? Math.round(top.reduce((s, p) => s + p.overall, 0) / top.length) : 0;
+  }
+
+  /** Last up to five league results for a team as W/D/L, oldest → newest. */
+  protected form(teamId: string | undefined): ('W' | 'D' | 'L')[] {
+    const g = this.gs.game();
+    if (!g || !teamId) return [];
+    return g.league.fixtures
+      .filter((f) => f.played && (f.homeTeamId === teamId || f.awayTeamId === teamId))
+      .sort((a, b) => a.week - b.week)
+      .slice(-5)
+      .map((f) => {
+        const gf = f.homeTeamId === teamId ? f.homeScore! : f.awayScore!;
+        const ga = f.homeTeamId === teamId ? f.awayScore! : f.homeScore!;
+        return gf > ga ? 'W' : gf < ga ? 'L' : 'D';
+      });
+  }
+
+  /** Rough win/draw/away prediction from squad ratings + home advantage. */
+  protected prediction(): { home: number; draw: number; away: number } {
+    const h = this.teamRating(this.homeTeam()) + 4;
+    const a = this.teamRating(this.awayTeam());
+    const diff = h - a;
+    const homeW = 1 / (1 + Math.pow(10, -diff / 12));
+    const draw = 0.26 - Math.min(0.16, Math.abs(diff) / 100);
+    const home = Math.max(0.05, homeW * (1 - draw));
+    const away = Math.max(0.05, (1 - homeW) * (1 - draw));
+    const total = home + draw + away;
+    return {
+      home: Math.round((home / total) * 100),
+      draw: Math.round((draw / total) * 100),
+      away: Math.round((away / total) * 100),
+    };
+  }
+
+
   protected readonly liveHome = computed(
     () => this.revealed().filter((e) => e.type === 'goal' && e.side === 'home').length,
   );

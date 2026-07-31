@@ -54,6 +54,88 @@
   font-size: 12px;
   margin: 14px 0 0;
 }
+
+// ── Scouting report ────────────────────────────────────────────────────────
+.scout {
+  margin-top: 14px;
+}
+.scout-grid {
+  display: grid;
+  grid-template-columns: 1fr 1.4fr 1fr;
+  gap: 16px;
+  align-items: center;
+  margin-top: 10px;
+}
+.scout-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+}
+.sc-rating {
+  font-size: 30px;
+  font-weight: 900;
+}
+.form {
+  display: flex;
+  gap: 4px;
+  margin-top: 6px;
+}
+.form-pill {
+  width: 20px;
+  height: 20px;
+  border-radius: 5px;
+  display: grid;
+  place-items: center;
+  font-size: 11px;
+  font-weight: 800;
+  color: #05200f;
+  background: var(--surface-3);
+}
+.form-pill.w {
+  background: var(--accent);
+}
+.form-pill.d {
+  background: var(--accent-3);
+}
+.form-pill.l {
+  background: var(--danger);
+  color: #fff;
+}
+.small {
+  font-size: 11px;
+}
+.scout-mid {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: center;
+}
+.odds {
+  width: 100%;
+}
+.odds-bar {
+  display: flex;
+  height: 12px;
+  border-radius: 6px;
+  overflow: hidden;
+}
+.odds-bar .o.home {
+  background: var(--accent);
+}
+.odds-bar .o.draw {
+  background: var(--text-mute);
+}
+.odds-bar .o.away {
+  background: var(--accent-2);
+}
+.odds-legend {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  font-weight: 700;
+  margin-top: 6px;
+}
 .big {
   padding: 13px 26px;
   font-size: 16px;

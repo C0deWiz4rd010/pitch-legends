@@ -35,6 +35,49 @@
       </div>
       <p class="pv-hint muted">Tip: during the match you can change mentality, pressing and make up to 5 substitutions live.</p>
     </div>
+
+    <div class="card scout fade-up">
+      <p class="eyebrow">Scouting report</p>
+      <div class="scout-grid">
+        <div class="scout-col">
+          <span class="sc-rating" [style.color]="ratingColor(teamRating(homeTeam()))">{{ teamRating(homeTeam()) }}</span>
+          <span class="muted">Squad rating</span>
+          <div class="form">
+            @for (r of form(homeTeam()?.id); track $index) {
+              <span class="form-pill" [class.w]="r === 'W'" [class.d]="r === 'D'" [class.l]="r === 'L'">{{ r }}</span>
+            } @empty {
+              <span class="muted small">No form yet</span>
+            }
+          </div>
+        </div>
+        <div class="scout-mid">
+          <span class="eyebrow">Win prediction</span>
+          <div class="odds">
+            <div class="odds-bar">
+              <div class="o home" [style.width.%]="prediction().home"></div>
+              <div class="o draw" [style.width.%]="prediction().draw"></div>
+              <div class="o away" [style.width.%]="prediction().away"></div>
+            </div>
+            <div class="odds-legend">
+              <span>{{ prediction().home }}%</span>
+              <span class="muted">Draw {{ prediction().draw }}%</span>
+              <span>{{ prediction().away }}%</span>
+            </div>
+          </div>
+        </div>
+        <div class="scout-col right">
+          <span class="sc-rating" [style.color]="ratingColor(teamRating(awayTeam()))">{{ teamRating(awayTeam()) }}</span>
+          <span class="muted">Squad rating</span>
+          <div class="form">
+            @for (r of form(awayTeam()?.id); track $index) {
+              <span class="form-pill" [class.w]="r === 'W'" [class.d]="r === 'D'" [class.l]="r === 'L'">{{ r }}</span>
+            } @empty {
+              <span class="muted small">No form yet</span>
+            }
+          </div>
+        </div>
+      </div>
+    </div>
   } @else {
     <div class="card fade-up empty">
       <p>🏁 The season is complete! Head to the League page to review the final table, then start a new season from Settings.</p>
