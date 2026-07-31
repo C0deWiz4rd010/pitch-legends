@@ -33,6 +33,7 @@
         <a routerLink="/tactics" class="btn btn--ghost">📋 Adjust tactics</a>
         <button class="btn btn--primary big" (click)="kickOff()">⚽ Kick Off</button>
       </div>
+      <p class="pv-hint muted">Tip: during the match you can change mentality, pressing and make up to 5 substitutions live.</p>
     </div>
   } @else {
     <div class="card fade-up empty">
@@ -61,6 +62,13 @@
 }
 
 @if (phase() === 'live') {
+  <div class="momentum fade-up">
+    <span class="mo-label">Momentum</span>
+    <div class="mo-bar">
+      <div class="mo-fill" [style.width.%]="momentumHome()"></div>
+    </div>
+  </div>
+
   <div class="live fade-up">
     <div class="pitch-panel">
       <div class="canvas-wrap">
@@ -69,10 +77,55 @@
           <div class="goal-flash">GOAL! <span>{{ f }}</span></div>
         }
       </div>
+
       <div class="controls">
-        <button class="btn btn--ghost btn--sm" (click)="togglePlay()">{{ playing() ? '⏸ Pause' : '▶ Play' }}</button>
+        <button class="btn btn--ghost btn--sm" (click)="togglePlay()">{{ playing() ? '⏸' : '▶' }}</button>
         <button class="btn btn--ghost btn--sm" (click)="cycleSpeed()">⏩ {{ speed() }}×</button>
-        <button class="btn btn--ghost btn--sm" (click)="skip()">⏭ Skip to end</button>
+        <button class="btn btn--ghost btn--sm" (click)="skip()">⏭ Skip</button>
+        <button class="btn btn--ghost btn--sm" [class.on]="showSubs()" (click)="showSubs.set(!showSubs())">
+          🔄 Subs ({{ subsRemaining() }})
+        </button>
+      </div>
+
+      <div class="dugout">
+        <div class="mgr-block">
+          <span class="eyebrow">Mentality</span>
+          <div class="mini-seg wrap">
+            @for (m of mentalities; track m) {
+              <button [class.active]="currentMentality() === m" (click)="setMentality(m)">{{ m }}</button>
+            }
+          </div>
+        </div>
+        <div class="mgr-block">
+          <span class="eyebrow">Pressing</span>
+          <div class="mini-seg">
+            @for (p of pressings; track p) {
+              <button [class.active]="currentPressing() === p" (click)="setPressing(p)">{{ p }}</button>
+            }
+          </div>
+        </div>
+
+        @if (showSubs()) {
+          <div class="subs-panel">
+            <span class="eyebrow">Substitution — {{ subsRemaining() }} remaining</span>
+            <div class="sub-row">
+              <select [value]="subOutId()" (change)="subOutId.set($any($event.target).value)">
+                <option value="">Player off…</option>
+                @for (p of onPitchPlayers(); track p.id) {
+                  <option [value]="p.id">{{ playerName(p) }} ({{ p.position }})</option>
+                }
+              </select>
+              <span class="arrow">→</span>
+              <select [value]="subInId()" (change)="subInId.set($any($event.target).value)">
+                <option value="">Player on…</option>
+                @for (p of benchPlayers(); track p.id) {
+                  <option [value]="p.id">{{ playerName(p) }} ({{ p.position }} · {{ p.overall }})</option>
+                }
+              </select>
+              <button class="btn btn--primary btn--sm" [disabled]="!subOutId() || !subInId()" (click)="doSub()">Go</button>
+            </div>
+          </div>
+        }
       </div>
     </div>
 
@@ -80,7 +133,7 @@
       <p class="eyebrow">Live commentary</p>
       <div class="events scroll">
         @for (e of tickerEvents(); track $index) {
-          <div class="event" [class.goal]="e.type === 'goal'" [class.card-ev]="e.type === 'yellow'">
+          <div class="event" [class.goal]="e.type === 'goal'" [class.card-ev]="e.type === 'yellow'" [class.info]="e.type === 'commentary'">
             <span class="min">{{ e.minute }}'</span>
             <span class="txt">{{ e.text }}</span>
           </div>

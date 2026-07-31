@@ -49,6 +49,11 @@
   margin-top: 24px;
   flex-wrap: wrap;
 }
+.pv-hint {
+  text-align: center;
+  font-size: 12px;
+  margin: 14px 0 0;
+}
 .big {
   padding: 13px 26px;
   font-size: 16px;
@@ -144,6 +149,111 @@ canvas {
   margin-top: 12px;
   flex-wrap: wrap;
 }
+.controls .on {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+// ── Momentum meter ─────────────────────────────────────────────────────────
+.momentum {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.mo-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-mute);
+  font-weight: 700;
+  white-space: nowrap;
+}
+.mo-bar {
+  flex: 1;
+  height: 10px;
+  border-radius: 6px;
+  background: linear-gradient(90deg, var(--accent-2), var(--accent-2));
+  position: relative;
+  overflow: hidden;
+}
+.mo-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: linear-gradient(90deg, var(--accent), var(--accent));
+  border-right: 2px solid #fff;
+  transition: width 400ms ease;
+}
+
+// ── Dugout (live management) ───────────────────────────────────────────────
+.dugout {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  margin-top: 12px;
+  padding: 12px;
+  background: var(--surface);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--r-md);
+}
+.mgr-block {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.mini-seg {
+  display: inline-flex;
+  gap: 3px;
+  background: var(--bg-800);
+  border-radius: 8px;
+  padding: 3px;
+  flex-wrap: nowrap;
+}
+.mini-seg.wrap {
+  flex-wrap: wrap;
+}
+.mini-seg button {
+  padding: 6px 10px;
+  border: none;
+  background: transparent;
+  color: var(--text-dim);
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: capitalize;
+  cursor: pointer;
+}
+.mini-seg button.active {
+  background: var(--accent);
+  color: #04240f;
+}
+.subs-panel {
+  flex: 1 1 100%;
+  border-top: 1px solid var(--border-soft);
+  padding-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.sub-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.sub-row select {
+  flex: 1;
+  min-width: 140px;
+  background: var(--bg-800);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  padding: 9px 10px;
+}
+.sub-row .arrow {
+  color: var(--text-mute);
+  font-weight: 700;
+}
 
 .ticker {
   padding: 14px;
@@ -176,6 +286,11 @@ canvas {
 }
 .event.card-ev {
   background: rgba(245, 197, 66, 0.12);
+}
+.event.info {
+  background: rgba(34, 211, 238, 0.12);
+  color: var(--accent-2);
+  font-weight: 600;
 }
 
 // ── Result ─────────────────────────────────────────────────────────────────

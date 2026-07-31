@@ -13,8 +13,12 @@ import { Router, RouterLink } from '@angular/router';
 import { DecimalPipe } from '@angular/common';
 import { GameStateService } from '../../core/services/game-state.service';
 import { SeasonService } from '../../core/services/season.service';
+import { MatchEngineService } from '../../core/services/match-engine.service';
+import { LiveMatch } from '../../core/services/match-sim';
 import { MatchEvent, MatchResult } from '../../models/match.model';
 import { Team } from '../../models/team.model';
+import { Player } from '../../models/player.model';
+import { Mentality, PressingIntensity } from '../../models/enums';
 import { ratingColor } from '../../shared/rating-color';
 import { playerName } from '../../core/ratings';
 import { MatchPitchRenderer } from './match-renderer';
@@ -31,6 +35,7 @@ type Phase = 'preview' | 'live' | 'result';
 export class MatchPage implements OnDestroy {
   protected readonly gs = inject(GameStateService);
   private readonly season = inject(SeasonService);
+  private readonly engine = inject(MatchEngineService);
   private readonly router = inject(Router);
   protected readonly ratingColor = ratingColor;
   protected readonly playerName = playerName;
@@ -44,12 +49,21 @@ export class MatchPage implements OnDestroy {
   protected readonly speed = signal(1);
   protected readonly revealed = signal<MatchEvent[]>([]);
   protected readonly flash = signal<string | null>(null);
+  protected readonly momentum = signal(0);
+  protected readonly showSubs = signal(false);
+  protected readonly subOutId = signal<string>('');
+  protected readonly subInId = signal<string>('');
 
+  private live: LiveMatch | null = null;
   private renderer: MatchPitchRenderer | null = null;
   private raf = 0;
   private lastTs = 0;
   private virtualMinute = 0;
-  private revealIndex = 0;
+  private prevHome = 0;
+  private prevAway = 0;
+
+  protected readonly mentalities: Mentality[] = ['ultra-defensive', 'defensive', 'balanced', 'attacking', 'ultra-attacking'];
+  protected readonly pressings: PressingIntensity[] = ['low', 'medium', 'high', 'gegenpress'];
 
   protected readonly homeTeam = computed<Team | null>(() => {
     const r = this.result();
@@ -71,10 +85,8 @@ export class MatchPage implements OnDestroy {
   protected readonly liveAway = computed(
     () => this.revealed().filter((e) => e.type === 'goal' && e.side === 'away').length,
   );
-
-  protected readonly tickerEvents = computed(() =>
-    [...this.revealed()].filter((e) => e.type !== 'commentary').reverse(),
-  );
+  protected readonly tickerEvents = computed(() => [...this.revealed()].reverse());
+  protected readonly momentumHome = computed(() => Math.round((this.momentum() + 1) * 50));
 
   constructor() {
     effect(() => {
@@ -86,24 +98,25 @@ export class MatchPage implements OnDestroy {
   }
 
   protected kickOff(): void {
-    const r = this.season.simulatePlayerMatch();
-    if (!r) return;
-    this.result.set(r);
-    this.revealed.set([]);
-    this.revealIndex = 0;
+    const home = this.homeTeam();
+    const away = this.awayTeam();
+    const fx = this.gs.nextFixture();
+    if (!home || !away || !fx) return;
+    this.live = this.engine.createLiveMatch(home, away, fx.week);
+    this.revealed.set([...this.live.events]);
     this.virtualMinute = 0;
     this.minute.set(0);
+    this.momentum.set(0);
+    this.prevHome = 0;
+    this.prevAway = 0;
     this.playing.set(true);
     this.speed.set(1);
     this.phase.set('live');
   }
 
   private startAnimation(canvas: HTMLCanvasElement): void {
-    const r = this.result();
-    const home = this.homeTeam();
-    const away = this.awayTeam();
-    if (!r || !home || !away) return;
-    this.renderer = new MatchPitchRenderer(canvas, home, away, r);
+    if (!this.live) return;
+    this.renderer = new MatchPitchRenderer(canvas, this.live.home, this.live.away, this.live.keyframes);
     this.lastTs = 0;
     this.raf = requestAnimationFrame((ts) => this.loop(ts));
   }
@@ -113,11 +126,12 @@ export class MatchPage implements OnDestroy {
     const dt = Math.min((ts - this.lastTs) / 1000, 0.05);
     this.lastTs = ts;
 
-    if (this.playing()) {
-      this.virtualMinute += dt * 2.6 * this.speed();
+    if (this.playing() && this.live) {
+      this.virtualMinute += dt * 2.4 * this.speed();
+      this.live.stepTo(this.virtualMinute);
       const m = Math.min(90, Math.floor(this.virtualMinute));
       if (m !== this.minute()) this.minute.set(m);
-      this.revealUpTo(this.virtualMinute);
+      this.syncFromLive();
       if (this.virtualMinute >= 90) {
         this.finish();
         return;
@@ -128,18 +142,65 @@ export class MatchPage implements OnDestroy {
     this.raf = requestAnimationFrame((t) => this.loop(t));
   }
 
-  private revealUpTo(minute: number): void {
-    const r = this.result();
-    if (!r) return;
-    while (this.revealIndex < r.events.length && r.events[this.revealIndex].minute <= minute) {
-      const ev = r.events[this.revealIndex];
-      this.revealed.update((list) => [...list, ev]);
-      if (ev.type === 'goal') {
-        this.flash.set(`⚽ ${ev.playerName}`);
-        this.renderer?.triggerGoal(ev.side === 'home');
-        setTimeout(() => this.flash.set(null), 1600);
-      }
-      this.revealIndex++;
+  private syncFromLive(): void {
+    if (!this.live) return;
+    this.revealed.set([...this.live.events]);
+    this.momentum.set(this.live.momentum);
+    if (this.live.homeScore > this.prevHome) {
+      this.celebrate('home');
+      this.prevHome = this.live.homeScore;
+    }
+    if (this.live.awayScore > this.prevAway) {
+      this.celebrate('away');
+      this.prevAway = this.live.awayScore;
+    }
+  }
+
+  private celebrate(side: 'home' | 'away'): void {
+    const scorer = [...(this.live?.events ?? [])].reverse().find((e) => e.type === 'goal' && e.side === side);
+    this.flash.set(scorer?.playerName ?? 'GOAL');
+    this.renderer?.triggerGoal(side === 'home');
+    setTimeout(() => this.flash.set(null), 1800);
+  }
+
+  // ── Live management ────────────────────────────────────────────────────────
+  protected currentMentality(): Mentality | undefined {
+    return this.live?.home.tactics.mentality;
+  }
+  protected currentPressing(): PressingIntensity | undefined {
+    return this.live?.home.tactics.pressing;
+  }
+  protected setMentality(m: Mentality): void {
+    this.live?.setMentality(m);
+    this.syncFromLive();
+  }
+  protected setPressing(p: PressingIntensity): void {
+    this.live?.setPressing(p);
+    this.syncFromLive();
+  }
+
+  protected onPitchPlayers(): Player[] {
+    if (!this.live) return [];
+    return this.live.home.formation.slots
+      .map((s) => this.live!.home.players.find((p) => p.id === s.playerId))
+      .filter((p): p is Player => !!p);
+  }
+  protected benchPlayers(): Player[] {
+    return this.live?.bench() ?? [];
+  }
+  protected subsRemaining(): number {
+    return this.live?.subsRemaining ?? 0;
+  }
+  protected doSub(): void {
+    const out = this.subOutId();
+    const inId = this.subInId();
+    if (!this.live || !out || !inId) return;
+    if (this.live.makeSub(out, inId)) {
+      this.renderer?.refreshNumbers(this.live.home, this.live.away);
+      this.subOutId.set('');
+      this.subInId.set('');
+      this.showSubs.set(false);
+      this.syncFromLive();
     }
   }
 
@@ -150,8 +211,11 @@ export class MatchPage implements OnDestroy {
     this.speed.update((s) => (s === 1 ? 2 : s === 2 ? 4 : 1));
   }
   protected skip(): void {
-    this.virtualMinute = 90;
-    this.revealUpTo(90);
+    if (this.live) {
+      this.live.stepTo(90);
+      this.virtualMinute = 90;
+      this.syncFromLive();
+    }
     this.finish();
   }
 
@@ -159,9 +223,11 @@ export class MatchPage implements OnDestroy {
     cancelAnimationFrame(this.raf);
     this.raf = 0;
     this.minute.set(90);
-    // Ensure all events are shown.
-    const r = this.result();
-    if (r) this.revealed.set([...r.events]);
+    if (this.live) {
+      const r = this.live.finalize();
+      this.result.set(r);
+      this.revealed.set([...r.events]);
+    }
     this.phase.set('result');
   }
 
@@ -176,12 +242,13 @@ export class MatchPage implements OnDestroy {
 
   private reset(): void {
     cancelAnimationFrame(this.raf);
+    this.renderer?.destroy();
     this.renderer = null;
+    this.live = null;
     this.result.set(null);
     this.phase.set('preview');
   }
 
-  // ── Result helpers ───────────────────────────────────────────────────────
   protected motmName(): string {
     const r = this.result();
     if (!r?.manOfTheMatchId) return '—';
@@ -203,5 +270,6 @@ export class MatchPage implements OnDestroy {
 
   ngOnDestroy(): void {
     cancelAnimationFrame(this.raf);
+    this.renderer?.destroy();
   }
 }
