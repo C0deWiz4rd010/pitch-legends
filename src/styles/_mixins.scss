@@ -1,0 +1,44 @@
+// ── Reusable SCSS mixins & helpers ──────────────────────────────────────────
+
+@mixin card {
+  background: linear-gradient(180deg, var(--surface-2), var(--surface));
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-1);
+}
+
+@mixin glass {
+  background: rgba(19, 28, 48, 0.72);
+  backdrop-filter: blur(10px);
+  border: 1px solid var(--border);
+}
+
+@mixin scrollbar {
+  &::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  &::-webkit-scrollbar-thumb {
+    background: var(--surface-3);
+    border-radius: 8px;
+    border: 2px solid transparent;
+    background-clip: padding-box;
+  }
+  &::-webkit-scrollbar-track {
+    background: transparent;
+  }
+}
+
+@mixin focus-ring {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--bg-900), 0 0 0 4px var(--accent);
+}
+
+@mixin clickable {
+  cursor: pointer;
+  user-select: none;
+  transition: transform var(--t-fast), background var(--t-fast), border-color var(--t-fast);
+  &:active {
+    transform: translateY(1px);
+  }
+}

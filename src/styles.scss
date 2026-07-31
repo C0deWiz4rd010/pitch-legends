@@ -1,1 +1,133 @@
-/* You can add global styles to this file, and also import other style files */
+@use './styles/tokens';
+@use './styles/mixins' as *;
+
+// ── Reset ───────────────────────────────────────────────────────────────────
+* {
+  box-sizing: border-box;
+}
+html,
+body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+}
+body {
+  font-family: 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
+  background:
+    radial-gradient(1200px 600px at 80% -10%, rgba(34, 211, 238, 0.06), transparent),
+    radial-gradient(900px 500px at 0% 0%, rgba(56, 224, 123, 0.07), transparent),
+    var(--bg-900);
+  color: var(--text);
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+}
+
+h1, h2, h3, h4 {
+  margin: 0;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+a {
+  color: inherit;
+  text-decoration: none;
+}
+button {
+  font-family: inherit;
+}
+
+// ── Typography helpers ──────────────────────────────────────────────────────
+.eyebrow {
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-mute);
+}
+.muted { color: var(--text-dim); }
+.tabular { font-variant-numeric: tabular-nums; }
+
+// ── Buttons ─────────────────────────────────────────────────────────────────
+.btn {
+  @include clickable;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 16px;
+  border-radius: var(--r-md);
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text);
+  font-weight: 600;
+  font-size: 14px;
+  &:hover { border-color: var(--surface-3); background: var(--surface-3); }
+  &:focus-visible { @include focus-ring; }
+  &:disabled { opacity: 0.45; cursor: not-allowed; }
+}
+.btn--primary {
+  background: linear-gradient(180deg, var(--accent), #24b862);
+  border-color: transparent;
+  color: #04240f;
+  &:hover { filter: brightness(1.06); background: linear-gradient(180deg, var(--accent), #24b862); }
+}
+.btn--ghost {
+  background: transparent;
+  &:hover { background: var(--surface-2); }
+}
+.btn--danger {
+  background: transparent;
+  border-color: var(--danger);
+  color: var(--danger);
+  &:hover { background: rgba(245, 69, 92, 0.12); }
+}
+.btn--sm { padding: 6px 11px; font-size: 13px; }
+.btn--block { width: 100%; }
+
+// ── Cards / chips ───────────────────────────────────────────────────────────
+.card { @include card; padding: 18px; }
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  background: var(--surface-3);
+  color: var(--text-dim);
+}
+
+// ── Rating badge ────────────────────────────────────────────────────────────
+.rating {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 34px;
+  height: 34px;
+  padding: 0 6px;
+  border-radius: 8px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  color: #05200f;
+}
+
+// ── Scrollable regions ──────────────────────────────────────────────────────
+.scroll { @include scrollbar; overflow: auto; }
+
+// ── Utility ─────────────────────────────────────────────────────────────────
+.row { display: flex; align-items: center; }
+.gap-4 { gap: 4px; } .gap-8 { gap: 8px; } .gap-12 { gap: 12px; } .gap-16 { gap: 16px; }
+.grow { flex: 1; }
+.wrap { flex-wrap: wrap; }
+
+// ── Animations ──────────────────────────────────────────────────────────────
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes pop {
+  0% { transform: scale(0.9); opacity: 0; }
+  60% { transform: scale(1.04); }
+  100% { transform: scale(1); opacity: 1; }
+}
+.fade-up { animation: fadeUp var(--t-med) both; }

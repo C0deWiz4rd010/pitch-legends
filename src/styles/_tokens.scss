@@ -1,0 +1,59 @@
+// ── Pitch Legends design tokens ────────────────────────────────────────────
+:root {
+  // Surfaces (dark stadium night theme)
+  --bg-900: #0a0e14;
+  --bg-850: #0d1320;
+  --bg-800: #111a2b;
+  --bg-750: #16213a;
+  --bg-700: #1b2942;
+  --surface: #131c30;
+  --surface-2: #1a2540;
+  --surface-3: #223056;
+  --border: #2a3a5e;
+  --border-soft: #1f2c47;
+
+  // Text
+  --text: #e8eef7;
+  --text-dim: #9fb0c9;
+  --text-mute: #64748b;
+
+  // Brand / pitch
+  --pitch: #1f7a44;
+  --pitch-dark: #14522e;
+  --pitch-line: #cfe9d8;
+
+  // Accents
+  --accent: #38e07b;      // neon green
+  --accent-2: #22d3ee;    // cyan
+  --accent-3: #f5c542;    // gold
+  --danger: #f5455c;
+  --danger-solid: #f5455c;
+  --warn: #f59e0b;
+  --good: #38e07b;
+  --info: #22d3ee;
+
+  // Attribute rating colors
+  --rating-elite: #38e07b;
+  --rating-great: #86e06b;
+  --rating-good: #f5c542;
+  --rating-ok: #f59e0b;
+  --rating-poor: #f5455c;
+
+  // Radii & shadows
+  --r-sm: 6px;
+  --r-md: 10px;
+  --r-lg: 16px;
+  --r-xl: 22px;
+  --shadow-1: 0 2px 8px rgba(0, 0, 0, 0.35);
+  --shadow-2: 0 8px 24px rgba(0, 0, 0, 0.45);
+  --shadow-glow: 0 0 0 1px rgba(56, 224, 123, 0.25), 0 0 22px rgba(56, 224, 123, 0.18);
+
+  // Layout
+  --sidebar-w: 248px;
+  --topbar-h: 62px;
+  --maxw: 1320px;
+
+  // Motion
+  --t-fast: 120ms ease;
+  --t-med: 220ms cubic-bezier(0.4, 0, 0.2, 1);
+}
