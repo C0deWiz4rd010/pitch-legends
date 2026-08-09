@@ -1,5 +1,6 @@
 import { Injectable, inject } from '@angular/core';
 import { GameStateService } from './game-state.service';
+import { MatchEvent } from '../../models/match.model';
 
 type Wave = OscillatorType;
 
@@ -28,6 +29,23 @@ export class AudioService {
 
   error(): void {
     this.tone(150, 0.16, 'sawtooth', 0.13, 90);
+  }
+
+  /** One event entry point keeps simulation, presentation and sound decoupled. */
+  matchEvent(event: MatchEvent): void {
+    if (event.type === 'goal') {
+      this.goal();
+      return;
+    }
+    if (event.type === 'shot') {
+      this.tone(118, 0.045, 'square', 0.12, 76);
+      return;
+    }
+    if (event.type === 'save') {
+      this.tone(190, 0.06, 'triangle', 0.11, 310);
+      return;
+    }
+    if (event.type === 'foul' || event.type === 'yellow' || event.type === 'red') this.whistle();
   }
 
   startMusic(): void {

@@ -41,7 +41,6 @@ export type RulePhase =
   | 'kickoff'
   | 'halftime'
   | 'fulltime';
-export type Difficulty = 'easy' | 'normal' | 'hard';
 
 export interface MatchConfig {
   mode: MatchMode;
@@ -49,7 +48,7 @@ export interface MatchConfig {
   halfMinutes: 3 | 5 | 8;
   seed: number;
   fixtureId?: string;
-  difficulty: Difficulty;
+  difficulty: 'easy' | 'normal' | 'hard';
   assist: AssistPreset;
   playerLockId: string | null;
   weather: MatchWeather;
@@ -264,6 +263,7 @@ export interface MatchResult {
   matchSeed?: number;
   weather?: MatchWeather;
   heatmaps?: Record<string, { x: number; y: number; weight: number }[]>;
+  endingFitness?: Record<string, number>;
 }
 
 export interface MatchContribution {

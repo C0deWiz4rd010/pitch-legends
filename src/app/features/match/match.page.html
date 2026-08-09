@@ -1,273 +1,319 @@
 @if (phase() === 'preview') {
   <header class="page-head fade-up">
     <div>
-      <p class="eyebrow">Match Day · Week {{ gs.currentWeek() }}</p>
+      <p class="eyebrow">SPIELTAG {{ gs.currentWeek() }} · GAMEPLAY V3</p>
       <h1>Match Centre</h1>
     </div>
+    <span class="weather-chip" [attr.data-weather]="expectedWeather()">{{ expectedWeather().toUpperCase() }}</span>
   </header>
 
+  @if (resumeOffer()) {
+    <section class="card resume-card fade-up">
+      <div>
+        <p class="eyebrow">SICHERER CHECKPOINT GEFUNDEN</p>
+        <strong>{{ resumeOffer()?.phase }} · {{ resumeOffer()?.safeSnapshot?.footballMinute }}'</strong>
+        <span>Der Match-Seed und alle Taktik-/Regelzustände werden exakt fortgesetzt.</span>
+      </div>
+      <div class="row-actions">
+        <button class="btn btn--primary" (click)="resumeMatch()">FORTSETZEN</button>
+        <button class="btn btn--ghost" (click)="discardCheckpoint()">VERWERFEN</button>
+      </div>
+    </section>
+  }
+
   @if (homeTeam() && awayTeam()) {
-    <div class="card preview fade-up">
+    <section class="card preview fade-up">
       <div class="pv-teams">
         <div class="pv-team">
-          <span class="crest" [style.background]="homeTeam()?.kit?.primary" [style.color]="homeTeam()?.kit?.secondary">
-            {{ homeTeam()?.shortName }}
-          </span>
+          <span class="crest" [style.background]="homeTeam()?.kit?.primary" [style.color]="homeTeam()?.kit?.secondary">{{ homeTeam()?.shortName }}</span>
           <strong>{{ homeTeam()?.name }}</strong>
           <span class="chip">{{ homeTeam()?.formation?.name }}</span>
         </div>
         <div class="pv-vs">
           <span>VS</span>
-          <small class="muted">{{ isHome() ? 'HOME' : 'AWAY' }}</small>
+          <small>{{ isHome() ? 'HOME' : 'AWAY' }}</small>
         </div>
         <div class="pv-team">
-          <span class="crest" [style.background]="awayTeam()?.kit?.primary" [style.color]="awayTeam()?.kit?.secondary">
-            {{ awayTeam()?.shortName }}
-          </span>
+          <span class="crest" [style.background]="awayTeam()?.kit?.primary" [style.color]="awayTeam()?.kit?.secondary">{{ awayTeam()?.shortName }}</span>
           <strong>{{ awayTeam()?.name }}</strong>
           <span class="chip">{{ awayTeam()?.formation?.name }}</span>
         </div>
       </div>
 
-      <div class="pv-actions">
-        <a routerLink="/tactics" class="btn btn--ghost">ADJUST TACTICS</a>
-        <div class="mode-picker" aria-label="Match mode">
-          <button [class.active]="selectedMode() === 'play'" (click)="selectedMode.set('play')">PLAY</button>
-          <button [class.active]="selectedMode() === 'coach'" (click)="selectedMode.set('coach')">COACH</button>
-          <button [class.active]="selectedMode() === 'instant'" (click)="selectedMode.set('instant')">SIM</button>
-        </div>
-        <button class="btn btn--primary big" (click)="kickOff()">KICK OFF &gt;</button>
+      <div class="match-options">
+        <label>
+          <span>MODUS</span>
+          <div class="segmented">
+            @for (mode of ['play', 'coach', 'instant']; track mode) {
+              <button [class.active]="selectedMode() === mode" (click)="selectedMode.set($any(mode))">{{ mode === 'instant' ? 'SIM' : mode.toUpperCase() }}</button>
+            }
+          </div>
+        </label>
+        <label>
+          <span>ASSISTENZ</span>
+          <div class="segmented">
+            @for (preset of assists; track preset) {
+              <button [class.active]="assist() === preset" (click)="assist.set(preset)">{{ preset }}</button>
+            }
+          </div>
+        </label>
+        <label class="lock-option">
+          <span>STEUERUNG</span>
+          <button class="toggle" [class.active]="playerLock()" [disabled]="selectedMode() !== 'play'" (click)="playerLock.set(!playerLock())">
+            {{ playerLock() ? 'PLAYER LOCK' : 'VOLLES TEAM' }}
+          </button>
+          @if (playerLock() && selectedMode() === 'play') {
+            <select [value]="playerLockId()" (change)="playerLockId.set($any($event.target).value)">
+              <option value="">Automatische Auswahl</option>
+              @for (player of starters(); track player.id) {
+                <option [value]="player.id">#{{ player.kitNumber }} {{ playerName(player) }} · {{ player.position }}</option>
+              }
+            </select>
+          }
+        </label>
       </div>
-      <p class="pv-hint muted">
-        PLAY: WASD/Arrows · J Pass/Tackle · K Through Ball · L Shoot · Shift Sprint · Space Switch
-      </p>
-    </div>
 
-    <div class="card scout fade-up">
-      <p class="eyebrow">Scouting report</p>
-      <div class="scout-grid">
-        <div class="scout-col">
-          <span class="sc-rating" [style.color]="ratingColor(teamRating(homeTeam()))">{{ teamRating(homeTeam()) }}</span>
-          <span class="muted">Squad rating</span>
-          <div class="form">
-            @for (r of form(homeTeam()?.id); track $index) {
-              <span class="form-pill" [class.w]="r === 'W'" [class.d]="r === 'D'" [class.l]="r === 'L'">{{ r }}</span>
-            } @empty {
-              <span class="muted small">No form yet</span>
-            }
-          </div>
+      @if (kitConflict()) {
+        <p class="info-line">TRIKOTCHECK · Farbkonflikt erkannt – das Auswärtsteam nutzt automatisch die kontrastreiche Sekundärdarstellung.</p>
+      }
+      @if (lineupErrors().length) {
+        <div class="validation" role="alert">
+          @for (error of lineupErrors(); track error) { <span>{{ error }}</span> }
+          <a routerLink="/tactics">Aufstellung korrigieren →</a>
         </div>
-        <div class="scout-mid">
-          <span class="eyebrow">Win prediction</span>
-          <div class="odds">
-            <div class="odds-bar">
-              <div class="o home" [style.width.%]="prediction().home"></div>
-              <div class="o draw" [style.width.%]="prediction().draw"></div>
-              <div class="o away" [style.width.%]="prediction().away"></div>
-            </div>
-            <div class="odds-legend">
-              <span>{{ prediction().home }}%</span>
-              <span class="muted">Draw {{ prediction().draw }}%</span>
-              <span>{{ prediction().away }}%</span>
-            </div>
-          </div>
-        </div>
-        <div class="scout-col right">
-          <span class="sc-rating" [style.color]="ratingColor(teamRating(awayTeam()))">{{ teamRating(awayTeam()) }}</span>
-          <span class="muted">Squad rating</span>
-          <div class="form">
-            @for (r of form(awayTeam()?.id); track $index) {
-              <span class="form-pill" [class.w]="r === 'W'" [class.d]="r === 'D'" [class.l]="r === 'L'">{{ r }}</span>
-            } @empty {
-              <span class="muted small">No form yet</span>
-            }
-          </div>
-        </div>
+      }
+
+      <div class="pv-actions">
+        <a routerLink="/tactics" class="btn btn--ghost">TAKTIK & AUFSTELLUNG</a>
+        <button class="btn btn--primary big" [disabled]="lineupErrors().length > 0" (click)="kickOff()">ANPFIFF →</button>
       </div>
-    </div>
+    </section>
+
+    <section class="scout-layout fade-up">
+      <article class="card scout-card">
+        <p class="eyebrow">GEGNERBERICHT</p>
+        <div class="report-grid">
+          <div><span>FORMATION</span><strong>{{ opponent()?.formation?.name }}</strong></div>
+          <div><span>FORM</span><strong class="form-inline">@for (entry of form(opponent()?.id); track $index) { <i [class.w]="entry === 'W'" [class.d]="entry === 'D'" [class.l]="entry === 'L'">{{ entry }}</i> } @empty { — }</strong></div>
+          <div><span>SCHLÜSSELSPIELER</span><strong>{{ keyPlayer() ? playerName(keyPlayer()!) : '—' }} · {{ keyPlayer()?.overall }}</strong></div>
+          <div><span>VERMUTETE SCHWÄCHE</span><strong>{{ scoutingDetail() ? weakness(opponent()) : 'Mehr Scouting nötig' }}</strong></div>
+          <div><span>SPIELWEISE</span><strong>{{ opponent()?.tactics?.pressing }} press · {{ opponent()?.tactics?.passing }}</strong></div>
+          <div><span>WETTER</span><strong>{{ expectedWeather() }} · Ballkontrolle angepasst</strong></div>
+        </div>
+      </article>
+      <article class="card odds-card">
+        <p class="eyebrow">FAIRE PROGNOSE</p>
+        <div class="ratings-line">
+          <strong [style.color]="ratingColor(teamRating(homeTeam()))">{{ teamRating(homeTeam()) }}</strong>
+          <span>TEAMRATING</span>
+          <strong [style.color]="ratingColor(teamRating(awayTeam()))">{{ teamRating(awayTeam()) }}</strong>
+        </div>
+        <div class="odds-bar"><i [style.width.%]="prediction().home"></i><i [style.width.%]="prediction().draw"></i><i [style.width.%]="prediction().away"></i></div>
+        <div class="odds-labels"><span>{{ prediction().home }}% H</span><span>{{ prediction().draw }}% X</span><span>{{ prediction().away }}% A</span></div>
+        <small>Schwierigkeit verändert KI-Entscheidungen, niemals Attribute oder Ballphysik.</small>
+      </article>
+    </section>
+
+    <section class="card control-guide fade-up">
+      <p class="eyebrow">SECHS-TASTEN-STEUERUNG</p>
+      <div class="control-grid">
+        <span><kbd>WASD</kbd> Bewegung/Ziel</span><span><kbd>J / A</kbd> Pass/Tackle</span><span><kbd>K / Y</kbd> Steilpass/GK</span>
+        <span><kbd>U / X</kbd> Lob/Grätsche</span><span><kbd>L / B</kbd> Schuss/Clearance</span><span><kbd>SHIFT / RT</kbd> Sprint</span>
+        <span><kbd>I / RB</kbd> Skill/Pressing</span><span><kbd>SPACE / LB</kbd> Wechsel</span><span><kbd>Q</kbd> Quick-Taktik</span>
+      </div>
+    </section>
   } @else {
-    <div class="card fade-up empty">
-      <p>FT · The season is complete! Head to the League page to review the final table, then start a new season from Settings.</p>
-      <a routerLink="/league" class="btn btn--primary">View League</a>
-    </div>
+    <section class="card empty"><p>Die Saison ist beendet.</p><a routerLink="/league" class="btn btn--primary">TABELLE ÖFFNEN</a></section>
   }
 }
 
-@if (phase() === 'coach' || phase() === 'play' || phase() === 'result') {
-  <div class="scoreboard fade-up">
-    <div class="sb-team">
-      <span class="crest sm" [style.background]="homeTeam()?.kit?.primary" [style.color]="homeTeam()?.kit?.secondary">{{ homeTeam()?.shortName }}</span>
-      <strong class="hide-sm">{{ homeTeam()?.name }}</strong>
+@if (phase() === 'intro') {
+  <section class="intro-screen fade-up">
+    <p class="eyebrow">PIXEL LEAGUE · LIVE</p>
+    <div class="intro-stadium"><i></i><i></i><i></i><i></i><i></i></div>
+    <div class="intro-teams">
+      <div><span class="crest" [style.background]="homeTeam()?.kit?.primary">{{ homeTeam()?.shortName }}</span><strong>{{ homeTeam()?.name }}</strong><small>{{ homeTeam()?.formation?.name }}</small></div>
+      <b>VS</b>
+      <div><span class="crest" [style.background]="awayTeam()?.kit?.primary">{{ awayTeam()?.shortName }}</span><strong>{{ awayTeam()?.name }}</strong><small>{{ awayTeam()?.formation?.name }}</small></div>
     </div>
-    <div class="sb-score">
-      <span class="score">{{ liveHome() }}</span>
-      <span class="clock">{{ minute() }}'</span>
-      <span class="score">{{ liveAway() }}</span>
-    </div>
-    <div class="sb-team right">
-      <strong class="hide-sm">{{ awayTeam()?.name }}</strong>
-      <span class="crest sm" [style.background]="awayTeam()?.kit?.primary" [style.color]="awayTeam()?.kit?.secondary">{{ awayTeam()?.shortName }}</span>
-    </div>
-  </div>
+    <p>REF · M. BYTE · {{ expectedWeather().toUpperCase() }}</p>
+    <button class="btn btn--ghost" (click)="skipIntro()">INTRO ÜBERSPRINGEN</button>
+  </section>
 }
 
-@if (phase() === 'coach' || phase() === 'play') {
-  <div class="momentum fade-up">
-    <span class="mo-label">Momentum</span>
-    <div class="mo-bar">
-      <div class="mo-fill" [style.width.%]="momentumHome()"></div>
-    </div>
-  </div>
+@if (phase() === 'simulating') {
+  <section class="card sim-screen fade-up">
+    <div class="pixel-spinner"></div>
+    <p class="eyebrow">HEADLESS MATCHKERN</p>
+    <h2>Spiel wird deterministisch simuliert…</h2>
+    <span>Dieselbe Physik, KI und Regelengine wie im Direktspiel.</span>
+  </section>
+}
 
-  <div class="live fade-up">
+@if (phase() === 'match' || phase() === 'halftime' || phase() === 'result') {
+  <header class="scoreboard fade-up">
+    <div class="sb-team"><span class="crest sm" [style.background]="homeTeam()?.kit?.primary">{{ homeTeam()?.shortName }}</span><strong>{{ homeTeam()?.shortName }}</strong></div>
+    <div class="sb-score"><span>{{ homeScore() }}</span><b>{{ minute() }}' · {{ matchPhase() === 'secondHalf' ? '2H' : matchPhase() === 'fulltime' ? 'FT' : '1H' }}</b><span>{{ awayScore() }}</span></div>
+    <div class="sb-team right"><strong>{{ awayTeam()?.shortName }}</strong><span class="crest sm" [style.background]="awayTeam()?.kit?.primary">{{ awayTeam()?.shortName }}</span></div>
+  </header>
+}
+
+@if (phase() === 'match') {
+  <section class="match-shell fade-up">
     <div class="pitch-panel">
       <div class="canvas-wrap">
-        <canvas #pitch></canvas>
-        @if (phase() === 'play') {
-          <div class="rotate-notice">
-            <strong>ROTATE DEVICE</strong>
-            <span>Direct matches need landscape mode.</span>
+        <canvas #pitch aria-label="Live football pitch"></canvas>
+        <div class="rotate-notice"><strong>GERÄT DREHEN</strong><span>Touchmatches benötigen Querformat.</span></div>
+        @if (flash(); as scorer) { <div class="goal-flash"><strong>GOAL!</strong><span>{{ scorer }}</span></div> }
+        @if (matchPhase() === 'goalReplay') { <button class="replay-skip" (click)="skipReplay()">REPLAY ÜBERSPRINGEN</button> }
+        @if (!playing()) {
+          <div class="pause-layer">
+            <p class="eyebrow">MATCH PAUSIERT</p>
+            @if (performanceMessage()) { <span>{{ performanceMessage() }}</span> }
+            <button class="btn btn--primary" (click)="togglePlay()">WEITERSPIELEN</button>
           </div>
         }
-        @if (flash(); as f) {
-          <div class="goal-flash">GOAL! <span>{{ f }}</span></div>
-        }
+        <div class="device-chip">{{ inputDevice().toUpperCase() }} · {{ assist().toUpperCase() }}</div>
       </div>
 
-      <div class="controls">
-        <button class="btn btn--ghost btn--sm" (click)="togglePlay()">{{ playing() ? 'PAUSE' : 'PLAY' }}</button>
-        @if (phase() === 'coach') {
-          <button class="btn btn--ghost btn--sm" (click)="cycleSpeed()">» {{ speed() }}×</button>
-        }
-        <button class="btn btn--ghost btn--sm" (click)="skip()">SKIP &gt;&gt;</button>
-        <button class="btn btn--ghost btn--sm" [class.on]="showSubs()" (click)="showSubs.set(!showSubs())">
-          SUBS ({{ subsRemaining() }})
-        </button>
-      </div>
-
-      @if (phase() === 'play') {
-        <div class="touch-controls" aria-label="Touch match controls">
-          <div class="touch-dpad">
-            <button class="up" (pointerdown)="setTouchDirection(0,-1,true)" (pointerup)="setTouchDirection(0,0,false)" (pointercancel)="setTouchDirection(0,0,false)">▲</button>
-            <button class="left" (pointerdown)="setTouchDirection(-1,0,true)" (pointerup)="setTouchDirection(0,0,false)" (pointercancel)="setTouchDirection(0,0,false)">◀</button>
-            <button class="right" (pointerdown)="setTouchDirection(1,0,true)" (pointerup)="setTouchDirection(0,0,false)" (pointercancel)="setTouchDirection(0,0,false)">▶</button>
-            <button class="down" (pointerdown)="setTouchDirection(0,1,true)" (pointerup)="setTouchDirection(0,0,false)" (pointercancel)="setTouchDirection(0,0,false)">▼</button>
+      @if (selectedMode() === 'play') {
+        <div class="touch-controls" aria-label="Touch-Steuerung">
+          <div class="touch-stick" (pointerdown)="touchStickStart($event)" (pointermove)="touchStickMove($event)" (pointerup)="touchStickEnd($event)" (pointercancel)="touchStickEnd($event)">
+            <i [style.transform]="'translate(' + touchX() * 30 + 'px,' + touchY() * 30 + 'px)'">+</i>
           </div>
           <div class="touch-actions">
-            <button class="pause" (click)="togglePlay()">{{ playing() ? 'II' : '>' }}</button>
-            <button class="switch" (pointerdown)="setTouchAction('switch',true)" (pointerup)="setTouchAction('switch',false)">SW</button>
-            <button class="through" (pointerdown)="setTouchAction('through',true)" (pointerup)="setTouchAction('through',false)">Y</button>
-            <button class="pass" (pointerdown)="setTouchAction('pass',true)" (pointerup)="setTouchAction('pass',false)">A</button>
-            <button class="shoot" (pointerdown)="setTouchAction('shoot',true)" (pointerup)="setTouchAction('shoot',false)">B</button>
-            <button class="sprint" (pointerdown)="setTouchAction('sprint',true)" (pointerup)="setTouchAction('sprint',false)" (pointercancel)="setTouchAction('sprint',false)">RT</button>
+            <button class="sw" (pointerdown)="setTouchAction('switch',true)" (pointerup)="setTouchAction('switch',false)" (pointercancel)="setTouchAction('switch',false)">SW</button>
+            <button class="sk" (pointerdown)="setTouchAction('skill',true)" (pointerup)="setTouchAction('skill',false)" (pointercancel)="setTouchAction('skill',false)">SK</button>
+            <button class="y" (pointerdown)="setTouchAction('through',true)" (pointerup)="setTouchAction('through',false)" (pointercancel)="setTouchAction('through',false)">Y</button>
+            <button class="x" (pointerdown)="setTouchAction('lob',true)" (pointerup)="setTouchAction('lob',false)" (pointercancel)="setTouchAction('lob',false)">X</button>
+            <button class="b" (pointerdown)="setTouchAction('shoot',true)" (pointerup)="setTouchAction('shoot',false)" (pointercancel)="setTouchAction('shoot',false)">B</button>
+            <button class="a" (pointerdown)="setTouchAction('pass',true)" (pointerup)="setTouchAction('pass',false)" (pointercancel)="setTouchAction('pass',false)">A</button>
+            <button class="rt" (pointerdown)="setTouchAction('sprint',true)" (pointerup)="setTouchAction('sprint',false)" (pointercancel)="setTouchAction('sprint',false)">RT</button>
           </div>
         </div>
       }
 
-      <div class="dugout">
-        <div class="mgr-block">
-          <span class="eyebrow">Mentality</span>
-          <div class="mini-seg wrap">
-            @for (m of mentalities; track m) {
-              <button [class.active]="currentMentality() === m" (click)="setMentality(m)">{{ m }}</button>
-            }
-          </div>
-        </div>
-        <div class="mgr-block">
-          <span class="eyebrow">Pressing</span>
-          <div class="mini-seg">
-            @for (p of pressings; track p) {
-              <button [class.active]="currentPressing() === p" (click)="setPressing(p)">{{ p }}</button>
-            }
-          </div>
-        </div>
+      <div class="match-toolbar">
+        <button class="btn btn--ghost btn--sm" (click)="togglePlay()">{{ playing() ? 'PAUSE' : 'PLAY' }}</button>
+        @if (selectedMode() === 'coach') { <button class="btn btn--ghost btn--sm" (click)="cycleSpeed()">{{ speed() }}× SPEED</button> }
+        <button class="btn btn--ghost btn--sm" [class.on]="showTactics()" (click)="showTactics.set(!showTactics())">Q · TAKTIK</button>
+        <button class="btn btn--ghost btn--sm" [class.on]="showSubs()" (click)="showSubs.set(!showSubs())">WECHSEL {{ subsRemaining() }}</button>
+        <button class="btn btn--ghost btn--sm" (click)="simulateRemainder()">REST SIM</button>
+        <button class="btn btn--danger btn--sm" (click)="forfeit()">AUFGEBEN</button>
+      </div>
 
-        @if (showSubs()) {
-          <div class="subs-panel">
-            <span class="eyebrow">Substitution — {{ subsRemaining() }} remaining</span>
-            <div class="sub-row">
-              <select [value]="subOutId()" (change)="subOutId.set($any($event.target).value)">
-                <option value="">Player off…</option>
-                @for (p of onPitchPlayers(); track p.id) {
-                  <option [value]="p.id">{{ playerName(p) }} ({{ p.position }})</option>
-                }
-              </select>
-              <span class="arrow">→</span>
-              <select [value]="subInId()" (change)="subInId.set($any($event.target).value)">
-                <option value="">Player on…</option>
-                @for (p of benchPlayers(); track p.id) {
-                  <option [value]="p.id">{{ playerName(p) }} ({{ p.position }} · {{ p.overall }})</option>
-                }
-              </select>
-              <button class="btn btn--primary btn--sm" [disabled]="!subOutId() || !subInId()" (click)="doSub()">Go</button>
-            </div>
+      @if (showTactics()) {
+        <div class="quick-wheel card">
+          <div><span>MENTALITÄT</span>@for (value of mentalities; track value) { <button [class.active]="currentMentality() === value" (click)="setMentality(value)">{{ value }}</button> }</div>
+          <div><span>PRESSING</span>@for (value of pressings; track value) { <button [class.active]="currentPressing() === value" (click)="setPressing(value)">{{ value }}</button> }</div>
+          <div><span>BREITE</span>@for (value of widths; track value) { <button [class.active]="currentWidth() === value" (click)="setWidth(value)">{{ value }}</button> }<button (click)="toggleCounter()">KONTER ↔</button></div>
+        </div>
+      }
+      @if (showSubs()) {
+        <div class="sub-panel card">
+          <select [value]="subOutId()" (change)="subOutId.set($any($event.target).value)"><option value="">SPIELER RAUS</option>@for (player of onPitchPlayers(); track player.id) { <option [value]="player.id">{{ playerName(player) }} · {{ player.position }}</option> }</select>
+          <span>→</span>
+          <select [value]="subInId()" (change)="subInId.set($any($event.target).value)"><option value="">SPIELER REIN</option>@for (player of benchPlayers(); track player.id) { <option [value]="player.id">{{ playerName(player) }} · {{ player.overall }}</option> }</select>
+          <button class="btn btn--primary btn--sm" [disabled]="!subOutId() || !subInId()" (click)="doSub()">WECHSELN</button>
+        </div>
+      }
+    </div>
+
+    <aside class="card ticker">
+      <p class="eyebrow">MATCH EVENTS</p>
+      <div class="momentum"><i [style.width.%]="momentumHome()"></i></div>
+      <div class="events">
+        @for (event of tickerEvents(); track $index) {
+          <div class="event" [class.goal]="event.type === 'goal'" [class.card-event]="event.type === 'yellow' || event.type === 'red'">
+            <b>{{ event.minute }}'</b><span>{{ i18n.event(event) }}</span>
           </div>
         }
       </div>
-    </div>
+    </aside>
+  </section>
+}
 
-    <div class="ticker card">
-      <p class="eyebrow">Live commentary</p>
-      <div class="events scroll">
-        @for (e of tickerEvents(); track $index) {
-          <div class="event" [class.goal]="e.type === 'goal'" [class.card-ev]="e.type === 'yellow'" [class.info]="e.type === 'commentary'">
-            <span class="min">{{ e.minute }}'</span>
-            <span class="txt">{{ i18n.event(e) }}</span>
-          </div>
-        }
+@if (phase() === 'halftime') {
+  <section class="halftime fade-up">
+    <div class="card half-summary">
+      <p class="eyebrow">HALBZEIT · SIMULATION PAUSIERT</p>
+      <h2>{{ homeScore() }} — {{ awayScore() }}</h2>
+      <div class="half-stats">
+        <span><b>{{ matchStats('home')?.shots }} / {{ matchStats('away')?.shots }}</b>SCHÜSSE</span>
+        <span><b>{{ matchStats('home')?.xG }} / {{ matchStats('away')?.xG }}</b>xG</span>
+        <span><b>{{ matchStats('home')?.possession }} / {{ matchStats('away')?.possession }}</b>BALLBESITZ</span>
+        <span><b>{{ matchStats('home')?.passAccuracy }} / {{ matchStats('away')?.passAccuracy }}</b>PASS %</span>
       </div>
     </div>
-  </div>
+    <div class="card half-management">
+      <p class="eyebrow">HALBZEITANPASSUNGEN</p>
+      <div class="half-grid">
+        <label>MENTALITÄT<select [value]="currentMentality()" (change)="setMentality($any($event.target).value)">@for (value of mentalities; track value) { <option [value]="value">{{ value }}</option> }</select></label>
+        <label>PRESSING<select [value]="currentPressing()" (change)="setPressing($any($event.target).value)">@for (value of pressings; track value) { <option [value]="value">{{ value }}</option> }</select></label>
+        @if (playerLock()) { <label>PLAYER LOCK<select [value]="playerLockId()" (change)="playerLockId.set($any($event.target).value)">@for (player of onPitchPlayers(); track player.id) { <option [value]="player.id">{{ playerName(player) }}</option> }</select></label> }
+      </div>
+      <button class="btn btn--ghost" (click)="showSubs.set(!showSubs())">WECHSEL · {{ subsRemaining() }} VERFÜGBAR</button>
+      @if (showSubs()) {
+        <div class="sub-panel">
+          <select [value]="subOutId()" (change)="subOutId.set($any($event.target).value)"><option value="">RAUS</option>@for (player of onPitchPlayers(); track player.id) { <option [value]="player.id">{{ playerName(player) }}</option> }</select>
+          <select [value]="subInId()" (change)="subInId.set($any($event.target).value)"><option value="">REIN</option>@for (player of benchPlayers(); track player.id) { <option [value]="player.id">{{ playerName(player) }}</option> }</select>
+          <button class="btn btn--primary btn--sm" (click)="doSub()">BESTÄTIGEN</button>
+        </div>
+      }
+      <button class="btn btn--primary big" (click)="resumeSecondHalf()">2. HALBZEIT →</button>
+    </div>
+  </section>
 }
 
 @if (phase() === 'result') {
-  @if (result(); as r) {
-    <div class="result fade-up">
-      <div class="card final">
-        <p class="eyebrow">Full time</p>
-        <div class="final-score">
-          <span>{{ homeTeam()?.shortName }}</span>
-          <strong>{{ r.homeScore }} — {{ r.awayScore }}</strong>
-          <span>{{ awayTeam()?.shortName }}</span>
-        </div>
-        <div class="motm">MVP · Man of the Match: <strong>{{ motmName() }}</strong></div>
-      </div>
+  @if (result(); as report) {
+    <section class="report fade-up">
+      <article class="card final-card">
+        <p class="eyebrow">FULL TIME · MATCH-ID {{ report.id }}</p>
+        <div><span>{{ homeTeam()?.shortName }}</span><strong>{{ report.homeScore }} — {{ report.awayScore }}</strong><span>{{ awayTeam()?.shortName }}</span></div>
+        <p>MVP · <b>{{ motmName() }}</b> · {{ report.weather?.toUpperCase() ?? expectedWeather().toUpperCase() }}</p>
+      </article>
 
-      <div class="card stats">
-        <p class="eyebrow">Match stats</p>
+      <article class="card report-stats">
+        <p class="eyebrow">TEAMSTATISTIKEN</p>
         @for (row of [
-          { label: 'Possession', h: r.homeStats.possession, a: r.awayStats.possession, suffix: '%' },
-          { label: 'Shots', h: r.homeStats.shots, a: r.awayStats.shots, suffix: '' },
-          { label: 'On target', h: r.homeStats.shotsOnTarget, a: r.awayStats.shotsOnTarget, suffix: '' },
-          { label: 'Corners', h: r.homeStats.corners, a: r.awayStats.corners, suffix: '' },
-          { label: 'Fouls', h: r.homeStats.fouls, a: r.awayStats.fouls, suffix: '' },
-          { label: 'Pass %', h: r.homeStats.passAccuracy, a: r.awayStats.passAccuracy, suffix: '%' }
+          { label: 'xG', home: report.homeStats.xG, away: report.awayStats.xG },
+          { label: 'Schüsse', home: report.homeStats.shots, away: report.awayStats.shots },
+          { label: 'Aufs Tor', home: report.homeStats.shotsOnTarget, away: report.awayStats.shotsOnTarget },
+          { label: 'Ballbesitz %', home: report.homeStats.possession, away: report.awayStats.possession },
+          { label: 'Passquote %', home: report.homeStats.passAccuracy, away: report.awayStats.passAccuracy },
+          { label: 'Tacklings', home: report.homeStats.tacklesWon, away: report.awayStats.tacklesWon },
+          { label: 'Paraden', home: report.homeStats.saves, away: report.awayStats.saves },
+          { label: 'Fouls', home: report.homeStats.fouls, away: report.awayStats.fouls }
         ]; track row.label) {
-          <div class="stat-row">
-            <span class="sh tabular">{{ row.h }}{{ row.suffix }}</span>
-            <div class="stat-bar">
-              <div class="fill home" [style.width.%]="(row.h / (row.h + row.a || 1)) * 100"></div>
-              <div class="fill away" [style.width.%]="(row.a / (row.h + row.a || 1)) * 100"></div>
-            </div>
-            <span class="sa tabular">{{ row.a }}{{ row.suffix }}</span>
-          </div>
-          <div class="stat-label">{{ row.label }}</div>
+          <div class="report-row"><b>{{ row.home }}</b><span>{{ row.label }}</span><b>{{ row.away }}</b></div>
         }
-      </div>
+      </article>
 
-      <div class="card ratings">
-        <p class="eyebrow">Your player ratings</p>
-        <div class="rlist">
-          @for (pr of playerRatings(); track pr.player.id) {
-            <div class="rrow">
-              <span class="rname">{{ playerName(pr.player) }} @if (pr.motm) { <span class="motm-tag">MVP</span> }</span>
-              <span class="rval" [style.background]="ratingColor(pr.rating * 10)">{{ pr.rating | number: '1.1-1' }}</span>
+      <article class="card ratings-card">
+        <p class="eyebrow">SPIELERBEWERTUNGEN</p>
+        <div class="rating-list">
+          @for (entry of playerRatings(); track entry.player.id) {
+            <div>
+              <span>#{{ entry.player.kitNumber }} {{ playerName(entry.player) }} @if (entry.motm) { <i>MVP</i> }</span>
+              <small>{{ entry.contribution?.goals ?? 0 }} T · {{ entry.contribution?.assists ?? 0 }} A · Fitness {{ report.endingFitness?.[entry.player.id] ?? entry.player.fitness }}</small>
+              <b [style.background]="ratingColor(entry.rating * 10)">{{ entry.rating | number:'1.1-1' }}</b>
             </div>
           }
         </div>
-      </div>
+      </article>
 
-      <button class="btn btn--primary big continue" (click)="confirm()">Continue &gt;</button>
-    </div>
+      <article class="card timeline-card">
+        <p class="eyebrow">EREIGNIS-TIMELINE</p>
+        <div class="timeline">
+          @for (event of report.events; track $index) {
+            @if (event.type !== 'commentary' || event.messageKey) { <div [class.goal]="event.type === 'goal'"><b>{{ event.minute }}'</b><span>{{ i18n.event(event) }}</span></div> }
+          }
+        </div>
+        <p class="heatmap-note">HEATMAP · {{ report.heatmaps ? 'Positionsdaten für ' + playerRatings().length + ' Spieler erfasst' : 'Keine Daten' }}</p>
+      </article>
+
+      <button class="btn btn--primary big continue" (click)="confirm()">KARRIERE FORTSETZEN →</button>
+    </section>
   }
 }

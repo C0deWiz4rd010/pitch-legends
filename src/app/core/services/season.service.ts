@@ -26,11 +26,25 @@ export class SeasonService {
     if (!g || !team || !fixture) return null;
     const home = g.teams.find((t) => t.id === fixture.homeTeamId)!;
     const away = g.teams.find((t) => t.id === fixture.awayTeamId)!;
-    return this.engine.simulate(home, away, fixture.week);
+    return this.engine.simulate(home, away, fixture.week, undefined, fixture.id);
   }
 
   /** Commit the watched player result, simulate the rest of the week, then advance. */
-  commitWeek(playerResult: MatchResult): void {
+  commitWeek(playerResult: MatchResult): boolean {
+    const current = this.gs.game();
+    if (!current) return false;
+    const pendingFixture = current.league.fixtures.find(
+      (fixture) =>
+        fixture.week === current.league.currentWeek &&
+        fixture.homeTeamId === playerResult.homeTeamId &&
+        fixture.awayTeamId === playerResult.awayTeamId,
+    );
+    if (
+      !pendingFixture ||
+      pendingFixture.played ||
+      current.results.some((result) => result.id === playerResult.id || (!!playerResult.fixtureId && result.fixtureId === playerResult.fixtureId))
+    ) return false;
+    playerResult.fixtureId ??= pendingFixture.id;
     this.gs.mutate((draft) => {
       const week = draft.league.currentWeek;
 
@@ -54,7 +68,7 @@ export class SeasonService {
         if (fx.week !== week || fx.played) continue;
         const home = draft.teams.find((t) => t.id === fx.homeTeamId)!;
         const away = draft.teams.find((t) => t.id === fx.awayTeamId)!;
-        const r = this.engine.simulate(home, away, week);
+        const r = this.engine.simulate(home, away, week, undefined, fx.id);
         fx.homeScore = r.homeScore;
         fx.awayScore = r.awayScore;
         fx.played = true;
@@ -74,6 +88,7 @@ export class SeasonService {
       draft.transferMarket = [];
       draft.transferMarketWeek = 0;
     });
+    return true;
   }
 
   private applyResult(draft: GameState, result: MatchResult, isPlayerMatch: boolean): void {
@@ -118,7 +133,7 @@ export class SeasonService {
         p.injuryWeeks = Math.max(p.injuryWeeks, this.rng.int(1, 4));
       }
 
-      p.fitness = clamp(p.fitness - this.rng.int(18, 28), 0, 100);
+      p.fitness = result.endingFitness?.[p.id] ?? clamp(p.fitness - this.rng.int(18, 28), 0, 100);
       p.morale = clamp(p.morale + (won ? 4 : drew ? 1 : -4), 15, 100);
 
       const xp =

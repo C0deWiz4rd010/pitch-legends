@@ -2,32 +2,42 @@ import {
   ChangeDetectionStrategy,
   Component,
   ElementRef,
+  OnDestroy,
   computed,
   effect,
   inject,
   signal,
   viewChild,
-  OnDestroy,
 } from '@angular/core';
-import { Router, RouterLink } from '@angular/router';
 import { DecimalPipe } from '@angular/common';
+import { Router, RouterLink } from '@angular/router';
 import { GameStateService } from '../../core/services/game-state.service';
 import { SeasonService } from '../../core/services/season.service';
 import { MatchEngineService } from '../../core/services/match-engine.service';
-import { LiveMatch } from '../../core/services/match-sim';
-import { InputFrame, MatchEvent, MatchMode, MatchResult } from '../../models/match.model';
+import { MatchCheckpointService } from '../../core/services/match-checkpoint.service';
+import {
+  AssistPreset,
+  EMPTY_MATCH_COMMAND,
+  InputDevice,
+  MatchCheckpoint,
+  MatchCommand,
+  MatchEvent,
+  MatchMode,
+  MatchResult,
+  MatchWeather,
+} from '../../models/match.model';
 import { Team } from '../../models/team.model';
 import { Player } from '../../models/player.model';
-import { Mentality, PressingIntensity } from '../../models/enums';
+import { Mentality, PressingIntensity, Width } from '../../models/enums';
 import { ratingColor } from '../../shared/rating-color';
 import { playerName } from '../../core/ratings';
-import { MatchPitchRenderer } from './match-renderer';
 import { I18nService } from '../../core/services/i18n.service';
-import { ArcadeMatch } from '../../core/services/arcade-match';
+import { ArcadeMatch, MATCH_TICK } from '../../core/services/arcade-match';
 import { ArcadePitchRenderer } from './arcade-renderer';
 import { AudioService } from '../../core/services/audio.service';
 
-type Phase = 'preview' | 'coach' | 'play' | 'result';
+type PagePhase = 'preview' | 'intro' | 'simulating' | 'match' | 'halftime' | 'result';
+type TouchAction = 'sprint' | 'pass' | 'through' | 'lob' | 'shoot' | 'skill' | 'switch';
 
 @Component({
   selector: 'app-match',
@@ -40,6 +50,7 @@ export class MatchPage implements OnDestroy {
   protected readonly gs = inject(GameStateService);
   private readonly season = inject(SeasonService);
   private readonly engine = inject(MatchEngineService);
+  private readonly checkpoints = inject(MatchCheckpointService);
   private readonly router = inject(Router);
   protected readonly i18n = inject(I18nService);
   private readonly audio = inject(AudioService);
@@ -47,224 +58,309 @@ export class MatchPage implements OnDestroy {
   protected readonly playerName = playerName;
 
   private readonly canvasRef = viewChild<ElementRef<HTMLCanvasElement>>('pitch');
-
-  protected readonly phase = signal<Phase>('preview');
+  protected readonly phase = signal<PagePhase>('preview');
   protected readonly result = signal<MatchResult | null>(null);
-  protected readonly minute = signal(0);
+  protected readonly revealed = signal<MatchEvent[]>([]);
+  protected readonly selectedMode = signal<MatchMode>('play');
+  protected readonly assist = signal<AssistPreset>('balanced');
+  protected readonly playerLock = signal(false);
+  protected readonly playerLockId = signal('');
+  protected readonly resumeOffer = signal<MatchCheckpoint | null>(null);
   protected readonly playing = signal(true);
   protected readonly speed = signal(1);
-  protected readonly revealed = signal<MatchEvent[]>([]);
   protected readonly flash = signal<string | null>(null);
-  protected readonly momentum = signal(0);
+  protected readonly performanceMessage = signal('');
+  protected readonly inputDevice = signal<InputDevice>('keyboard');
   protected readonly showSubs = signal(false);
-  protected readonly subOutId = signal<string>('');
-  protected readonly subInId = signal<string>('');
-  protected readonly selectedMode = signal<MatchMode>('play');
+  protected readonly showTactics = signal(false);
+  protected readonly subOutId = signal('');
+  protected readonly subInId = signal('');
   protected readonly touchX = signal(0);
   protected readonly touchY = signal(0);
-  protected readonly touchSprint = signal(false);
-  protected readonly touchPass = signal(false);
-  protected readonly touchThrough = signal(false);
-  protected readonly touchShoot = signal(false);
-  protected readonly touchSwitch = signal(false);
+  private readonly touchActions = signal<Record<TouchAction, boolean>>({
+    sprint: false,
+    pass: false,
+    through: false,
+    lob: false,
+    shoot: false,
+    skill: false,
+    switch: false,
+  });
 
-  private live: LiveMatch | null = null;
   private arcade: ArcadeMatch | null = null;
-  private renderer: MatchPitchRenderer | null = null;
-  private arcadeRenderer: ArcadePitchRenderer | null = null;
+  private renderer: ArcadePitchRenderer | null = null;
   private raf = 0;
   private lastTs = 0;
-  private virtualMinute = 0;
+  private fixedAccumulator = 0;
+  private replayElapsed = 0;
   private prevHome = 0;
   private prevAway = 0;
-  private fixedAccumulator = 0;
+  private previousRule = '';
+  private lastAudioEvent = 0;
+  private introTimer: ReturnType<typeof setTimeout> | null = null;
+  private gamepadSeen = false;
+  private touchPointer: number | null = null;
+  private touchOrigin = { x: 0, y: 0 };
   private readonly keys = new Set<string>();
-  private readonly keyDown = (event: KeyboardEvent) => {
-    if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].includes(event.code)) event.preventDefault();
-    this.keys.add(event.code);
-  };
-  private readonly keyUp = (event: KeyboardEvent) => this.keys.delete(event.code);
 
   protected readonly mentalities: Mentality[] = ['ultra-defensive', 'defensive', 'balanced', 'attacking', 'ultra-attacking'];
   protected readonly pressings: PressingIntensity[] = ['low', 'medium', 'high', 'gegenpress'];
+  protected readonly widths: Width[] = ['narrow', 'balanced', 'wide'];
+  protected readonly assists: AssistPreset[] = ['assisted', 'balanced', 'manual'];
 
   protected readonly homeTeam = computed<Team | null>(() => {
-    const r = this.result();
-    const fx = this.gs.nextFixture();
-    if (r) return this.gs.teamById(r.homeTeamId) ?? null;
-    return fx ? this.gs.teamById(fx.homeTeamId) ?? null : null;
+    const result = this.result();
+    const fixture = this.gs.nextFixture();
+    return this.gs.teamById(result?.homeTeamId ?? fixture?.homeTeamId ?? '') ?? null;
   });
   protected readonly awayTeam = computed<Team | null>(() => {
-    const r = this.result();
-    const fx = this.gs.nextFixture();
-    if (r) return this.gs.teamById(r.awayTeamId) ?? null;
-    return fx ? this.gs.teamById(fx.awayTeamId) ?? null : null;
+    const result = this.result();
+    const fixture = this.gs.nextFixture();
+    return this.gs.teamById(result?.awayTeamId ?? fixture?.awayTeamId ?? '') ?? null;
   });
-  protected readonly isHome = computed(() => this.homeTeam()?.id === this.gs.playerTeam()?.id);
-
-  /** Average overall of a team's best XI. */
-  protected teamRating(team: Team | null): number {
-    if (!team) return 0;
-    const top = [...team.players].sort((a, b) => b.overall - a.overall).slice(0, 11);
-    return top.length ? Math.round(top.reduce((s, p) => s + p.overall, 0) / top.length) : 0;
-  }
-
-  /** Last up to five league results for a team as W/D/L, oldest → newest. */
-  protected form(teamId: string | undefined): ('W' | 'D' | 'L')[] {
-    const g = this.gs.game();
-    if (!g || !teamId) return [];
-    return g.league.fixtures
-      .filter((f) => f.played && (f.homeTeamId === teamId || f.awayTeamId === teamId))
-      .sort((a, b) => a.week - b.week)
-      .slice(-5)
-      .map((f) => {
-        const gf = f.homeTeamId === teamId ? f.homeScore! : f.awayScore!;
-        const ga = f.homeTeamId === teamId ? f.awayScore! : f.homeScore!;
-        return gf > ga ? 'W' : gf < ga ? 'L' : 'D';
-      });
-  }
-
-  /** Rough win/draw/away prediction from squad ratings + home advantage. */
-  protected prediction(): { home: number; draw: number; away: number } {
-    const h = this.teamRating(this.homeTeam()) + 4;
-    const a = this.teamRating(this.awayTeam());
-    const diff = h - a;
-    const homeW = 1 / (1 + Math.pow(10, -diff / 12));
-    const draw = 0.26 - Math.min(0.16, Math.abs(diff) / 100);
-    const home = Math.max(0.05, homeW * (1 - draw));
-    const away = Math.max(0.05, (1 - homeW) * (1 - draw));
-    const total = home + draw + away;
-    return {
-      home: Math.round((home / total) * 100),
-      draw: Math.round((draw / total) * 100),
-      away: Math.round((away / total) * 100),
-    };
-  }
-
-
-  protected readonly liveHome = computed(
-    () => this.revealed().filter((e) => e.type === 'goal' && e.side === 'home').length,
-  );
-  protected readonly liveAway = computed(
-    () => this.revealed().filter((e) => e.type === 'goal' && e.side === 'away').length,
-  );
+  protected readonly controlledTeam = computed(() => this.gs.playerTeam());
+  protected readonly opponent = computed(() => {
+    const club = this.controlledTeam();
+    return this.homeTeam()?.id === club?.id ? this.awayTeam() : this.homeTeam();
+  });
+  protected readonly isHome = computed(() => this.homeTeam()?.id === this.controlledTeam()?.id);
+  protected readonly minute = computed(() => this.result() ? 90 : this.arcade?.footballMinute ?? 0);
+  protected readonly homeScore = computed(() => this.result()?.homeScore ?? this.arcade?.homeScore ?? 0);
+  protected readonly awayScore = computed(() => this.result()?.awayScore ?? this.arcade?.awayScore ?? 0);
+  protected readonly matchPhase = computed(() => this.arcade?.phase ?? 'preMatch');
   protected readonly tickerEvents = computed(() => [...this.revealed()].reverse());
-  protected readonly momentumHome = computed(() => Math.round((this.momentum() + 1) * 50));
+  protected readonly momentumHome = computed(() => this.arcade ? Math.round(this.arcade.ball.x / 105 * 100) : 50);
+  protected readonly expectedWeather = computed<MatchWeather>(() => {
+    const fixture = this.gs.nextFixture();
+    if (!fixture) return 'clear';
+    const roll = this.stableSeed(fixture.id) % 10;
+    return roll < 6 ? 'clear' : roll < 9 ? 'rain' : 'storm';
+  });
+  protected readonly lineupErrors = computed(() => this.validateLineup(this.controlledTeam()));
+  protected readonly starters = computed(() => {
+    const team = this.controlledTeam();
+    if (!team) return [];
+    return team.formation.slots.map((slot) => team.players.find((player) => player.id === slot.playerId)).filter((player): player is Player => !!player);
+  });
+  protected readonly keyPlayer = computed(() => [...(this.opponent()?.players ?? [])].sort((a, b) => b.overall - a.overall)[0]);
+  protected readonly scoutingDetail = computed(() => (this.gs.manager()?.perks.scouting ?? 0) >= 2);
+  protected readonly kitConflict = computed(() => {
+    const home = this.homeTeam()?.kit.primary;
+    const away = this.awayTeam()?.kit.primary;
+    return home && away ? this.colorDistance(home, away) < 110 : false;
+  });
+
+  private readonly keyDown = (event: KeyboardEvent) => {
+    if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].includes(event.code)) event.preventDefault();
+    if (event.code === 'Escape' && this.phase() === 'match' && !event.repeat) {
+      event.preventDefault();
+      this.togglePlay();
+      return;
+    }
+    if (event.code === 'KeyQ' && this.phase() === 'match' && !event.repeat) this.showTactics.update((value) => !value);
+    this.keys.add(event.code);
+  };
+  private readonly keyUp = (event: KeyboardEvent) => this.keys.delete(event.code);
+  private readonly visibilityChange = () => {
+    if (document.hidden && (this.phase() === 'match' || this.phase() === 'halftime')) this.pauseFor('Match automatisch pausiert: Browser-Tab verlassen.');
+  };
+  private readonly blur = () => {
+    this.resetInputs();
+    if (this.phase() === 'match') this.pauseFor('Match automatisch pausiert: Fokus verloren.');
+  };
+  private readonly gamepadDisconnected = () => {
+    if (this.gamepadSeen && this.phase() === 'match') this.pauseFor('Controller getrennt. Bitte Eingabegerät prüfen.');
+  };
 
   constructor() {
+    const settings = this.gs.game()?.settings;
+    this.assist.set(settings?.assistPreset ?? 'balanced');
     window.addEventListener('keydown', this.keyDown);
     window.addEventListener('keyup', this.keyUp);
+    window.addEventListener('blur', this.blur);
+    window.addEventListener('gamepaddisconnected', this.gamepadDisconnected);
+    document.addEventListener('visibilitychange', this.visibilityChange);
+    effect(() => {
+      const fixture = this.gs.nextFixture();
+      this.resumeOffer.set(fixture ? this.checkpoints.load(fixture.id) : null);
+    });
     effect(() => {
       const canvas = this.canvasRef();
-      if ((this.phase() === 'coach' || this.phase() === 'play') && canvas && !this.renderer && !this.arcadeRenderer) {
-        this.startAnimation(canvas.nativeElement);
-      }
+      if (this.phase() === 'match' && canvas && !this.renderer && this.arcade) this.startAnimation(canvas.nativeElement);
     });
   }
 
-  protected kickOff(mode: MatchMode = this.selectedMode()): void {
+  protected teamRating(team: Team | null): number {
+    if (!team) return 0;
+    const top = [...team.players].sort((a, b) => b.overall - a.overall).slice(0, 11);
+    return top.length ? Math.round(top.reduce((sum, player) => sum + player.overall, 0) / top.length) : 0;
+  }
+
+  protected form(teamId: string | undefined): ('W' | 'D' | 'L')[] {
+    const game = this.gs.game();
+    if (!game || !teamId) return [];
+    return game.league.fixtures
+      .filter((fixture) => fixture.played && (fixture.homeTeamId === teamId || fixture.awayTeamId === teamId))
+      .sort((a, b) => a.week - b.week)
+      .slice(-5)
+      .map((fixture) => {
+        const scored = fixture.homeTeamId === teamId ? fixture.homeScore! : fixture.awayScore!;
+        const conceded = fixture.homeTeamId === teamId ? fixture.awayScore! : fixture.homeScore!;
+        return scored > conceded ? 'W' : scored < conceded ? 'L' : 'D';
+      });
+  }
+
+  protected prediction(): { home: number; draw: number; away: number } {
+    const homeRating = this.teamRating(this.homeTeam()) + 3;
+    const awayRating = this.teamRating(this.awayTeam());
+    const diff = homeRating - awayRating;
+    const homeBase = 1 / (1 + Math.pow(10, -diff / 12));
+    const draw = 0.26 - Math.min(0.14, Math.abs(diff) / 110);
+    const home = homeBase * (1 - draw);
+    const away = (1 - homeBase) * (1 - draw);
+    return { home: Math.round(home * 100), draw: Math.round(draw * 100), away: Math.round(away * 100) };
+  }
+
+  protected weakness(team: Team | null): string {
+    if (!team) return 'Unbekannt';
+    const groups = ['DEF', 'MID', 'ATT'] as const;
+    const weakest = groups
+      .map((group) => ({ group, value: team.players.filter((player) => player.positionGroup === group).reduce((sum, player, _, list) => sum + player.overall / Math.max(1, list.length), 0) }))
+      .sort((a, b) => a.value - b.value)[0]?.group;
+    return weakest === 'DEF' ? 'Raum hinter der Abwehr' : weakest === 'MID' ? 'Aufbau unter Druck' : 'Abschlussqualität';
+  }
+
+  protected kickOff(): void {
     const home = this.homeTeam();
     const away = this.awayTeam();
-    const fx = this.gs.nextFixture();
-    if (!home || !away || !fx) return;
-    const controlledTeamId = this.gs.playerTeam()?.id ?? home.id;
-    if (mode === 'instant') {
-      const result = this.engine.simulate(home, away, fx.week);
-      this.result.set(result);
-      this.revealed.set([...result.events]);
-      this.minute.set(90);
-      this.phase.set('result');
+    const fixture = this.gs.nextFixture();
+    const settings = this.gs.game()?.settings;
+    if (!home || !away || !fixture || this.lineupErrors().length) return;
+    if (this.selectedMode() === 'instant') {
+      this.phase.set('simulating');
+      void this.engine.simulateAsync(home, away, fixture.week, this.stableSeed(fixture.id), fixture.id).then((result) => {
+        this.result.set(result);
+        this.revealed.set([...result.events]);
+        this.phase.set('result');
+      });
       return;
     }
-
-    this.audio.whistle();
+    const lockId = this.playerLock() ? this.playerLockId() || this.starters().find((player) => player.positionGroup !== 'GK')?.id || null : null;
+    this.arcade = this.engine.createSession(home, away, {
+      mode: this.selectedMode(),
+      fixtureId: fixture.id,
+      controlledTeamId: this.controlledTeam()?.id ?? home.id,
+      halfMinutes: settings?.matchDuration ?? 3,
+      seed: this.stableSeed(fixture.id),
+      difficulty: settings?.difficulty ?? 'normal',
+      assist: this.assist(),
+      playerLockId: lockId,
+      weather: this.expectedWeather(),
+      inputDevice: this.selectedMode() === 'coach' ? 'ai' : this.inputDevice(),
+      camera: { zoom: 1, lookAhead: 0.18, shake: settings?.cameraShake ?? true, reducedMotion: settings?.reducedMotion ?? false },
+    }, this.gs.manager()?.perks.tactics ?? 0);
+    this.prevHome = this.arcade.homeScore;
+    this.prevAway = this.arcade.awayScore;
+    this.revealed.set([...this.arcade.events]);
+    this.lastAudioEvent = this.arcade.events.length;
+    this.checkpoints.save(this.arcade.checkpoint());
+    this.phase.set('intro');
     this.audio.startMusic();
+    this.introTimer = setTimeout(() => this.skipIntro(), 2800);
+  }
 
-    if (mode === 'play') {
-      const settings = this.gs.game()?.settings;
-      this.arcade = new ArcadeMatch(
-        home,
-        away,
-        controlledTeamId,
-        settings?.matchDuration ?? 3,
-        Date.now() >>> 0,
-        settings?.difficulty ?? 'normal',
-        this.gs.manager()?.perks.tactics ?? 0,
-      );
-      this.revealed.set([...this.arcade.events]);
-      this.phase.set('play');
-    } else {
-      this.live = this.engine.createLiveMatch(home, away, fx.week, controlledTeamId);
-      this.revealed.set([...this.live.events]);
-      this.phase.set('coach');
+  protected resumeMatch(): void {
+    const checkpoint = this.resumeOffer();
+    const home = this.homeTeam();
+    const away = this.awayTeam();
+    if (!checkpoint || !home || !away) return;
+    this.arcade = this.engine.createSession(home, away, checkpoint.config, this.gs.manager()?.perks.tactics ?? 0);
+    if (!this.arcade.restore(checkpoint)) {
+      this.checkpoints.clear();
+      this.resumeOffer.set(null);
+      return;
     }
-    this.virtualMinute = 0;
-    this.minute.set(0);
-    this.momentum.set(0);
-    this.prevHome = 0;
-    this.prevAway = 0;
+    this.prevHome = this.arcade.homeScore;
+    this.prevAway = this.arcade.awayScore;
+    this.revealed.set([...this.arcade.events]);
+    this.lastAudioEvent = this.arcade.events.length;
+    if (this.arcade.phase === 'halftime') {
+      this.phase.set('halftime');
+    } else {
+      this.arcade.setPaused(false);
+      this.phase.set('match');
+      this.playing.set(true);
+    }
+  }
+
+  protected discardCheckpoint(): void {
+    this.checkpoints.clear();
+    this.resumeOffer.set(null);
+  }
+
+  protected skipIntro(): void {
+    if (this.phase() !== 'intro') return;
+    if (this.introTimer) clearTimeout(this.introTimer);
+    this.introTimer = null;
+    this.audio.stopMusic();
+    this.audio.whistle();
+    this.phase.set('match');
     this.playing.set(true);
-    this.speed.set(1);
-    this.fixedAccumulator = 0;
   }
 
   private startAnimation(canvas: HTMLCanvasElement): void {
-    if (this.phase() === 'play' && this.arcade) {
-      this.arcadeRenderer = new ArcadePitchRenderer(canvas);
-    } else if (this.live) {
-      this.renderer = new MatchPitchRenderer(canvas, this.live.home, this.live.away, this.live.keyframes);
-    } else return;
+    if (!this.arcade) return;
+    this.renderer = new ArcadePitchRenderer(canvas);
     this.lastTs = 0;
-    this.raf = requestAnimationFrame((ts) => this.loop(ts));
+    this.fixedAccumulator = 0;
+    this.raf = requestAnimationFrame((time) => this.loop(time));
   }
 
-  private loop(ts: number): void {
-    if (!this.lastTs) this.lastTs = ts;
-    const dt = Math.min((ts - this.lastTs) / 1000, 0.05);
-    this.lastTs = ts;
-
-    if (this.playing() && this.phase() === 'coach' && this.live) {
-      this.virtualMinute += dt * 2.4 * this.speed();
-      this.live.stepTo(this.virtualMinute);
-      const m = Math.min(90, Math.floor(this.virtualMinute));
-      if (m !== this.minute()) this.minute.set(m);
-      this.syncFromLive();
-      if (this.virtualMinute >= 90) return this.finish();
-    } else if (this.playing() && this.phase() === 'play' && this.arcade) {
-      this.fixedAccumulator = Math.min(this.fixedAccumulator + dt, 0.2);
-      const input = this.readInput();
-      while (this.fixedAccumulator >= 1 / 60) {
-        this.arcade.step(1 / 60, input);
-        this.fixedAccumulator -= 1 / 60;
+  private loop(timestamp: number): void {
+    if (!this.arcade || this.phase() !== 'match') return;
+    if (!this.lastTs) this.lastTs = timestamp;
+    const dt = Math.min((timestamp - this.lastTs) / 1000, 0.1);
+    this.lastTs = timestamp;
+    if (this.arcade.phase === 'goalReplay') {
+      this.replayElapsed += dt;
+      const frames = this.arcade.replaySnapshots();
+      const index = Math.min(frames.length - 1, Math.floor(this.replayElapsed / 3.4 * frames.length));
+      this.renderer?.render(this.arcade, frames[Math.max(0, index)]);
+      if (this.replayElapsed >= 3.4) this.skipReplay();
+      this.raf = requestAnimationFrame((time) => this.loop(time));
+      return;
+    }
+    if (this.playing()) {
+      this.fixedAccumulator += dt * (this.selectedMode() === 'coach' ? this.speed() : 1);
+      if (this.fixedAccumulator > 0.25) {
+        this.fixedAccumulator = 0;
+        this.pauseFor('Performance-Schutz: Die Simulation lag mehr als 250 ms zurück.');
+      } else {
+        const input = this.selectedMode() === 'play' ? this.readInput() : EMPTY_MATCH_COMMAND;
+        while (this.fixedAccumulator >= MATCH_TICK) {
+          this.arcade.step(MATCH_TICK, input);
+          this.fixedAccumulator -= MATCH_TICK;
+        }
       }
-      this.syncFromArcade();
-      if (this.arcade.finished) return this.finish();
+      this.syncMatch();
     }
-
-    this.renderer?.render(this.virtualMinute);
-    if (this.arcade && this.arcadeRenderer) this.arcadeRenderer.render(this.arcade);
-    this.raf = requestAnimationFrame((t) => this.loop(t));
+    this.renderer?.render(this.arcade);
+    if (this.arcade.phase === 'halftime') {
+      this.enterHalftime();
+      return;
+    }
+    if (this.arcade.finished) {
+      this.finish();
+      return;
+    }
+    this.raf = requestAnimationFrame((time) => this.loop(time));
   }
 
-  private syncFromLive(): void {
-    if (!this.live) return;
-    this.revealed.set([...this.live.events]);
-    this.momentum.set(this.live.momentum);
-    if (this.live.homeScore > this.prevHome) {
-      this.celebrate('home');
-      this.prevHome = this.live.homeScore;
-    }
-    if (this.live.awayScore > this.prevAway) {
-      this.celebrate('away');
-      this.prevAway = this.live.awayScore;
-    }
-  }
-
-  private syncFromArcade(): void {
+  private syncMatch(): void {
     if (!this.arcade) return;
     this.revealed.set([...this.arcade.events]);
-    this.minute.set(this.arcade.footballMinute);
-    this.momentum.set(Math.max(-1, Math.min(1, (this.arcade.ball.x - 0.5) * 2)));
+    for (const event of this.arcade.events.slice(this.lastAudioEvent)) this.audio.matchEvent(event);
+    this.lastAudioEvent = this.arcade.events.length;
     if (this.arcade.homeScore > this.prevHome) {
       this.celebrate('home');
       this.prevHome = this.arcade.homeScore;
@@ -273,191 +369,282 @@ export class MatchPage implements OnDestroy {
       this.celebrate('away');
       this.prevAway = this.arcade.awayScore;
     }
+    const safeRules = ['kickoff', 'throwIn', 'corner', 'goalKick', 'freeKick', 'penalty'];
+    if (this.arcade.rule.phase !== this.previousRule && safeRules.includes(this.arcade.rule.phase)) {
+      this.checkpoints.save(this.arcade.checkpoint());
+      this.previousRule = this.arcade.rule.phase;
+    } else if (this.arcade.rule.phase === 'playing') {
+      this.previousRule = 'playing';
+    }
   }
 
   private celebrate(side: 'home' | 'away'): void {
-    const scorer = [...(this.live?.events ?? this.arcade?.events ?? [])]
-      .reverse()
-      .find((e) => e.type === 'goal' && e.side === side);
+    const scorer = [...(this.arcade?.events ?? [])].reverse().find((event) => event.type === 'goal' && event.side === side);
     this.flash.set(scorer?.playerName ?? 'GOAL');
-    this.renderer?.triggerGoal(side === 'home');
-    this.arcadeRenderer?.triggerGoal();
-    this.audio.goal();
-    setTimeout(() => this.flash.set(null), 1800);
+    this.renderer?.triggerGoal();
+    this.replayElapsed = 0;
+    setTimeout(() => this.flash.set(null), 1500);
   }
 
-  // ── Live management ────────────────────────────────────────────────────────
-  protected currentMentality(): Mentality | undefined {
-    return this.live?.controlled.tactics.mentality ?? this.arcade?.controlledTeam.tactics.mentality;
-  }
-  protected currentPressing(): PressingIntensity | undefined {
-    return this.live?.controlled.tactics.pressing ?? this.arcade?.controlledTeam.tactics.pressing;
-  }
-  protected setMentality(m: Mentality): void {
-    if (this.live) {
-      this.live.setMentality(m);
-      this.syncFromLive();
-    } else if (this.arcade) {
-      this.arcade.setMentality(m);
-      this.syncFromArcade();
-    }
-  }
-  protected setPressing(p: PressingIntensity): void {
-    if (this.live) {
-      this.live.setPressing(p);
-      this.syncFromLive();
-    } else if (this.arcade) {
-      this.arcade.setPressing(p);
-      this.syncFromArcade();
-    }
+  protected skipReplay(): void {
+    if (!this.arcade || this.arcade.phase !== 'goalReplay') return;
+    this.arcade.endReplay();
+    this.replayElapsed = 0;
   }
 
-  protected onPitchPlayers(): Player[] {
-    if (this.arcade) return this.arcade.actors.filter((actor) => actor.active && actor.side === this.arcade!.controlledSide).map((actor) => actor.player);
-    if (!this.live) return [];
-    return this.live.controlled.formation.slots
-      .map((s) => this.live!.controlled.players.find((p) => p.id === s.playerId))
-      .filter((p): p is Player => !!p);
+  private enterHalftime(): void {
+    if (!this.arcade) return;
+    cancelAnimationFrame(this.raf);
+    this.raf = 0;
+    this.renderer?.destroy();
+    this.renderer = null;
+    this.checkpoints.save(this.arcade.checkpoint());
+    this.phase.set('halftime');
+    this.audio.whistle();
   }
-  protected benchPlayers(): Player[] {
-    return this.live?.bench() ?? this.arcade?.bench() ?? [];
-  }
-  protected subsRemaining(): number {
-    return this.live?.subsRemaining ?? (this.arcade ? Math.max(0, 5 - this.arcade.events.filter((event) => event.type === 'sub').length) : 0);
-  }
-  protected doSub(): void {
-    const out = this.subOutId();
-    const inId = this.subInId();
-    if ((!this.live && !this.arcade) || !out || !inId) return;
-    const changed = this.live ? this.live.makeSub(out, inId) : this.arcade!.makeSub(out, inId);
-    if (changed) {
-      if (this.live) this.renderer?.refreshNumbers(this.live.home, this.live.away);
-      this.subOutId.set('');
-      this.subInId.set('');
-      this.showSubs.set(false);
-      if (this.live) this.syncFromLive();
-      else this.syncFromArcade();
+
+  protected resumeSecondHalf(): void {
+    if (!this.arcade) return;
+    if (this.playerLock() && this.playerLockId()) {
+      this.arcade.config.playerLockId = this.playerLockId();
+      this.arcade.selectedPlayerId = this.playerLockId();
     }
+    this.arcade.resumeSecondHalf();
+    this.phase.set('match');
+    this.playing.set(true);
   }
 
   protected togglePlay(): void {
-    this.playing.update((p) => !p);
+    if (!this.arcade || this.arcade.phase === 'goalReplay') return;
+    this.playing.update((value) => !value);
+    this.arcade.setPaused(!this.playing());
+    if (!this.playing()) this.checkpoints.save(this.arcade.checkpoint());
+    else this.performanceMessage.set('');
   }
+
+  private pauseFor(message: string): void {
+    this.resetInputs();
+    if (!this.arcade) return;
+    this.playing.set(false);
+    this.arcade.setPaused(true);
+    this.performanceMessage.set(message);
+    this.checkpoints.save(this.arcade.checkpoint());
+  }
+
   protected cycleSpeed(): void {
-    if (this.phase() === 'play') return;
-    this.speed.update((s) => (s === 1 ? 2 : s === 2 ? 4 : 1));
+    if (this.selectedMode() !== 'coach') return;
+    this.speed.update((value) => value === 1 ? 2 : value === 2 ? 4 : 1);
   }
-  protected skip(): void {
-    if (this.arcade) {
-      this.arcade.simulateToEnd();
-      this.syncFromArcade();
-    } else if (this.live) {
-      this.live.stepTo(90);
-      this.virtualMinute = 90;
-      this.syncFromLive();
-    }
+
+  protected simulateRemainder(): void {
+    if (!this.arcade || !window.confirm('Den Rest des Spiels unwiderruflich simulieren?')) return;
+    cancelAnimationFrame(this.raf);
+    this.arcade.config.mode = 'instant';
+    this.arcade.setPaused(false);
+    this.arcade.simulateToEnd();
     this.finish();
   }
 
-  private finish(): void {
+  protected forfeit(): void {
+    if (!this.arcade || !window.confirm('Match wirklich aufgeben? Das erzeugt mindestens eine 0:3-Niederlage.')) return;
     cancelAnimationFrame(this.raf);
-    this.raf = 0;
-    this.minute.set(90);
-    if (this.live) {
-      const r = this.live.finalize();
-      this.result.set(r);
-      this.revealed.set([...r.events]);
-    } else if (this.arcade) {
-      const r = this.arcade.result();
-      const fx = this.gs.nextFixture();
-      if (fx) r.week = fx.week;
-      this.result.set(r);
-      this.revealed.set([...r.events]);
-    }
+    this.result.set(this.arcade.forfeitControlled());
+    this.revealed.set([...this.result()!.events]);
     this.phase.set('result');
+    this.destroyRenderer();
+  }
+
+  private finish(): void {
+    if (!this.arcade) return;
+    cancelAnimationFrame(this.raf);
+    const result = this.arcade.result();
+    result.week = this.gs.nextFixture()?.week ?? result.week;
+    this.result.set(result);
+    this.revealed.set([...result.events]);
+    this.phase.set('result');
+    this.destroyRenderer();
     this.audio.whistle();
-    this.audio.stopMusic();
   }
 
   protected confirm(): void {
-    const r = this.result();
-    if (!r) return;
-    this.season.commitWeek(r);
+    const result = this.result();
+    if (!result) return;
+    const committed = this.season.commitWeek(result);
+    if (committed) this.checkpoints.clear();
     this.reset();
-    if (this.gs.seasonOver()) this.router.navigateByUrl('/league');
-    else this.router.navigateByUrl('/');
+    void this.router.navigateByUrl(this.gs.seasonOver() ? '/league' : '/');
   }
 
-  private reset(): void {
-    cancelAnimationFrame(this.raf);
-    this.renderer?.destroy();
-    this.renderer = null;
-    this.arcadeRenderer?.destroy();
-    this.arcadeRenderer = null;
-    this.live = null;
-    this.arcade = null;
-    this.audio.stopMusic();
-    this.result.set(null);
-    this.phase.set('preview');
+  protected currentMentality(): Mentality | undefined { return this.arcade?.controlledTeam.tactics.mentality; }
+  protected currentPressing(): PressingIntensity | undefined { return this.arcade?.controlledTeam.tactics.pressing; }
+  protected currentWidth(): Width | undefined { return this.arcade?.controlledTeam.tactics.width; }
+  protected setMentality(value: Mentality): void { this.arcade?.setMentality(value); }
+  protected setPressing(value: PressingIntensity): void { this.arcade?.setPressing(value); }
+  protected setWidth(value: Width): void { this.arcade?.setWidth(value); }
+  protected toggleCounter(): void { this.arcade?.toggleCounter(); }
+
+  protected onPitchPlayers(): Player[] {
+    return this.arcade?.actors.filter((actor) => actor.active && actor.side === this.arcade!.controlledSide).map((actor) => actor.player) ?? [];
   }
+  protected benchPlayers(): Player[] { return this.arcade?.bench() ?? []; }
+  protected subsRemaining(): number { return this.arcade ? Math.max(0, 5 - this.arcade.subsUsed) : 0; }
+  protected doSub(): void {
+    if (!this.arcade || !this.subOutId() || !this.subInId()) return;
+    if (this.arcade.makeSub(this.subOutId(), this.subInId())) {
+      this.subOutId.set('');
+      this.subInId.set('');
+      this.showSubs.set(false);
+      this.checkpoints.save(this.arcade.checkpoint());
+    }
+  }
+
+  protected matchStats(side: 'home' | 'away') { return side === 'home' ? this.arcade?.homeStats : this.arcade?.awayStats; }
 
   protected motmName(): string {
-    const r = this.result();
-    if (!r?.manOfTheMatchId) return '—';
-    const p = [this.homeTeam(), this.awayTeam()]
-      .flatMap((t) => t?.players ?? [])
-      .find((pl) => pl.id === r.manOfTheMatchId);
-    return p ? playerName(p) : '—';
+    const result = this.result();
+    if (!result?.manOfTheMatchId) return '—';
+    const player = [this.homeTeam(), this.awayTeam()].flatMap((team) => team?.players ?? []).find((candidate) => candidate.id === result.manOfTheMatchId);
+    return player ? playerName(player) : '—';
   }
 
   protected playerRatings() {
-    const r = this.result();
-    const club = this.gs.playerTeam();
-    if (!r || !club) return [];
+    const result = this.result();
+    const club = this.controlledTeam();
+    if (!result || !club) return [];
     return club.players
-      .filter((p) => r.ratings[p.id] !== undefined)
-      .map((p) => ({ player: p, rating: r.ratings[p.id], motm: p.id === r.manOfTheMatchId }))
+      .filter((player) => result.ratings[player.id] !== undefined)
+      .map((player) => ({ player, rating: result.ratings[player.id], contribution: result.contributions[player.id], motm: player.id === result.manOfTheMatchId }))
       .sort((a, b) => b.rating - a.rating);
   }
 
-  protected setTouchDirection(x: number, y: number, active: boolean): void {
-    this.touchX.set(active ? x : 0);
-    this.touchY.set(active ? y : 0);
+  protected setTouchAction(action: TouchAction, active: boolean): void {
+    this.touchActions.update((current) => ({ ...current, [action]: active }));
   }
 
-  protected setTouchAction(action: 'sprint' | 'pass' | 'through' | 'shoot' | 'switch', active: boolean): void {
-    if (action === 'sprint') this.touchSprint.set(active);
-    if (action === 'pass') this.touchPass.set(active);
-    if (action === 'through') this.touchThrough.set(active);
-    if (action === 'shoot') this.touchShoot.set(active);
-    if (action === 'switch') this.touchSwitch.set(active);
+  protected touchStickStart(event: PointerEvent): void {
+    this.touchPointer = event.pointerId;
+    this.touchOrigin = { x: event.clientX, y: event.clientY };
+    (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
+    this.inputDevice.set('touch');
   }
 
-  private readInput(): InputFrame {
+  protected touchStickMove(event: PointerEvent): void {
+    if (event.pointerId !== this.touchPointer) return;
+    const dx = event.clientX - this.touchOrigin.x;
+    const dy = event.clientY - this.touchOrigin.y;
+    const length = Math.hypot(dx, dy);
+    const scale = Math.max(40, length);
+    this.touchX.set(dx / scale);
+    this.touchY.set(dy / scale);
+  }
+
+  protected touchStickEnd(event: PointerEvent): void {
+    if (event.pointerId !== this.touchPointer) return;
+    this.touchPointer = null;
+    this.touchX.set(0);
+    this.touchY.set(0);
+  }
+
+  private readInput(): MatchCommand {
     const gamepad = typeof navigator !== 'undefined' ? navigator.getGamepads?.()[0] : null;
     const axisX = Math.abs(gamepad?.axes[0] ?? 0) > 0.18 ? gamepad!.axes[0] : 0;
     const axisY = Math.abs(gamepad?.axes[1] ?? 0) > 0.18 ? gamepad!.axes[1] : 0;
-    const keyboardX = (this.keys.has('ArrowRight') || this.keys.has('KeyD') ? 1 : 0) -
-      (this.keys.has('ArrowLeft') || this.keys.has('KeyA') ? 1 : 0);
-    const keyboardY = (this.keys.has('ArrowDown') || this.keys.has('KeyS') ? 1 : 0) -
-      (this.keys.has('ArrowUp') || this.keys.has('KeyW') ? 1 : 0);
+    const keyboardX = (this.keys.has('ArrowRight') || this.keys.has('KeyD') ? 1 : 0) - (this.keys.has('ArrowLeft') || this.keys.has('KeyA') ? 1 : 0);
+    const keyboardY = (this.keys.has('ArrowDown') || this.keys.has('KeyS') ? 1 : 0) - (this.keys.has('ArrowUp') || this.keys.has('KeyW') ? 1 : 0);
+    const touches = this.touchActions();
+    const gamepadActive = !!gamepad && (Math.abs(axisX) + Math.abs(axisY) > 0 || gamepad.buttons.some((button) => button.pressed));
+    if (gamepadActive) {
+      this.gamepadSeen = true;
+      this.inputDevice.set('gamepad');
+    } else if (this.touchX() || this.touchY() || Object.values(touches).some(Boolean)) this.inputDevice.set('touch');
+    else if (keyboardX || keyboardY || [...this.keys].some((key) => key.startsWith('Key') || key.startsWith('Shift') || key === 'Space')) this.inputDevice.set('keyboard');
+    const moveX = clampInput(keyboardX + axisX + this.touchX());
+    const moveY = clampInput(keyboardY + axisY + this.touchY());
     return {
-      moveX: Math.max(-1, Math.min(1, keyboardX + axisX + this.touchX())),
-      moveY: Math.max(-1, Math.min(1, keyboardY + axisY + this.touchY())),
-      sprint: this.keys.has('ShiftLeft') || this.keys.has('ShiftRight') || !!gamepad?.buttons[7]?.pressed || this.touchSprint(),
-      pass: this.keys.has('KeyJ') || !!gamepad?.buttons[0]?.pressed || this.touchPass(),
-      through: this.keys.has('KeyK') || !!gamepad?.buttons[3]?.pressed || this.touchThrough(),
-      shoot: this.keys.has('KeyL') || !!gamepad?.buttons[1]?.pressed || this.touchShoot(),
-      switchPlayer: this.keys.has('Space') || !!gamepad?.buttons[4]?.pressed || this.touchSwitch(),
+      moveX,
+      moveY,
+      aimX: moveX,
+      aimY: moveY,
+      sprint: this.keys.has('ShiftLeft') || this.keys.has('ShiftRight') || !!gamepad?.buttons[7]?.pressed || touches.sprint,
+      pass: this.keys.has('KeyJ') || !!gamepad?.buttons[0]?.pressed || touches.pass,
+      through: this.keys.has('KeyK') || !!gamepad?.buttons[3]?.pressed || touches.through,
+      lob: this.keys.has('KeyU') || !!gamepad?.buttons[2]?.pressed || touches.lob,
+      shoot: this.keys.has('KeyL') || !!gamepad?.buttons[1]?.pressed || touches.shoot,
+      skill: this.keys.has('KeyI') || !!gamepad?.buttons[5]?.pressed || touches.skill,
+      switchPlayer: this.keys.has('Space') || !!gamepad?.buttons[4]?.pressed || touches.switch,
+      keeperRush: this.keys.has('KeyK') || !!gamepad?.buttons[3]?.pressed,
+      tacticX: 0,
+      tacticY: 0,
+      pause: false,
+      device: this.inputDevice(),
     };
   }
 
-  ngOnDestroy(): void {
+  private validateLineup(team: Team | null): string[] {
+    if (!team) return ['Kein kontrolliertes Team verfügbar.'];
+    const ids = team.formation.slots.map((slot) => slot.playerId).filter((id): id is string => !!id);
+    const players = ids.map((id) => team.players.find((player) => player.id === id)).filter((player): player is Player => !!player);
+    const errors: string[] = [];
+    if (ids.length !== 11 || players.length !== 11) errors.push('Die Startelf muss exakt elf gültige Spieler enthalten.');
+    if (new Set(ids).size !== ids.length) errors.push('Ein Spieler ist mehrfach aufgestellt.');
+    if (players.filter((player) => player.positionGroup === 'GK').length !== 1) errors.push('Die Startelf benötigt genau einen Torwart.');
+    if (players.some((player) => player.injuryWeeks > 0)) errors.push('Verletzte Spieler müssen aus der Startelf entfernt werden.');
+    return errors;
+  }
+
+  private resetInputs(): void {
+    this.keys.clear();
+    this.touchX.set(0);
+    this.touchY.set(0);
+    this.touchActions.set({ sprint: false, pass: false, through: false, lob: false, shoot: false, skill: false, switch: false });
+  }
+
+  private reset(): void {
+    if (this.introTimer) clearTimeout(this.introTimer);
     cancelAnimationFrame(this.raf);
-    this.renderer?.destroy();
-    this.arcadeRenderer?.destroy();
-    window.removeEventListener('keydown', this.keyDown);
-    window.removeEventListener('keyup', this.keyUp);
+    this.destroyRenderer();
+    this.arcade = null;
+    this.result.set(null);
+    this.revealed.set([]);
+    this.phase.set('preview');
     this.audio.stopMusic();
   }
+
+  private destroyRenderer(): void {
+    this.renderer?.destroy();
+    this.renderer = null;
+    this.raf = 0;
+  }
+
+  private stableSeed(value: string): number {
+    let hash = 2166136261;
+    for (let index = 0; index < value.length; index++) {
+      hash ^= value.charCodeAt(index);
+      hash = Math.imul(hash, 16777619);
+    }
+    return hash >>> 0;
+  }
+
+  private colorDistance(first: string, second: string): number {
+    const parse = (hex: string) => [parseInt(hex.slice(1, 3), 16), parseInt(hex.slice(3, 5), 16), parseInt(hex.slice(5, 7), 16)];
+    const a = parse(first);
+    const b = parse(second);
+    return Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
+  }
+
+  ngOnDestroy(): void {
+    if (this.introTimer) clearTimeout(this.introTimer);
+    cancelAnimationFrame(this.raf);
+    this.destroyRenderer();
+    window.removeEventListener('keydown', this.keyDown);
+    window.removeEventListener('keyup', this.keyUp);
+    window.removeEventListener('blur', this.blur);
+    window.removeEventListener('gamepaddisconnected', this.gamepadDisconnected);
+    document.removeEventListener('visibilitychange', this.visibilityChange);
+    this.audio.stopMusic();
+  }
+}
+
+function clampInput(value: number): number {
+  return Math.max(-1, Math.min(1, value));
 }

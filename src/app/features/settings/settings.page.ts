@@ -30,6 +30,7 @@ export class SettingsPage {
 
   protected readonly difficulties: GameSettings['difficulty'][] = ['easy', 'normal', 'hard'];
   protected readonly durations: GameSettings['matchDuration'][] = [3, 5, 8];
+  protected readonly assistPresets: GameSettings['assistPreset'][] = ['assisted', 'balanced', 'manual'];
   protected readonly perkPaths = ['coaching', 'tactics', 'scouting', 'leadership'] as const;
 
   protected setDifficulty(d: GameSettings['difficulty']): void {
@@ -46,6 +47,18 @@ export class SettingsPage {
 
   protected setDuration(duration: GameSettings['matchDuration']): void {
     this.gs.mutate((draft) => (draft.settings.matchDuration = duration));
+  }
+
+  protected setAssistPreset(preset: GameSettings['assistPreset']): void {
+    this.gs.mutate((draft) => (draft.settings.assistPreset = preset));
+  }
+
+  protected toggleCameraShake(): void {
+    this.gs.mutate((draft) => (draft.settings.cameraShake = !draft.settings.cameraShake));
+  }
+
+  protected toggleReducedMotion(): void {
+    this.gs.mutate((draft) => (draft.settings.reducedMotion = !draft.settings.reducedMotion));
   }
 
   protected setVolume(kind: 'musicVolume' | 'sfxVolume', event: Event): void {

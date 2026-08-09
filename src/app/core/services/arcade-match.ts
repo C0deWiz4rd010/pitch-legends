@@ -370,6 +370,24 @@ export class ArcadeMatch {
     return this.finalResult!;
   }
 
+  forfeitControlled(): MatchResult {
+    const losingByAtLeastThree = this.controlledSide === 'home'
+      ? this.awayScore - this.homeScore >= 3
+      : this.homeScore - this.awayScore >= 3;
+    if (!losingByAtLeastThree) {
+      if (this.controlledSide === 'home') {
+        this.homeScore = 0;
+        this.awayScore = 3;
+      } else {
+        this.homeScore = 3;
+        this.awayScore = 0;
+      }
+    }
+    this.events.push({ minute: this.footballMinute, type: 'commentary', side: this.controlledSide, playerId: null, text: 'Match forfeited.' });
+    this.finish();
+    return this.finalResult!;
+  }
+
   snapshot(): MatchSnapshot {
     return {
       tick: this.tick,
@@ -868,7 +886,6 @@ export class ArcadeMatch {
       this.ball.controlledTouch += dt;
       return;
     }
-    const rainFactor = this.config.weather === 'rain' ? 1.08 : this.config.weather === 'storm' ? 1.05 : 1;
     this.ball.x += this.ball.vx * dt;
     this.ball.y += this.ball.vy * dt;
     this.ball.z += this.ball.vz * dt;
@@ -879,7 +896,7 @@ export class ArcadeMatch {
       if (this.ball.vz < -1) this.ball.vz = -this.ball.vz * 0.48;
       else this.ball.vz = 0;
       this.ball.z = 0;
-      const friction = Math.pow((this.config.weather === 'rain' ? 0.91 : 0.87) * rainFactor, dt);
+      const friction = Math.pow(this.config.weather === 'rain' ? 0.9 : this.config.weather === 'storm' ? 0.885 : 0.87, dt);
       this.ball.vx *= friction;
       this.ball.vy *= friction;
       this.ball.spin *= Math.pow(0.35, dt);
@@ -1127,6 +1144,7 @@ export class ArcadeMatch {
       ratings: { ...this.ratings },
       contributions: structuredClone(this.contributions),
       heatmaps: structuredClone(this.heatmaps),
+      endingFitness: Object.fromEntries(this.actors.map((actor) => [actor.player.id, round(actor.stamina, 1)])),
       played: true,
     };
   }

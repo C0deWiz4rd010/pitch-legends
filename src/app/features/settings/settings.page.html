@@ -53,8 +53,18 @@
         }
       </div>
     </div>
+    <div class="setting">
+      <span>Match assist</span>
+      <div class="mini-seg">
+        @for (preset of assistPresets; track preset) {
+          <button [class.active]="gs.game()?.settings?.assistPreset === preset" (click)="setAssistPreset(preset)">{{ preset }}</button>
+        }
+      </div>
+    </div>
     <label class="toggle"><input type="checkbox" [checked]="gs.game()?.settings?.autoSave" (change)="toggleAutosave()" /><span>{{ 'settings.autosave' | t }}</span></label>
     <label class="toggle"><input type="checkbox" [checked]="gs.game()?.settings?.soundEnabled" (change)="toggleSound()" /><span>{{ 'settings.sound' | t }}</span></label>
+    <label class="toggle"><input type="checkbox" [checked]="gs.game()?.settings?.cameraShake" (change)="toggleCameraShake()" /><span>Camera shake</span></label>
+    <label class="toggle"><input type="checkbox" [checked]="gs.game()?.settings?.reducedMotion" (change)="toggleReducedMotion()" /><span>Reduced motion</span></label>
     <label class="range"><span>{{ 'settings.music' | t }}</span><input type="range" min="0" max="1" step="0.05" [value]="gs.game()?.settings?.musicVolume" (input)="setVolume('musicVolume', $event)" /></label>
     <label class="range"><span>{{ 'settings.sfx' | t }}</span><input type="range" min="0" max="1" step="0.05" [value]="gs.game()?.settings?.sfxVolume" (input)="setVolume('sfxVolume', $event)" /></label>
   </div>
