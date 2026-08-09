@@ -4,10 +4,12 @@ import { Router } from '@angular/router';
 import { GameStateService } from '../../core/services/game-state.service';
 import { SaveService } from '../../core/services/save.service';
 import { Difficulty } from '../../models/game.model';
+import { I18nPipe } from '../../shared/i18n.pipe';
+import { I18nService } from '../../core/services/i18n.service';
 
 @Component({
   selector: 'app-start',
-  imports: [FormsModule],
+  imports: [FormsModule, I18nPipe],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './start.component.html',
   styleUrl: './start.component.scss',
@@ -16,6 +18,7 @@ export class StartComponent {
   private readonly gs = inject(GameStateService);
   private readonly saves = inject(SaveService);
   private readonly router = inject(Router);
+  protected readonly i18n = inject(I18nService);
 
   readonly managerName = signal('');
   readonly clubName = signal('');
@@ -26,6 +29,7 @@ export class StartComponent {
   readonly error = signal('');
 
   readonly hasSave = this.saves.hasSave();
+  readonly hasLegacySave = this.saves.hasLegacySave();
 
   readonly presets = [
     { primary: '#38e07b', secondary: '#04240f' },
@@ -48,6 +52,7 @@ export class StartComponent {
       primary: this.primary(),
       secondary: this.secondary(),
       difficulty: this.difficulty(),
+      locale: this.i18n.locale(),
     });
     this.router.navigateByUrl('/');
   }

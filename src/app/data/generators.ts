@@ -259,6 +259,7 @@ export interface NewGameOptions {
   primary?: string;
   secondary?: string;
   difficulty?: 'easy' | 'normal' | 'hard';
+  locale?: 'de' | 'en';
   seed?: number;
 }
 
@@ -319,7 +320,11 @@ export function createNewGame(opts: NewGameOptions): GameState {
         params: { club: playerIdentity.name, manager: opts.managerName || 'Boss' },
       },
     ],
-    settings: { ...defaultSettings(), difficulty: opts.difficulty ?? 'normal' },
+    settings: {
+      ...defaultSettings(),
+      difficulty: opts.difficulty ?? 'normal',
+      locale: opts.locale ?? 'de',
+    },
     manager: {
       level: 1,
       xp: 0,

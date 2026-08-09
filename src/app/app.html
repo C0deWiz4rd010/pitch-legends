@@ -2,9 +2,9 @@
   <div class="layout" [class.menu-open]="menuOpen()">
     <aside class="sidebar">
       <div class="brand">
-        <span class="logo">⚽</span>
+        <span class="logo" aria-hidden="true">PL</span>
         <div class="brand-text">
-          <strong>Pitch Legends</strong>
+          <strong>{{ 'app.title' | t }}</strong>
           <small>{{ gs.playerTeam()?.name }}</small>
         </div>
       </div>
@@ -17,12 +17,12 @@
             (click)="menuOpen.set(false)"
           >
             <span class="icon">{{ item.icon }}</span>
-            <span>{{ item.label }}</span>
+            <span>{{ item.labelKey | t }}</span>
           </a>
         }
       </nav>
       <div class="sidebar-foot">
-        <span class="chip">Season {{ gs.season() }}</span>
+        <span class="chip">{{ 'app.season' | t }} {{ gs.season() }}</span>
       </div>
     </aside>
 
@@ -35,14 +35,14 @@
         </div>
         <div class="spacer"></div>
         <div class="stat-pill">
-          <span class="k">Week</span>
+          <span class="k">{{ 'app.week' | t }}</span>
           <span class="v tabular">{{ gs.currentWeek() }}<small>/{{ gs.totalWeeks() }}</small></span>
         </div>
         <div class="stat-pill coins">
-          <span class="k">🪙</span>
+          <span class="k pixel-coin">C</span>
           <span class="v tabular">{{ coins() }}</span>
         </div>
-        <a routerLink="/match" class="btn btn--primary btn--sm play">▶ Play</a>
+        <a routerLink="/match" class="btn btn--primary btn--sm play">▶ {{ 'app.play' | t }}</a>
       </header>
 
       <main class="content scroll">

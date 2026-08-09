@@ -1,44 +1,38 @@
-// ── Reusable SCSS mixins & helpers ──────────────────────────────────────────
-
 @mixin card {
-  background: linear-gradient(180deg, var(--surface-2), var(--surface));
-  border: 1px solid var(--border);
+  background: var(--surface);
+  border: var(--pixel) solid var(--border);
+  border-top-color: var(--panel-hi);
+  border-left-color: var(--panel-hi);
   border-radius: var(--r-lg);
   box-shadow: var(--shadow-1);
 }
 
 @mixin glass {
-  background: rgba(19, 28, 48, 0.72);
-  backdrop-filter: blur(10px);
-  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--surface) 92%, transparent);
+  border: var(--pixel) solid var(--border);
 }
 
 @mixin scrollbar {
-  &::-webkit-scrollbar {
-    width: 10px;
-    height: 10px;
-  }
+  scrollbar-color: var(--accent-2) var(--bg-900);
+  scrollbar-width: thin;
+  &::-webkit-scrollbar { width: 10px; height: 10px; }
   &::-webkit-scrollbar-thumb {
-    background: var(--surface-3);
-    border-radius: 8px;
-    border: 2px solid transparent;
-    background-clip: padding-box;
+    background: var(--accent-2);
+    border: 2px solid var(--bg-900);
+    border-radius: 0;
   }
-  &::-webkit-scrollbar-track {
-    background: transparent;
-  }
+  &::-webkit-scrollbar-track { background: var(--bg-900); }
 }
 
 @mixin focus-ring {
-  outline: none;
-  box-shadow: 0 0 0 2px var(--bg-900), 0 0 0 4px var(--accent);
+  outline: 2px solid var(--accent-3);
+  outline-offset: 3px;
+  box-shadow: 0 0 0 2px var(--bg-900);
 }
 
 @mixin clickable {
   cursor: pointer;
   user-select: none;
   transition: transform var(--t-fast), background var(--t-fast), border-color var(--t-fast);
-  &:active {
-    transform: translateY(1px);
-  }
+  &:active { transform: translate(2px, 2px); }
 }

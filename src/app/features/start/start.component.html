@@ -1,67 +1,66 @@
 <div class="start">
+  <div class="language" aria-label="Language">
+    <button [class.active]="i18n.locale() === 'de'" (click)="i18n.setLocale('de')">DE</button>
+    <button [class.active]="i18n.locale() === 'en'" (click)="i18n.setLocale('en')">EN</button>
+  </div>
+
   <div class="hero fade-up">
-    <div class="badge">⚽</div>
-    <h1>Pitch Legends</h1>
-    <p class="tagline">Build your club. Master the tactics. Forge legends.</p>
+    <div class="pixel-ball" aria-hidden="true"><i></i></div>
+    <p class="kicker">32-BIT FOOTBALL RPG</p>
+    <h1>PITCH<br /><span>LEGENDS</span></h1>
+    <p class="tagline">{{ 'start.tagline' | t }}</p>
   </div>
 
   <div class="panel fade-up">
     @if (hasSave) {
-      <button class="btn btn--primary btn--block continue" (click)="continueGame()">
-        ▶ Continue Career
-      </button>
-      <div class="divider"><span>or start fresh</span></div>
+      <button class="btn btn--primary btn--block continue" (click)="continueGame()">▶ {{ 'start.continue' | t }}</button>
+      <div class="divider"><span>{{ 'start.fresh' | t }}</span></div>
+    }
+
+    @if (hasLegacySave) {
+      <p class="legacy">! {{ 'start.legacy' | t }}</p>
     }
 
     <div class="form">
       <label>
-        <span class="eyebrow">Manager name</span>
-        <input [ngModel]="managerName()" (ngModelChange)="managerName.set($event)" placeholder="e.g. Alex Stone" />
+        <span class="eyebrow">{{ 'start.manager' | t }}</span>
+        <input [ngModel]="managerName()" (ngModelChange)="managerName.set($event)" placeholder="Alex Stone" />
       </label>
       <div class="two">
         <label>
-          <span class="eyebrow">Club name</span>
-          <input [ngModel]="clubName()" (ngModelChange)="clubName.set($event)" placeholder="e.g. Harbour City" />
+          <span class="eyebrow">{{ 'start.club' | t }}</span>
+          <input [ngModel]="clubName()" (ngModelChange)="clubName.set($event)" placeholder="Harbour City" />
         </label>
         <label>
-          <span class="eyebrow">Short (3)</span>
+          <span class="eyebrow">{{ 'start.short' | t }}</span>
           <input maxlength="3" [ngModel]="clubShort()" (ngModelChange)="clubShort.set($event)" placeholder="HBC" />
         </label>
       </div>
 
       <div>
-        <span class="eyebrow">Club colours</span>
+        <span class="eyebrow">{{ 'start.colors' | t }}</span>
         <div class="presets">
           @for (p of presets; track p.primary) {
-            <button
-              class="preset"
-              [class.active]="primary() === p.primary"
-              [style.background]="p.primary"
-              [style.borderColor]="p.secondary"
-              (click)="primary.set(p.primary); secondary.set(p.secondary)"
-              aria-label="Choose kit colour"
-            ></button>
+            <button class="preset" [class.active]="primary() === p.primary" [style.--preset]="p.primary"
+              (click)="primary.set(p.primary); secondary.set(p.secondary)" aria-label="Choose kit colour"></button>
           }
         </div>
       </div>
 
       <div>
-        <span class="eyebrow">Difficulty</span>
+        <span class="eyebrow">{{ 'start.difficulty' | t }}</span>
         <div class="segmented">
           @for (d of ['easy', 'normal', 'hard']; track d) {
-            <button [class.active]="difficulty() === d" (click)="difficulty.set($any(d))">{{ d }}</button>
+            <button [class.active]="difficulty() === d" (click)="difficulty.set($any(d))">{{ 'difficulty.' + d | t }}</button>
           }
         </div>
       </div>
 
-      @if (error()) {
-        <p class="error">{{ error() }}</p>
-      }
+      @if (error()) { <p class="error">{{ error() }}</p> }
 
-      <button class="btn btn--primary btn--block big" (click)="start()">Start Career ⚽</button>
-
+      <button class="btn btn--primary btn--block big" (click)="start()">{{ 'start.begin' | t }} ▶</button>
       <label class="import btn btn--ghost btn--block">
-        Import save (.json)
+        {{ 'start.import' | t }}
         <input type="file" accept="application/json" (change)="onImport($event)" hidden />
       </label>
     </div>

@@ -1,59 +1,63 @@
-// ── Pitch Legends design tokens ────────────────────────────────────────────
 :root {
-  // Surfaces (dark stadium night theme)
-  --bg-900: #0a0e14;
-  --bg-850: #0d1320;
-  --bg-800: #111a2b;
-  --bg-750: #16213a;
-  --bg-700: #1b2942;
-  --surface: #131c30;
-  --surface-2: #1a2540;
-  --surface-3: #223056;
-  --border: #2a3a5e;
-  --border-soft: #1f2c47;
+  color-scheme: dark;
 
-  // Text
-  --text: #e8eef7;
-  --text-dim: #9fb0c9;
-  --text-mute: #64748b;
+  // 32-bit night stadium palette
+  --ink-950: #050713;
+  --ink-900: #090d1f;
+  --ink-850: #0e1530;
+  --ink-800: #131d3b;
+  --ink-750: #19264a;
+  --ink-700: #22305a;
+  --panel-hi: #2b3d70;
 
-  // Brand / pitch
-  --pitch: #1f7a44;
-  --pitch-dark: #14522e;
-  --pitch-line: #cfe9d8;
+  --bg-900: var(--ink-950);
+  --bg-850: var(--ink-900);
+  --bg-800: var(--ink-850);
+  --bg-750: var(--ink-800);
+  --bg-700: var(--ink-750);
+  --surface: var(--ink-850);
+  --surface-2: var(--ink-800);
+  --surface-3: var(--ink-700);
+  --border: #49619a;
+  --border-soft: #2b3d70;
 
-  // Accents
-  --accent: #38e07b;      // neon green
-  --accent-2: #22d3ee;    // cyan
-  --accent-3: #f5c542;    // gold
-  --danger: #f5455c;
-  --danger-solid: #f5455c;
-  --warn: #f59e0b;
-  --good: #38e07b;
-  --info: #22d3ee;
+  --text: #f4f4df;
+  --text-dim: #bdc8e8;
+  --text-mute: #7787b4;
 
-  // Attribute rating colors
-  --rating-elite: #38e07b;
-  --rating-great: #86e06b;
-  --rating-good: #f5c542;
-  --rating-ok: #f59e0b;
-  --rating-poor: #f5455c;
+  --pitch: #27a45e;
+  --pitch-dark: #12623e;
+  --pitch-line: #e8f5d2;
+  --accent: #54f28b;
+  --accent-2: #37d8ff;
+  --accent-3: #ffd34e;
+  --accent-4: #e55bff;
+  --danger: #ff4f78;
+  --danger-solid: #d93461;
+  --warn: #ff9f43;
+  --good: #54f28b;
+  --info: #37d8ff;
 
-  // Radii & shadows
-  --r-sm: 6px;
-  --r-md: 10px;
-  --r-lg: 16px;
-  --r-xl: 22px;
-  --shadow-1: 0 2px 8px rgba(0, 0, 0, 0.35);
-  --shadow-2: 0 8px 24px rgba(0, 0, 0, 0.45);
-  --shadow-glow: 0 0 0 1px rgba(56, 224, 123, 0.25), 0 0 22px rgba(56, 224, 123, 0.18);
+  --rating-elite: #54f28b;
+  --rating-great: #a5ed62;
+  --rating-good: #ffd34e;
+  --rating-ok: #ff9f43;
+  --rating-poor: #ff4f78;
 
-  // Layout
-  --sidebar-w: 248px;
-  --topbar-h: 62px;
-  --maxw: 1320px;
+  --r-sm: 0;
+  --r-md: 2px;
+  --r-lg: 2px;
+  --r-xl: 2px;
+  --pixel: 2px;
+  --shadow-1: 4px 4px 0 #03040a;
+  --shadow-2: 8px 8px 0 rgba(1, 2, 8, 0.9);
+  --shadow-glow: 0 0 0 2px #0a122c, 0 0 0 4px var(--accent), 6px 6px 0 #02040a;
 
-  // Motion
-  --t-fast: 120ms ease;
-  --t-med: 220ms cubic-bezier(0.4, 0, 0.2, 1);
+  --font-display: 'Silkscreen', 'Courier New', monospace;
+  --font-body: 'IBM Plex Mono', Consolas, monospace;
+  --sidebar-w: 236px;
+  --topbar-h: 64px;
+  --maxw: 1380px;
+  --t-fast: 100ms steps(2, end);
+  --t-med: 180ms steps(4, end);
 }
