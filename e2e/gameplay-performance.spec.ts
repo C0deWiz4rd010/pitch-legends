@@ -77,10 +77,15 @@ test('real match accepts the full keyboard flow and keeps smooth frame pacing', 
     const percentile = (p: number) => sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * p))] ?? 0;
     return { count: sorted.length, median: percentile(0.5), p95: percentile(0.95), p99: percentile(0.99), longTasks: value.longTasks };
   });
-  const p95Limit = process.env['CI'] ? Math.max(20, metrics.median * 1.35) : 20;
-  const p99Limit = process.env['CI'] ? Math.max(35, metrics.median * 2) : 35;
+  // A shared GitHub runner can quota headless Chromium down to 30 or 20 Hz.
+  // Local reference runs remain the strict 60 Hz performance benchmark; CI
+  // guards against additional jank and long main-thread work under that quota.
+  const medianLimit = process.env['CI'] ? 35 : 18;
+  const p95Limit = process.env['CI'] ? 55 : 20;
+  const p99Limit = process.env['CI'] ? 85 : 35;
 
   expect(metrics.count).toBeGreaterThan(100);
+  expect(metrics.median).toBeLessThanOrEqual(medianLimit);
   expect(metrics.p95).toBeLessThanOrEqual(p95Limit);
   expect(metrics.p99).toBeLessThanOrEqual(p99Limit);
   expect(metrics.longTasks).toEqual([]);
