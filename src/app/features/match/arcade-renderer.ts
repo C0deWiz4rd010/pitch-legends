@@ -318,26 +318,26 @@ export class ArcadePitchRenderer {
   private drawActor(actor: ArcadeActor, position: ArcadeActor | PlayerRuntimeSnapshot, match: ArcadeMatch, selectedId: string, renderTick: number): void {
     const ctx = this.ctx;
     const point = this.worldToScreen(match, position.x, position.y);
-    if (point.x < -20 || point.x > this.w + 20 || point.y < -25 || point.y > this.h + 25) return;
+    if (point.x < -24 || point.x > this.w + 24 || point.y < -42 || point.y > this.h + 28) return;
     const x = Math.round(point.x);
     const y = Math.round(point.y);
     const team = actor.side === 'home' ? match.home : match.away;
     const selected = actor.player.id === selectedId;
     ctx.fillStyle = 'rgba(2,4,10,.48)';
-    ctx.fillRect(x - 8, y + 8, 17, 4);
+    ctx.fillRect(x - 9, y + 8, 19, 4);
     if (selected) {
       ctx.fillStyle = '#ffd34e';
-      ctx.fillRect(x - 8, y - 20, 16, 3);
-      ctx.fillRect(x - 4, y - 17, 8, 2);
+      ctx.fillRect(x - 9, y - 39, 18, 3);
+      ctx.fillRect(x - 4, y - 36, 8, 2);
     }
     if (position.card === 'yellow') {
       ctx.fillStyle = '#ffd34e';
-      ctx.fillRect(x + 8, y - 18, 3, 5);
+      ctx.fillRect(x + 10, y - 32, 3, 5);
     }
     const kit = this.kitFor(actor, match);
     try {
       const sprite = this.sprites.get(actor, position, kit, renderTick);
-      ctx.drawImage(sprite, x - 16, y - 29, 32, 40);
+      ctx.drawImage(sprite, x - 20, y - 38, 40, 48);
     } catch {
       this.drawPrimitiveActor(x, y, kit, actor.player.kitNumber);
     }
@@ -656,6 +656,7 @@ export function interpolateMatchRenderFrame(frame: MatchRenderFrame): MatchRende
       facingX: facingX / facingLength,
       facingY: facingY / facingLength,
       fitness: lerp(previous.fitness, current.fitness, alpha),
+      animationDistance: lerp(previous.animationDistance ?? 0, current.animationDistance ?? 0, alpha),
     };
   });
   return {

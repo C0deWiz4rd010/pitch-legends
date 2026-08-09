@@ -73,6 +73,7 @@ export interface ArcadeActor {
   tackleCooldown: number;
   intentX: number;
   intentY: number;
+  animationDistance: number;
 }
 
 export interface ArcadeBall {
@@ -576,7 +577,9 @@ export class ArcadeMatch {
   }
 
   stateHash(): string {
-    const json = JSON.stringify({ snapshot: this.snapshot(), rng: this.rng.snapshot(), events: this.events });
+    const snapshot = this.snapshot();
+    const players = snapshot.players.map(({ animationDistance: _presentationOnly, ...player }) => player);
+    const json = JSON.stringify({ snapshot: { ...snapshot, players }, rng: this.rng.snapshot(), events: this.events });
     let hash = 2166136261;
     for (let index = 0; index < json.length; index++) {
       hash ^= json.charCodeAt(index);
@@ -623,6 +626,7 @@ export class ArcadeMatch {
         tackleCooldown: 0,
         intentX: x,
         intentY: y,
+        animationDistance: 0,
       });
       this.ratings[player.id] = 6.5;
       this.contributions[player.id] = emptyContribution();
@@ -689,6 +693,8 @@ export class ArcadeMatch {
   }
 
   private moveActor(actor: ArcadeActor, dx: number, dy: number, sprint: boolean, dt: number): void {
+    const previousX = actor.x;
+    const previousY = actor.y;
     const magnitude = Math.hypot(dx, dy);
     const nx = magnitude > 0.001 ? dx / magnitude : 0;
     const ny = magnitude > 0.001 ? dy / magnitude : 0;
@@ -712,6 +718,7 @@ export class ArcadeMatch {
     }
     actor.x = clamp(actor.x + actor.vx * dt, 0.8, FIELD_LENGTH - 0.8);
     actor.y = clamp(actor.y + actor.vy * dt, 0.8, FIELD_WIDTH - 0.8);
+    actor.animationDistance += Math.hypot(actor.x - previousX, actor.y - previousY);
     const footballMinutes = dt * 90 / this.totalSeconds;
     const pressureCost = this.teamOf(actor.side).tactics.pressing === 'gegenpress' ? 0.16 : 0;
     const drain = (magnitude > 0.1 ? 0.2 : 0.06) + (sprint ? 0.56 : 0) + (ownsBall ? 0.05 : 0) + pressureCost;
@@ -1514,6 +1521,7 @@ export class ArcadeMatch {
       tackleCooldown: actor.tackleCooldown,
       intentX: actor.intentX,
       intentY: actor.intentY,
+      animationDistance: actor.animationDistance,
     };
   }
 
@@ -1536,6 +1544,7 @@ export class ArcadeMatch {
     actor.tackleCooldown = saved.tackleCooldown;
     actor.intentX = saved.intentX;
     actor.intentY = saved.intentY;
+    actor.animationDistance = saved.animationDistance ?? 0;
   }
 
   private ballSnapshot(): BallSnapshot {

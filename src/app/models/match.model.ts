@@ -224,6 +224,8 @@ export interface PlayerRuntimeSnapshot {
   tackleCooldown: number;
   intentX: number;
   intentY: number;
+  /** Presentation-only locomotion phase in travelled metres; excluded from simulation hashes. */
+  animationDistance: number;
 }
 
 export interface BallSnapshot {
