@@ -2,6 +2,7 @@ import { TestBed } from '@angular/core/testing';
 import { createNewGame } from './data/generators';
 import { TrainingSessionPlan } from './models/game.model';
 import { TrainingService } from './core/services/training.service';
+import { SaveService } from './core/services/save.service';
 
 describe('Training camp V2', () => {
   let service: TrainingService;
@@ -83,5 +84,13 @@ describe('Training camp V2', () => {
     expect(service.executePlan(game, [recovery]).ok).toBe(true);
     expect(player.fitness).toBe(50); // execution is atomic and replaces the club's player collection
     expect(game.teams.find((team) => team.id === game.clubId)!.players.find((candidate) => candidate.id === player.id)!.fitness).toBe(80);
+  });
+
+  it('loads older V4 saves without the new result list', () => {
+    const game = createNewGame({ managerName: 'Compat', clubName: 'Compat FC', seed: 1405 });
+    delete (game.trainingWeek as unknown as { completedSessions?: unknown }).completedSessions;
+    const parsed = TestBed.inject(SaveService).parseImport(JSON.stringify(game));
+    expect(parsed.trainingWeek.completedSessions).toEqual([]);
+    expect(parsed.version).toBe(4);
   });
 });
