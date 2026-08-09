@@ -4,6 +4,14 @@ All notable changes to Pitch Legends are recorded here. Releases follow
 [Semantic Versioning](https://semver.org/) and are generated from Conventional
 Commits by Release Please.
 
+## [1.4.1](https://github.com/C0deWiz4rd010/pitch-legends/compare/pitch-legends-v1.4.0...pitch-legends-v1.4.1) (2026-08-09)
+
+
+### Bug Fixes
+
+* **dashboard:** contain mobile objective progress ([218b6e9](https://github.com/C0deWiz4rd010/pitch-legends/commit/218b6e9e2c818df376bbe93dcfb1c3c4151934fd))
+* **pwa:** add branded install icons and manifest ([288ec13](https://github.com/C0deWiz4rd010/pitch-legends/commit/288ec135bf4b6d7d224633d859fb94549c291e6d))
+
 ## [1.4.0](https://github.com/C0deWiz4rd010/pitch-legends/compare/pitch-legends-v1.3.0...pitch-legends-v1.4.0) (2026-08-09)
 
 
