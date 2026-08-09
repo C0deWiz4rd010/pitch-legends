@@ -240,8 +240,9 @@ export function submitPlayerContract(game: GameState, negotiationId: string, pro
   if (!located) return { ok: false, reason: 'Spieler nicht gefunden.' };
   const expected = recommendedContract(located.player);
   const roleWeight = { prospect: 0.86, rotation: 0.94, starter: 1, star: 1.1 }[proposal.squadRole];
+  const expectedRoleWeight = { prospect: 0.86, rotation: 0.94, starter: 1, star: 1.1 }[expected.squadRole];
   const effective = proposal.salary * roleWeight + proposal.signingBonus / Math.max(52, proposal.weeks);
-  const required = expected.salary + expected.signingBonus / expected.weeks;
+  const required = expected.salary * expectedRoleWeight + expected.signingBonus / expected.weeks;
   negotiation.contract = { ...proposal, salary: Math.max(0, Math.round(proposal.salary / 50) * 50), signingBonus: Math.max(0, Math.round(proposal.signingBonus / 500) * 500) };
   if (effective >= required) return executeNegotiation(game, negotiation);
   if (effective >= required * 0.85 && !negotiation.agentCounterUsed) {

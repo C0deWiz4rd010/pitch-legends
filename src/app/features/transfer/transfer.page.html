@@ -1,102 +1,224 @@
-<header class="page-head fade-up">
+<header class="transfer-head fade-up">
   <div>
-    <p class="eyebrow">Transfer Market · {{ gs.squad().length }}/{{ maxSquad }} squad</p>
-    <h1>Transfers</h1>
+    <p class="eyebrow">{{ 'transfer.eyebrow' | t }} · {{ gs.squad().length }}/{{ maxSquad }}</p>
+    <h1>{{ 'transfer.title' | t }}</h1>
+    <p>{{ 'transfer.subtitle' | t }}</p>
   </div>
-  <div class="budget">
-    <span class="muted">Budget</span>
-    <strong class="gold">CR {{ formatCoins(gs.coins()) }}</strong>
-  </div>
+  <div class="market-live"><i></i>{{ 'transfer.alwaysOpen' | t }}</div>
 </header>
 
-<div class="toolbar fade-up">
-  <div class="segmented">
-    <button [class.active]="tab() === 'buy'" (click)="tab.set('buy')">Buy</button>
-    <button [class.active]="tab() === 'sell'" (click)="tab.set('sell')">Sell</button>
-    <button [class.active]="tab() === 'contracts'" (click)="tab.set('contracts')">Contracts</button>
-  </div>
-  @if (tab() === 'buy') {
-    <div class="market-filters">
-      <input type="search" placeholder="SEARCH PLAYER" [value]="search()" (input)="search.set($any($event.target).value)" />
-      <select [value]="positionFilter()" (change)="positionFilter.set($any($event.target).value)">
-        @for (position of positions; track position) { <option [value]="position">{{ position }}</option> }
-      </select>
-      <button class="btn btn--ghost btn--sm" (click)="refresh()">SCOUT NEW ({{ formatCoins(transfers.refreshCost) }})</button>
-    </div>
-  }
-</div>
+<section class="finance-strip fade-up" aria-label="Transferbudget">
+  <div><span>{{ 'transfer.budget' | t }}</span><strong>CR {{ formatCoins(finances().budget) }}</strong></div>
+  <div><span>{{ 'transfer.wages' | t }}</span><strong>{{ formatCoins(finances().weeklyWages) }} / {{ formatCoins(finances().wageBudget) }}</strong></div>
+  <div><span>{{ 'transfer.wageRoom' | t }}</span><strong [class.warn]="finances().wageRoom < 1000">CR {{ formatCoins(finances().wageRoom) }}</strong></div>
+  <div class="reserve"><span>{{ 'transfer.reserve' | t }}</span><strong>CR {{ formatCoins(finances().spendableAfterReserve) }}</strong><small>{{ 'transfer.reserveHint' | t }}</small></div>
+  <div><span>{{ 'transfer.openOffers' | t }}</span><strong>{{ transfers.negotiations().length }}</strong></div>
+</section>
+
+<nav class="market-tabs fade-up" aria-label="Transferbereiche">
+  <button [class.active]="tab() === 'market'" (click)="selectTab('market')">{{ 'transfer.tab.market' | t }}</button>
+  <button [class.active]="tab() === 'shortlist'" (click)="selectTab('shortlist')">{{ 'transfer.tab.shortlist' | t }} <b>{{ transfers.shortlist().length }}</b></button>
+  <button [class.active]="tab() === 'offers'" (click)="selectTab('offers')">{{ 'transfer.tab.offers' | t }} <b>{{ transfers.incomingOffers().length }}</b></button>
+  <button [class.active]="tab() === 'squad'" (click)="selectTab('squad')">{{ 'transfer.tab.squad' | t }}</button>
+</nav>
 
 @if (message()) {
-  <div class="toast fade-up">{{ message() }}</div>
+  <div class="market-message fade-up" role="status"><span>!</span>{{ message() }}<button aria-label="Meldung schließen" (click)="message.set('')">×</button></div>
 }
 
-<div class="grid fade-up">
-  @if (tab() === 'buy') {
-    @for (p of filteredMarket(); track p.id) {
-      <div class="pcard">
-        <div class="pc-top">
-          <span class="rating" [style.background]="ratingColor(p.overall)">{{ estimatedRating(p) }}</span>
-          <div class="pc-id">
-            <strong>{{ playerName(p) }}</strong>
-            <span class="muted">{{ p.position }} · {{ p.age }}y · {{ p.nationality }}</span>
-          </div>
-        </div>
-        <div class="pc-attrs">
-          <span>PAC {{ p.attributes.pace }}</span>
-          <span>SHO {{ p.attributes.shooting }}</span>
-          <span>PAS {{ p.attributes.passing }}</span>
-          <span>DRI {{ p.attributes.dribbling }}</span>
-          <span>DEF {{ p.attributes.defending }}</span>
-          <span>PHY {{ p.attributes.physical }}</span>
-        </div>
-        <div class="pc-foot">
-          <span class="value gold">CR {{ formatCoins(p.marketValue) }} · W {{ formatCoins(p.salary) }}</span>
-          <button class="btn btn--primary btn--sm" [disabled]="gs.coins() < p.marketValue" (click)="buy(p)">Sign</button>
-        </div>
-      </div>
-    } @empty {
-      <p class="muted">No players available. Scout for more.</p>
-    }
-  } @else if (tab() === 'sell') {
-    @for (p of squad(); track p.id) {
-      <div class="pcard">
-        <div class="pc-top">
-          <span class="rating" [style.background]="ratingColor(p.overall)">{{ p.overall }}</span>
-          <div class="pc-id">
-            <strong>{{ playerName(p) }}</strong>
-            <span class="muted">{{ p.position }} · {{ p.age }}y · Lv {{ p.level }}</span>
-          </div>
-        </div>
-        <div class="pc-attrs">
-          <span>PAC {{ p.attributes.pace }}</span>
-          <span>SHO {{ p.attributes.shooting }}</span>
-          <span>PAS {{ p.attributes.passing }}</span>
-          <span>DRI {{ p.attributes.dribbling }}</span>
-          <span>DEF {{ p.attributes.defending }}</span>
-          <span>PHY {{ p.attributes.physical }}</span>
-        </div>
-        <div class="pc-foot">
-          <span class="value">Sell for <strong class="gold">CR {{ formatCoins(p.marketValue * 0.9) }}</strong></span>
-          <button class="btn btn--danger btn--sm" (click)="sell(p)">Sell</button>
-        </div>
-      </div>
-    }
-  } @else {
-    <div class="wage-summary card">
-      <span>WEEKLY WAGES</span>
-      <strong [class.danger]="wages() > (gs.playerTeam()?.wageBudget ?? 0)">{{ formatCoins(wages()) }} / {{ formatCoins(gs.playerTeam()?.wageBudget ?? 0) }}</strong>
+@if (tab() === 'market' || tab() === 'shortlist') {
+  <section class="filter-deck fade-up" aria-label="Marktfilter">
+    <label class="search-box"><span>⌕</span><input type="search" [placeholder]="'transfer.search' | t" [value]="search()" (input)="search.set($any($event.target).value)" /></label>
+    <select aria-label="Position" [value]="positionFilter()" (change)="positionFilter.set($any($event.target).value)">
+      @for (position of positions; track position) { <option [value]="position">{{ position }}</option> }
+    </select>
+    <select aria-label="Maximalpreis" [value]="priceCap()" (change)="setPriceCap($any($event.target).value)">
+      <option value="0">{{ 'transfer.price.all' | t }}</option>
+      <option value="100000">≤ 100k</option><option value="250000">≤ 250k</option><option value="500000">≤ 500k</option><option value="1000000">≤ 1M</option>
+    </select>
+    <select aria-label="Sortierung" [value]="sort()" (change)="sort.set($any($event.target).value)">
+      <option value="relevance">{{ 'transfer.sort.relevance' | t }}</option><option value="price">{{ 'transfer.sort.price' | t }}</option>
+      <option value="overall">{{ 'transfer.sort.overall' | t }}</option><option value="potential">{{ 'transfer.sort.potential' | t }}</option><option value="age">{{ 'transfer.sort.age' | t }}</option>
+    </select>
+    <div class="smart-filters">
+      <button [class.active]="affordableOnly()" (click)="affordableOnly.set(!affordableOnly())">{{ 'transfer.filter.affordable' | t }}</button>
+      <button [class.active]="improvesOnly()" (click)="improvesOnly.set(!improvesOnly())">↑ {{ 'transfer.filter.improves' | t }}</button>
+      <button [class.active]="u23Only()" (click)="u23Only.set(!u23Only())">U23</button>
+      <button [class.active]="loanOnly()" (click)="loanOnly.set(!loanOnly())">{{ 'transfer.filter.loan' | t }}</button>
+      <button [class.active]="listedOnly()" (click)="listedOnly.set(!listedOnly())">{{ 'transfer.filter.listed' | t }}</button>
     </div>
-    @for (p of contracts(); track p.id) {
-      <div class="pcard" [class.expiring]="p.contractWeeks <= 12">
-        <div class="pc-top">
-          <span class="rating" [style.background]="ratingColor(p.overall)">{{ p.overall }}</span>
-          <div class="pc-id"><strong>{{ playerName(p) }}</strong><span class="muted">{{ p.position }} · {{ p.contractWeeks }} weeks remaining</span></div>
+  </section>
+
+  @if (compareTargets().length) {
+    <section class="compare-dock" aria-label="Spielervergleich">
+      <strong>{{ 'transfer.compare' | t }}</strong>
+      @for (target of compareTargets(); track target.player.id) {
+        <button (click)="choose(target)"><span>{{ target.player.position }}</span>{{ playerName(target.player) }} <b>{{ overallLabel(target) }}</b></button>
+      }
+      <button class="clear" (click)="compareIds.set([])">×</button>
+    </section>
+  }
+
+  <main class="market-shell fade-up">
+    <section class="player-browser" #marketList (scroll)="rememberScroll($event)">
+      <header><span>{{ displayedTargets().length }} {{ 'transfer.players' | t }}</span><small>{{ 'transfer.rangeHint' | t }}</small></header>
+      @for (target of displayedTargets(); track target.player.id) {
+        <button class="player-row" [class.selected]="selectedTarget()?.player?.id === target.player.id" (click)="choose(target)">
+          <app-player-portrait [player]="target.player" [team]="$any(target.team)" [size]="48" />
+          <span class="position">{{ target.player.position }}</span>
+          <span class="identity"><strong>{{ playerName(target.player) }}</strong><small>
+            @if (target.team) { {{ target.team.shortName }} } @else { {{ 'transfer.freeAgent' | t }} } · {{ target.player.age }}
+          </small></span>
+          <span class="scout-rating" [style.--rating-color]="ratingColor(target.player.overall)">{{ overallLabel(target) }}</span>
+          <span class="key-stats">
+            @for (stat of relevant(target); track stat.key; let i = $index) { <i [class.best]="i < 2" [class.weak]="i === 2 && stat.value < 60">{{ stat.key.slice(0, 3).toUpperCase() }} <b>{{ statValue(target, stat.value) }}</b></i> }
+          </span>
+          <span class="price">@if (target.freeAgent) { {{ 'transfer.free' | t }} } @else { CR {{ formatCoins(target.askingPrice) }} }</span>
+          <span class="row-badges">@if (target.improvesStartingXi) { <i class="upgrade">XI ↑</i> } @if (target.loanAvailable) { <i>{{ 'transfer.loanShort' | t }}</i> }</span>
+        </button>
+      } @empty {
+        <div class="empty-state"><span>⌕</span><strong>{{ 'transfer.empty' | t }}</strong><p>{{ 'transfer.emptyHint' | t }}</p></div>
+      }
+    </section>
+
+    @if (selectedTarget(); as target) {
+      <aside class="player-dossier">
+        <div class="dossier-hero">
+          <div class="portrait-stack">
+            <app-player-portrait [player]="target.player" [team]="$any(target.team)" [size]="100" />
+            @if (target.team) { <app-club-crest [team]="target.team" [size]="42" /> } @else { <span class="free-badge">FA</span> }
+          </div>
+          <div><span class="eyebrow">{{ target.player.position }} · {{ target.player.nationality }}</span><h2>{{ playerName(target.player) }}</h2><p>{{ target.player.age }} {{ 'transfer.years' | t }} · {{ target.player.foot }} · POT {{ target.report ? target.report.potentialMin + '-' + target.report.potentialMax : '?' }}</p></div>
+          <span class="hero-rating" [style.background]="ratingColor(target.player.overall)">{{ overallLabel(target) }}</span>
         </div>
-        <div class="pc-foot">
-          <span class="value">W {{ formatCoins(p.salary) }} · FEE {{ formatCoins(transfers.renewalCost(p)) }}</span>
-          <button class="btn btn--primary btn--sm" (click)="renew(p)">+104 WEEKS</button>
+
+        <div class="dossier-tags">
+          @if (target.improvesStartingXi) { <span class="positive">↑ {{ 'transfer.upgradesXi' | t }}</span> }
+          @if (target.loanAvailable) { <span>{{ 'transfer.loanAvailable' | t }}</span> }
+          <span>{{ target.player.archetype }}</span>
         </div>
-      </div>
+
+        <div class="analysis-grid">
+          <app-radar-chart [attributes]="radarAttributes(target)" [size]="190" />
+          <div class="attribute-stack">
+            @for (stat of relevant(target); track stat.key; let i = $index) {
+              <div [class.best]="i < 2" [class.weak]="i === 2 && stat.value < 60"><span>{{ stat.key }}</span><b>{{ statValue(target, stat.value) }}</b><i [style.width.%]="stat.value"></i></div>
+            }
+          </div>
+        </div>
+
+        <section class="scout-note">
+          <div><strong>{{ 'transfer.scoutReport' | t }}</strong><span>@if (target.report) { {{ target.report.confidence }}% {{ 'transfer.confidence' | t }} } @else { {{ 'transfer.notScouted' | t }} }</span></div>
+          @if (!target.report) { <button class="btn btn--ghost btn--sm" (click)="scout(target)">{{ 'transfer.scout' | t }} · CR 2.5k</button> }
+          @else { <p>{{ target.improvesStartingXi ? ('transfer.report.upgrade' | t) : ('transfer.report.depth' | t) }}</p> }
+        </section>
+
+        <section class="squad-fit">
+          <strong>{{ 'transfer.squadComparison' | t }}</strong>
+          @if (bestPeer(); as peer) {
+            <div><span>{{ playerName(peer) }}<small>{{ 'transfer.currentBest' | t }} {{ peer.positionGroup }}</small></span><b>{{ peer.overall }}</b><i>→</i><b [class.positive]="target.player.overall > peer.overall">{{ overallLabel(target) }}</b></div>
+          } @else { <p>{{ 'transfer.noPeer' | t }}</p> }
+        </section>
+
+        <section class="cost-card">
+          <div><span>{{ 'transfer.askingPrice' | t }}</span><b>@if (target.freeAgent) { CR 0 } @else { CR {{ formatCoins(target.askingPrice) }} }</b></div>
+          <div><span>{{ 'transfer.expectedWage' | t }}</span><b>CR {{ formatCoins(transfers.recommendedContract(target.player).salary) }}/W</b></div>
+          <div class="after"><span>{{ 'transfer.budgetAfter' | t }}</span><b>CR {{ formatCoins(costAfter(target)) }}</b></div>
+        </section>
+
+        <div class="dossier-actions">
+          <button class="btn btn--ghost" (click)="transfers.toggleShortlist(target.player.id)">{{ target.shortlisted ? '★' : '☆' }} {{ (target.shortlisted ? 'transfer.removeShortlist' : 'transfer.watch') | t }}</button>
+          <button class="btn btn--ghost" [class.active]="isCompared(target.player.id)" (click)="toggleCompare(target.player.id)">{{ 'transfer.compare' | t }}</button>
+          @if (target.loanAvailable) { <button class="btn btn--ghost" (click)="openOffer(target, 'loan')">{{ 'transfer.loan' | t }}</button> }
+          <button class="btn btn--primary" (click)="openOffer(target, 'permanent')">{{ target.freeAgent ? ('transfer.contractOffer' | t) : ('transfer.purchaseOffer' | t) }}</button>
+        </div>
+      </aside>
+    }
+  </main>
+} @else if (tab() === 'offers') {
+  <main class="offers-board fade-up">
+    <section>
+      <header><div><span class="eyebrow">{{ 'transfer.incoming' | t }}</span><h2>{{ 'transfer.clubInbox' | t }}</h2></div><b>{{ transfers.incomingOffers().length }}</b></header>
+      @for (offer of transfers.incomingOffers(); track offer.id) {
+        @if (playerByNegotiation(offer); as player) {
+          <article class="offer-card" [class.closed]="isTerminal(offer)">
+            <app-player-portrait [player]="player" [size]="54" />
+            <div class="offer-copy"><strong>{{ playerName(player) }}</strong><span>{{ teamName(offer.toTeamId) }} · CR {{ formatCoins(offer.fee) }}</span><p>{{ offer.message }}</p></div>
+            <span class="status">{{ offer.status }}</span>
+            @if (offer.status === 'submitted') { <div class="offer-actions"><button (click)="resolveIncoming(offer, 'reject')">{{ 'transfer.reject' | t }}</button><button (click)="resolveIncoming(offer, 'counter')">{{ 'transfer.counter' | t }}</button><button class="accept" (click)="resolveIncoming(offer, 'accept')">{{ 'transfer.accept' | t }}</button></div> }
+          </article>
+        }
+      } @empty { <div class="empty-state compact"><span>✉</span><strong>{{ 'transfer.noIncoming' | t }}</strong></div> }
+    </section>
+    <section>
+      <header><div><span class="eyebrow">{{ 'transfer.outgoing' | t }}</span><h2>{{ 'transfer.negotiations' | t }}</h2></div><b>{{ transfers.outgoingOffers().length }}</b></header>
+      @for (offer of transfers.outgoingOffers(); track offer.id) {
+        @if (playerByNegotiation(offer); as player) {
+          <article class="offer-card" [class.closed]="isTerminal(offer)">
+            <app-player-portrait [player]="player" [team]="$any(teamById(offer.fromTeamId))" [size]="54" />
+            <div class="offer-copy"><strong>{{ playerName(player) }}</strong><span>{{ offer.kind }} · CR {{ formatCoins(offer.kind === 'loan' ? offer.loanFee : offer.fee) }}</span><p>{{ offer.message }}</p></div>
+            <span class="status">{{ offer.status }}</span>
+            @if (offer.status === 'countered') { <div class="offer-actions"><button class="accept" (click)="acceptClubCounter(offer)">{{ 'transfer.acceptCounter' | t }} · {{ formatCoins(offer.requestedFee) }}</button></div> }
+            @if (offer.status === 'contract' && !offer.agentCounterUsed) { <div class="offer-actions"><button class="accept" (click)="openContractFromOffer(offer)">{{ 'transfer.negotiateContract' | t }}</button></div> }
+            @if (offer.status === 'fee-agreed') { <div class="offer-actions"><button class="accept" (click)="openContractFromOffer(offer)">{{ 'transfer.completeLoan' | t }}</button></div> }
+            @if (offer.status === 'contract' && offer.agentCounterUsed) { <div class="offer-actions"><button class="accept" (click)="acceptAgentCounter(offer)">{{ 'transfer.acceptAgent' | t }}</button></div> }
+          </article>
+        }
+      } @empty { <div class="empty-state compact"><span>↗</span><strong>{{ 'transfer.noNegotiations' | t }}</strong></div> }
+    </section>
+    @if (transfers.activity().length) {
+      <section class="activity-feed"><header><div><span class="eyebrow">{{ 'transfer.leagueMarket' | t }}</span><h2>{{ 'transfer.activity' | t }}</h2></div></header>
+        @for (activity of transfers.activity(); track activity.id) { <p><span>W{{ activity.week }}</span>{{ activity.text }}</p> }
+      </section>
+    }
+  </main>
+} @else {
+  <main class="contracts-board fade-up">
+    <header><div><span class="eyebrow">{{ 'transfer.squadPlanning' | t }}</span><h2>{{ 'transfer.contractsTitle' | t }}</h2></div><p>{{ 'transfer.contractsHint' | t }}</p></header>
+    <div class="contract-table" role="table">
+      <div class="contract-row labels" role="row"><span>{{ 'transfer.player' | t }}</span><span>OVR</span><span>{{ 'transfer.contract' | t }}</span><span>{{ 'transfer.salary' | t }}</span><span>{{ 'transfer.value' | t }}</span><span>{{ 'transfer.status' | t }}</span><span></span></div>
+      @for (player of contracts(); track player.id) {
+        <div class="contract-row" [class.expiring]="player.contractWeeks <= 12" role="row">
+          <span class="contract-player"><app-player-portrait [player]="player" [team]="$any(gs.playerTeam())" [size]="42" /><b>{{ playerName(player) }}<small>{{ player.position }} · {{ player.age }}</small></b></span>
+          <span class="mini-rating" [style.background]="ratingColor(player.overall)">{{ player.overall }}</span>
+          <span><b>{{ player.contractWeeks }} W</b><small>@if (player.contractWeeks <= 12) { {{ 'transfer.expiring' | t }} } @else { {{ 'transfer.secured' | t }} }</small></span>
+          <span>CR {{ formatCoins(player.salary) }}</span><span>CR {{ formatCoins(player.marketValue) }}</span>
+          <span>@if (transfers.isListed(player.id)) { <i class="listed">{{ 'transfer.listed' | t }}</i> } @else { <i>{{ 'transfer.squad' | t }}</i> }</span>
+          <span class="contract-actions"><button (click)="openRenewal(player)">{{ 'transfer.renew' | t }}</button>@if (transfers.isListed(player.id)) { <button (click)="unlist(player)">{{ 'transfer.unlist' | t }}</button> } @else { <button (click)="openListing(player)">{{ 'transfer.list' | t }}</button> }</span>
+        </div>
+      }
+    </div>
+  </main>
+}
+
+<dialog class="deal-dialog" [open]="modal() !== null" (cancel)="closeModal()">
+  @if (modalPlayer(); as player) {
+    <header><app-player-portrait [player]="player" [team]="$any(transfers.teamFor(player.id))" [size]="64" /><div><span class="eyebrow">{{ player.position }} · OVR {{ player.overall }}</span><h2>{{ playerName(player) }}</h2></div><button class="dialog-close" aria-label="Schließen" (click)="closeModal()">×</button></header>
+    @if (modal() === 'offer') {
+      <section><h3>{{ offerKind() === 'loan' ? ('transfer.loanOffer' | t) : ('transfer.purchaseOffer' | t) }}</h3>
+        <label>{{ offerKind() === 'loan' ? ('transfer.loanFee' | t) : ('transfer.fee' | t) }}<span><b>CR</b><input type="number" step="1000" [value]="offerFee()" (input)="setOfferFee($any($event.target).value)" /></span></label>
+        @if (offerKind() === 'loan') {
+          <label>{{ 'transfer.wageShare' | t }}<select [value]="wageShare()" (change)="wageShare.set(+$any($event.target).value === 50 ? 50 : 100)"><option value="50">50%</option><option value="100">100%</option></select></label>
+          <label>{{ 'transfer.buyOption' | t }}<span><b>CR</b><input type="number" step="1000" [value]="buyOption() ?? ''" (input)="setBuyOption($any($event.target).value)" /></span></label>
+        }
+        <div class="impact"><span>{{ 'transfer.availableBudget' | t }}<b>CR {{ formatCoins(finances().budget) }}</b></span><span>{{ 'transfer.afterOffer' | t }}<b>CR {{ formatCoins(finances().budget - offerFee()) }}</b></span></div>
+      </section><footer><button class="btn btn--ghost" (click)="closeModal()">{{ 'common.cancel' | t }}</button><button class="btn btn--primary" (click)="submitOffer()">{{ 'transfer.submitOffer' | t }}</button></footer>
+    } @else if (modal() === 'contract' || modal() === 'renewal') {
+      <section><h3>{{ modal() === 'renewal' ? ('transfer.renewal' | t) : ('transfer.playerContract' | t) }}</h3>
+        <div class="form-grid">
+          <label>{{ 'transfer.duration' | t }}<select [value]="contractWeeks()" (change)="setContractWeeks($any($event.target).value)"><option value="52">1 {{ 'transfer.year' | t }}</option><option value="104">2 {{ 'transfer.yearsPlural' | t }}</option><option value="156">3 {{ 'transfer.yearsPlural' | t }}</option><option value="208">4 {{ 'transfer.yearsPlural' | t }}</option></select></label>
+          <label>{{ 'transfer.role' | t }}<select [value]="contractRole()" (change)="contractRole.set($any($event.target).value)"><option value="prospect">Talent</option><option value="rotation">Rotation</option><option value="starter">Stamm</option><option value="star">Star</option></select></label>
+          <label>{{ 'transfer.weeklySalary' | t }}<span><b>CR</b><input type="number" step="50" [value]="contractSalary()" (input)="setSalary($any($event.target).value)" /></span></label>
+          <label>{{ 'transfer.signingBonus' | t }}<span><b>CR</b><input type="number" step="500" [value]="signingBonus()" (input)="setBonus($any($event.target).value)" /></span></label>
+        </div>
+        <div class="impact"><span>{{ 'transfer.wageRoomAfter' | t }}<b>CR {{ formatCoins(finances().wageRoom - contractSalary()) }}</b></span><span>{{ 'transfer.immediateCost' | t }}<b>CR {{ formatCoins(signingBonus()) }}</b></span></div>
+      </section><footer><button class="btn btn--ghost" (click)="closeModal()">{{ 'common.cancel' | t }}</button><button class="btn btn--primary" (click)="modal() === 'renewal' ? submitRenewal() : submitContract()">{{ 'transfer.sendContract' | t }}</button></footer>
+    } @else if (modal() === 'listing') {
+      <section><h3>{{ 'transfer.listPlayer' | t }}</h3><p>{{ 'transfer.listHint' | t }}</p>
+        <label>{{ 'transfer.askingPrice' | t }}<span><b>CR</b><input type="number" step="1000" [value]="listingPrice()" (input)="setListingPrice($any($event.target).value)" /></span></label>
+        <label class="check"><input type="checkbox" [checked]="listingLoan()" (change)="listingLoan.set($any($event.target).checked)" /> {{ 'transfer.allowLoan' | t }}</label>
+      </section><footer><button class="btn btn--ghost" (click)="closeModal()">{{ 'common.cancel' | t }}</button><button class="btn btn--primary" (click)="saveListing()">{{ 'transfer.publishListing' | t }}</button></footer>
     }
   }
-</div>
+</dialog>
+@if (modal() !== null) { <button class="dialog-backdrop" aria-label="Dialog schließen" (click)="closeModal()"></button> }
