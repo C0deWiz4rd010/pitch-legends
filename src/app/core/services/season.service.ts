@@ -7,9 +7,10 @@ import { GameStateService } from './game-state.service';
 import { MatchEngineService } from './match-engine.service';
 import { RpgService } from './rpg.service';
 import { Rng, clamp, uid } from '../util';
-import { playerName } from '../ratings';
+import { playerName, weeklySalaryFor } from '../ratings';
 import { autoFillLineup, generatePlayer } from '../../data/generators';
 import { Position } from '../../models/enums';
+import { processTransferWeek, returnSeasonLoans, weeklyWageBill } from '../transfer-engine';
 
 @Injectable({ providedIn: 'root' })
 export class SeasonService {
@@ -87,8 +88,7 @@ export class SeasonService {
         slotsUsed: 0,
         maxSlots: 3,
       };
-      draft.transferMarket = [];
-      draft.transferMarketWeek = 0;
+      processTransferWeek(draft);
       committed = true;
     });
     return committed;
@@ -250,7 +250,7 @@ export class SeasonService {
           }
         }
       }
-      const wages = team.players.reduce((sum, player) => sum + player.salary, 0);
+      const wages = weeklyWageBill(draft, team.id);
       team.coins = Math.max(0, team.coins - wages);
     }
   }
@@ -274,8 +274,9 @@ export class SeasonService {
       draft.league.season++;
       draft.league.currentWeek = 1;
       draft.trainingWeek = { season: draft.league.season, week: 1, slotsUsed: 0, maxSlots: 3 };
-      draft.transferMarket = [];
-      draft.transferMarketWeek = 0;
+      returnSeasonLoans(draft);
+      draft.transfers.season = draft.league.season;
+      draft.transfers.week = 1;
       draft.league.fixtures.forEach((f) => {
         f.played = false;
         f.homeScore = null;
@@ -299,6 +300,7 @@ export class SeasonService {
         }
       }
       this.promoteYouth(draft);
+      processTransferWeek(draft);
       this.pushNews(draft, 'flag', 'news.season.title', 'news.season.body', {
         season: draft.league.season,
       });
@@ -349,7 +351,7 @@ export class SeasonService {
       const prospect = generatePlayer(this.rng, this.rng.pick(positions), [], overall, kit);
       prospect.age = this.rng.int(16, 18);
       prospect.potential = clamp(Math.max(prospect.potential, prospect.overall + 7 + academy * 2), prospect.overall, 99);
-      prospect.salary = Math.max(500, Math.round(prospect.marketValue / 1800));
+      prospect.salary = weeklySalaryFor(prospect);
       prospect.contractWeeks = 156;
       club.players.push(prospect);
       promoted.push(prospect);

@@ -95,8 +95,16 @@ export function playerName(player: Player): string {
 }
 
 export function marketValueFor(overall: number, age: number, potential: number): number {
-  const base = Math.pow(Math.max(overall - 40, 1), 2.6) * 900;
-  const ageFactor = age <= 23 ? 1.35 : age <= 27 ? 1.1 : age <= 30 ? 0.85 : 0.5;
-  const potFactor = 1 + Math.max(potential - overall, 0) * 0.03;
-  return Math.round((base * ageFactor * potFactor) / 1000) * 1000;
+  const rating = clamp((overall - 45) / 45, 0, 1);
+  const base = 20_000 + Math.pow(rating, 2.25) * 1_800_000;
+  const ageFactor = age <= 20 ? 1.08 : age <= 24 ? 1.12 : age <= 28 ? 1 : age <= 31 ? 0.82 : 0.58;
+  const potentialFactor = 1 + clamp(potential - overall, 0, 18) * 0.025;
+  return Math.max(15_000, Math.round((base * ageFactor * potentialFactor) / 1000) * 1000);
+}
+
+/** Weekly wage target used by squad generation, agents and transfer reserve checks. */
+export function weeklySalaryFor(player: Pick<Player, 'marketValue' | 'age' | 'overall'>): number {
+  const ageFactor = player.age <= 21 ? 0.82 : player.age >= 31 ? 0.92 : 1;
+  const statusFactor = player.overall >= 82 ? 1.12 : player.overall <= 58 ? 0.88 : 1;
+  return Math.max(300, Math.round((player.marketValue * 0.006 * ageFactor * statusFactor) / 50) * 50);
 }

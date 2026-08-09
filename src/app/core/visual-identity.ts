@@ -125,7 +125,7 @@ export function ensureGameVisuals(game: GameState): GameState {
     crestSignatures.add(crestSignature(visuals.crest));
     ensureSquadVisuals(team.players);
   }
-  ensureSquadVisuals(migrated.transferMarket);
+  ensureSquadVisuals(migrated.transfers.freeAgents);
   migrated.settings.controlLearning = {
     introSeen: migrated.settings.controlLearning?.introSeen ?? false,
     completedActions: migrated.settings.controlLearning?.completedActions ?? [],

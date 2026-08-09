@@ -10,10 +10,11 @@ import {
 import { Team } from '../models/team.model';
 import { League, Fixture } from '../models/league.model';
 import { GameState, SAVE_VERSION, defaultSettings } from '../models/game.model';
+import { emptyTransferState } from '../models/transfer.model';
 import { defaultFacilities } from '../models/team.model';
 import { defaultTactics } from '../models/tactics.model';
 import { Rng, uid, clamp } from '../core/util';
-import { computeOverall, groupForPosition, marketValueFor } from '../core/ratings';
+import { computeOverall, groupForPosition, marketValueFor, weeklySalaryFor } from '../core/ratings';
 import { xpToNextForLevel } from '../core/progression';
 import { createFormation } from './formations';
 import { CLUB_IDENTITIES, FIRST_NAMES, LAST_NAMES, NATIONALITIES, ClubIdentity } from './names';
@@ -108,6 +109,7 @@ export function generatePlayer(
       : group === 'GK' || group === 'DEF'
         ? [{ type: 'clean-sheets', target: rng.int(4, 9), progress: 0, rewardXp: 220, completed: false }]
         : [{ type: 'assists', target: rng.int(4, 10), progress: 0, rewardXp: 220, completed: false }];
+  const marketValue = marketValueFor(overall, age, potential);
 
   return {
     id,
@@ -138,9 +140,8 @@ export function generatePlayer(
     fitness: rng.int(88, 100),
     form: rng.int(-1, 2),
     injuryWeeks: 0,
-    marketValue: marketValueFor(overall, age, potential),
-    // Weekly arcade-economy wage. Kept aligned with the club wage budget.
-    salary: Math.round((marketValueFor(overall, age, potential) / 1000) * (age <= 24 ? 1 : 1.25)),
+    marketValue,
+    salary: weeklySalaryFor({ marketValue, age, overall }),
     contractWeeks: rng.int(40, 160),
     seasonStats: emptySeasonStats(),
   };
@@ -168,6 +169,7 @@ export function generateTeam(
 ): Team {
   const players = generateSquad(rng, strength);
   const formation = createFormation('4-3-3');
+  const wageBill = players.reduce((sum, player) => sum + player.salary, 0);
   const team: Team = {
     id: uid('team'),
     name: identity.name,
@@ -178,9 +180,9 @@ export function generateTeam(
     formation,
     tactics: defaultTactics(),
     facilities: defaultFacilities(),
-    coins: isPlayerControlled ? 250000 : 150000,
+    coins: isPlayerControlled ? 250_000 : 400_000,
     reputation: clamp(Math.round(strength), 30, 95),
-    wageBudget: isPlayerControlled ? 120000 : 90000,
+    wageBudget: Math.ceil((wageBill * 1.25) / 500) * 500,
     isPlayerControlled,
     strength,
   };
@@ -361,7 +363,6 @@ export function createNewGame(opts: NewGameOptions): GameState {
         completed: false,
       },
     ],
-    transferMarket: [],
-    transferMarketWeek: 0,
+    transfers: emptyTransferState(1, 1),
   };
 }

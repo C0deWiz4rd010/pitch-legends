@@ -1,6 +1,7 @@
 import { League } from './league.model';
 import { AssistPreset, MatchResult } from './match.model';
 import { Team } from './team.model';
+import { TransferState } from './transfer.model';
 
 export type Difficulty = 'easy' | 'normal' | 'hard';
 export type Locale = 'de' | 'en';
@@ -86,7 +87,7 @@ export function defaultSettings(): GameSettings {
   };
 }
 
-export const SAVE_VERSION = 3;
+export const SAVE_VERSION = 4;
 
 export interface GameState {
   version: number;
@@ -102,6 +103,5 @@ export interface GameState {
   manager: ManagerProfile;
   trainingWeek: TrainingWeekState;
   objectives: CareerObjective[];
-  transferMarket: import('./player.model').Player[];
-  transferMarketWeek: number;
+  transfers: TransferState;
 }

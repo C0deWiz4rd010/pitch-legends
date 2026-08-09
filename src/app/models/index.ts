@@ -6,3 +6,4 @@ export * from './match.model';
 export * from './league.model';
 export * from './game.model';
 export * from './visual.model';
+export * from './transfer.model';
