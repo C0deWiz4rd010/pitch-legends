@@ -87,6 +87,7 @@ export class SeasonService {
         week: draft.league.currentWeek,
         slotsUsed: 0,
         maxSlots: 3,
+        completedSessions: [],
       };
       processTransferWeek(draft);
       committed = true;
@@ -273,7 +274,7 @@ export class SeasonService {
       this.resolveLeagueObjective(draft);
       draft.league.season++;
       draft.league.currentWeek = 1;
-      draft.trainingWeek = { season: draft.league.season, week: 1, slotsUsed: 0, maxSlots: 3 };
+      draft.trainingWeek = { season: draft.league.season, week: 1, slotsUsed: 0, maxSlots: 3, completedSessions: [] };
       returnSeasonLoans(draft);
       draft.transfers.season = draft.league.season;
       draft.transfers.week = 1;

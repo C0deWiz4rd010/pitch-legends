@@ -16,6 +16,7 @@ export class SaveService {
       const parsed = JSON.parse(raw) as GameState;
       if (!this.validateBase(parsed)) return null;
       parsed.settings = { ...defaultSettings(), ...parsed.settings };
+      parsed.trainingWeek = this.normaliseTrainingWeek(parsed.trainingWeek);
       return ensureGameVisuals(parsed);
     } catch {
       return null;
@@ -61,7 +62,18 @@ export class SaveService {
     }
     const game = parsed as GameState;
     game.settings = { ...defaultSettings(), ...game.settings };
+    game.trainingWeek = this.normaliseTrainingWeek(game.trainingWeek);
     return ensureGameVisuals(game);
+  }
+
+  private normaliseTrainingWeek(training: GameState['trainingWeek']): GameState['trainingWeek'] {
+    return {
+      season: training.season,
+      week: training.week,
+      slotsUsed: Math.max(0, Math.min(3, training.slotsUsed ?? 0)),
+      maxSlots: 3,
+      completedSessions: Array.isArray(training.completedSessions) ? training.completedSessions : [],
+    };
   }
 
   private validateBase(value: unknown): value is GameState {

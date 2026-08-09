@@ -342,7 +342,7 @@ export function createNewGame(opts: NewGameOptions): GameState {
       skillPoints: 0,
       perks: {},
     },
-    trainingWeek: { season: 1, week: 1, slotsUsed: 0, maxSlots: 3 },
+    trainingWeek: { season: 1, week: 1, slotsUsed: 0, maxSlots: 3, completedSessions: [] },
     objectives: [
       {
         id: uid('objective'),

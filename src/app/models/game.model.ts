@@ -2,6 +2,7 @@ import { League } from './league.model';
 import { AssistPreset, MatchResult } from './match.model';
 import { Team } from './team.model';
 import { TransferState } from './transfer.model';
+import { AttributeKey } from './enums';
 
 export type Difficulty = 'easy' | 'normal' | 'hard';
 export type Locale = 'de' | 'en';
@@ -35,11 +36,38 @@ export interface ManagerProfile {
   perks: Partial<Record<ManagerPerkPath, number>>;
 }
 
+export type TrainingScope = 'individual' | 'unit';
+export type TrainingIntensity = 'light' | 'normal' | 'intense';
+
+export interface TrainingSessionPlan {
+  id: string;
+  slot: 0 | 1 | 2;
+  drillId: string;
+  scope: TrainingScope;
+  intensity: TrainingIntensity;
+  targetIds: string[];
+}
+
+export interface TrainingPlayerResult {
+  playerId: string;
+  xpGained: number;
+  fitnessDelta: number;
+  attributeGained: AttributeKey | null;
+  injuredWeeks: number;
+}
+
+export interface TrainingSessionResult {
+  plan: TrainingSessionPlan;
+  players: TrainingPlayerResult[];
+  seed: number;
+}
+
 export interface TrainingWeekState {
   season: number;
   week: number;
   slotsUsed: number;
-  maxSlots: number;
+  maxSlots: 3;
+  completedSessions: TrainingSessionResult[];
 }
 
 export interface CareerObjective {

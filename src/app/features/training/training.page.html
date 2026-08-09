@@ -1,57 +1,131 @@
-<header class="page-head fade-up">
-  <div>
-    <p class="eyebrow">{{ 'training.ground' | t }} · LV {{ trainingGround() }}</p>
-    <h1>{{ 'nav.training' | t }}</h1>
-  </div>
-  <div class="slot-counter"><strong>{{ gs.trainingSlotsRemaining() }}</strong><span>{{ 'training.slots' | t }}</span></div>
-</header>
+<section class="training-page">
+  <header class="camp-head">
+    <div>
+      <p class="eyebrow">{{ text('TRAININGSCAMP · STUFE', 'TRAINING CAMP · LEVEL') }} {{ trainingGround() }}</p>
+      <h1>{{ text('WOCHENENTWICKLUNG', 'WEEKLY DEVELOPMENT') }}</h1>
+    </div>
+    <div class="camp-status">
+      <div><span>{{ text('WOCHE', 'WEEK') }}</span><b>{{ gs.currentWeek() }}</b></div>
+      <div><span>{{ text('FREIE SLOTS', 'OPEN SLOTS') }}</span><b>{{ gs.trainingSlotsRemaining() }}</b></div>
+      <div><span>{{ text('ENTWURF', 'DRAFT') }}</span><b>{{ plans().length }}</b></div>
+    </div>
+    <button class="execute-button" [disabled]="!preview().valid" (click)="execute()">
+      <span>▶</span><b>{{ text('PLAN AUSFÜHREN', 'EXECUTE PLAN') }}</b><small>{{ plans().length }}/{{ gs.trainingSlotsRemaining() }} {{ text('EINHEITEN', 'SESSIONS') }}</small>
+    </button>
+  </header>
 
-<div class="drill-picker card fade-up">
-  <p class="eyebrow">{{ 'training.choose' | t }}</p>
-  <div class="drills">
-    @for (d of drills; track d.id) {
-      <button class="drill" [class.active]="activeDrill().id === d.id" (click)="selectDrill(d)">
-        <span class="d-ico">{{ d.icon }}</span>
-        <span class="d-name">{{ ('training.drill.' + d.id) | t }}</span>
-      </button>
-    }
-  </div>
-  <p class="drill-desc muted">{{ activeDrill().icon }} {{ ('training.drill.' + activeDrill().id + '.desc') | t }}</p>
-</div>
+  <nav class="training-mobile-tabs">
+    <button [class.active]="mobileTab() === 'programs'" (click)="mobileTab.set('programs')">{{ text('PROGRAMME', 'PROGRAMS') }}</button>
+    <button [class.active]="mobileTab() === 'schedule'" (click)="mobileTab.set('schedule')">{{ text('WOCHENPLAN', 'SCHEDULE') }}</button>
+    <button [class.active]="mobileTab() === 'players'" (click)="mobileTab.set('players')">{{ text('SPIELER', 'PLAYERS') }}</button>
+  </nav>
 
-@if (message()) {
-  <div class="toast fade-up">{{ message() }}</div>
-}
+  @if (feedback()) {
+    <div class="training-feedback" [class.success]="!plans().length && completed().length"><span>{{ !plans().length && completed().length ? '✓' : '!' }}</span>{{ feedback() }}</div>
+  }
 
-<div class="card list-card fade-up">
-  <div class="plist">
-    @for (p of squad(); track p.id) {
-      <div class="prow" [class.highlight]="lastTrainedId() === p.id" [class.injured]="p.injuryWeeks > 0">
-        <span class="rating" [style.background]="ratingColor(p.overall)">{{ p.overall }}</span>
-        <div class="pinfo">
-          <div class="pline">
-            <strong>{{ p.firstName }} {{ p.lastName }}</strong>
-            <span class="pos">{{ p.position }}</span>
-            <span class="lvl">Lv {{ p.level }}</span>
-            @if (p.skillPoints > 0) { <span class="sp">SP {{ p.skillPoints }}</span> }
-            @if (p.injuryWeeks > 0) { <span class="inj">INJ {{ p.injuryWeeks }}W</span> }
-          </div>
-          <div class="bars">
-            <div class="bar xp" title="XP">
-              <i [style.width.%]="xpPercent(p)"></i>
-            </div>
-            <div class="bar fit" [title]="'Fitness ' + p.fitness + '%'">
-              <i [style.width.%]="p.fitness" [style.background]="ratingColor(p.fitness)"></i>
-            </div>
-          </div>
-        </div>
-        <div class="pactions">
-          <button class="btn btn--ghost btn--sm" (click)="recover(p.id)" title="Recover fitness">RC</button>
-          <button class="btn btn--primary btn--sm" [disabled]="p.injuryWeeks > 0" (click)="train(p.id)">
-            {{ 'training.train' | t }} {{ activeDrill().icon }}
+  <div class="training-workspace" [attr.data-mobile-tab]="mobileTab()">
+    <aside class="program-library training-panel">
+      <div class="panel-heading"><div><p class="eyebrow">01 · {{ text('PROGRAMMBIBLIOTHEK', 'PROGRAM LIBRARY') }}</p><h2>{{ text('Fokus wählen', 'Choose focus') }}</h2></div><span>{{ drills.length }}</span></div>
+      <div class="program-list">
+        @for (drill of drills; track drill.id) {
+          <button class="program-card" [class.active]="activeDrillId() === drill.id" [class.recovery]="drill.focus === 'recovery'" (click)="selectDrill(drill)">
+            <i>{{ drill.icon }}</i>
+            <span><b>{{ drillName(drill) }}</b><small>{{ drillDescription(drill) }}</small></span>
+            <em>{{ drill.focus === 'recovery' ? '+30' : drill.group }}</em>
           </button>
-        </div>
+        }
       </div>
-    }
+      <div class="program-action">
+        <div><span>{{ activeDrill().icon }}</span><p><b>{{ drillName(activeDrill()) }}</b><small>{{ activeDrill().focus === 'recovery' ? text('Kein Risiko', 'No risk') : text('Attribut: ', 'Attribute: ') + activeDrill().focus }}</small></p></div>
+        <button class="btn btn--primary" [disabled]="gs.trainingSlotsRemaining() <= plans().length" (click)="addSession()">+ {{ text('ZUM PLAN', 'ADD TO PLAN') }}</button>
+      </div>
+    </aside>
+
+    <main class="week-schedule training-panel">
+      <div class="panel-heading"><div><p class="eyebrow">02 · {{ text('WOCHENPLAN', 'WEEKLY SCHEDULE') }}</p><h2>{{ text('Drei klare Einheiten', 'Three focused sessions') }}</h2></div><span>{{ plans().length }}/3</span></div>
+
+      <div class="session-track">
+        @for (slot of weekSlots; track slot) {
+          @if (completedFor(slot); as result) {
+            <button class="session-card completed" type="button">
+              <span class="session-number">0{{ slot + 1 }}</span>
+              <i>{{ drill(result.plan.drillId)?.icon }}</i>
+              <div><b>{{ drillName(drill(result.plan.drillId)!) }}</b><small>✓ {{ text('ABGESCHLOSSEN', 'COMPLETED') }} · {{ result.players.length }} {{ text('SPIELER', 'PLAYERS') }}</small></div>
+            </button>
+          } @else if (planFor(slot); as plan) {
+            <button class="session-card" [class.active]="selectedSlot() === slot" [class.invalid]="!sessionPreview(plan)?.valid" type="button" (click)="chooseSlot(slot)">
+              <span class="session-number">0{{ slot + 1 }}</span>
+              <i>{{ drill(plan.drillId)?.icon }}</i>
+              <div><b>{{ drillName(drill(plan.drillId)!) }}</b><small>{{ plan.scope === 'individual' ? text('INDIVIDUELL', 'INDIVIDUAL') : text('GRUPPE', 'UNIT') }} · {{ plan.targetIds.length }} {{ text('ZIELE', 'TARGETS') }}</small></div>
+              <span class="status-light"></span>
+            </button>
+          } @else {
+            <button class="session-card empty" type="button" (click)="selectedSlot.set(slot); mobileTab.set('programs')">
+              <span class="session-number">0{{ slot + 1 }}</span><i>+</i><div><b>{{ text('Freie Einheit', 'Open session') }}</b><small>{{ text('Programm aus der Bibliothek hinzufügen', 'Add a program from the library') }}</small></div>
+            </button>
+          }
+        }
+      </div>
+
+      @if (selectedPlan(); as plan) {
+        <section class="session-editor">
+          <header><div><span class="session-kicker">{{ text('EINHEIT', 'SESSION') }} 0{{ plan.slot + 1 }}</span><h3>{{ drillName(drill(plan.drillId)!) }}</h3></div><button [attr.aria-label]="text('Einheit entfernen', 'Remove session')" (click)="removePlan(plan.slot)">×</button></header>
+          <div class="session-options">
+            <div class="segmented"><span>{{ text('UMFANG', 'SCOPE') }}</span><div><button [class.active]="plan.scope === 'individual'" (click)="setScope('individual')">{{ text('INDIVIDUELL', 'INDIVIDUAL') }}</button><button [class.active]="plan.scope === 'unit'" (click)="setScope('unit')">{{ text('GRUPPE', 'UNIT') }}</button></div></div>
+            <label><span>{{ text('INTENSITÄT', 'INTENSITY') }}</span><select [disabled]="drill(plan.drillId)?.focus === 'recovery'" [value]="plan.intensity" (change)="setIntensity($any($event.target).value)">@for (value of intensities; track value) { <option [value]="value">{{ intensityLabel(value) }}</option> }</select></label>
+          </div>
+          @if (sessionPreview(plan); as session) {
+            <div class="forecast-grid">
+              <div><span>XP</span><b>{{ session.players.length ? session.players[0].xpMin + '–' + session.players[0].xpMax : '—' }}</b><small>{{ text('PRO SPIELER', 'PER PLAYER') }}</small></div>
+              <div><span>{{ text('FITNESS', 'FITNESS') }}</span><b>{{ session.players.length ? session.players[0].fitnessDelta : '—' }}</b><small>{{ intensityLabel(plan.intensity) }}</small></div>
+              <div><span>{{ text('WACHSTUM', 'GROWTH') }}</span><b>{{ session.players.length ? session.players[0].growthChance + '%' : '—' }}</b><small>{{ text('CHANCE', 'CHANCE') }}</small></div>
+              <div><span>{{ text('RISIKO', 'RISK') }}</span><b>{{ session.players.length ? session.players[0].injuryRisk + '%' : '—' }}</b><small>{{ text('VERLETZUNG', 'INJURY') }}</small></div>
+            </div>
+            @if (!session.valid) { <div class="plan-warning"><b>!</b>{{ errorLabel(session.errors[0]) }}</div> }
+          }
+          <button class="choose-players" (click)="mobileTab.set('players')">{{ text('ZIELSPIELER WÄHLEN', 'CHOOSE TARGET PLAYERS') }} <span>{{ plan.targetIds.length }}</span></button>
+        </section>
+      } @else if (completed().length) {
+        <section class="week-results">
+          <p class="eyebrow">{{ text('ERGEBNISSE DIESER WOCHE', 'RESULTS THIS WEEK') }}</p>
+          <div>
+            @for (session of completed(); track session.plan.id) {
+              @for (result of session.players; track result.playerId) {
+                @if (playerById(result.playerId); as player) {
+                  <article><app-player-portrait [player]="player" [team]="team()!" [size]="42" /><span><b>{{ player.firstName }} {{ player.lastName }}</b><small>+{{ result.xpGained }} XP · {{ result.fitnessDelta >= 0 ? '+' : '' }}{{ result.fitnessDelta }} FIT</small></span>@if (result.attributeGained) { <em>+1 {{ result.attributeGained }}</em> } @else { <em>✓</em> }</article>
+                }
+              }
+            }
+          </div>
+        </section>
+      } @else {
+        <div class="empty-plan"><span>▦</span><h3>{{ text('Baue deinen Wochenplan', 'Build your weekly plan') }}</h3><p>{{ text('Wähle links ein Programm und füge bis zu drei Einheiten hinzu.', 'Choose a program and add up to three sessions.') }}</p></div>
+      }
+    </main>
+
+    <aside class="player-targets training-panel">
+      <div class="panel-heading"><div><p class="eyebrow">03 · {{ text('ZIELGRUPPE', 'TARGET GROUP') }}</p><h2>{{ selectedPlan()?.scope === 'unit' ? text('Positionsgruppe', 'Position unit') : text('Spieler wählen', 'Choose player') }}</h2></div><span>{{ selectedPlan()?.targetIds?.length ?? 0 }}/{{ selectedPlan()?.scope === 'unit' ? 5 : 1 }}</span></div>
+      <div class="filter-strip">@for (filter of filters; track filter) { <button [class.active]="playerFilter() === filter" (click)="playerFilter.set(filter)">{{ filter }}</button> }</div>
+      @if (!selectedPlan()) {
+        <div class="target-prompt"><span>←</span><b>{{ text('Einheit auswählen', 'Select a session') }}</b><p>{{ text('Erstelle zuerst eine Einheit im Wochenplan.', 'Create a session in the weekly plan first.') }}</p></div>
+      } @else {
+        <div class="target-list">
+          @for (player of squad(); track player.id) {
+            <button class="target-player" [class.selected]="isTarget(player.id)" [disabled]="!canTarget(player)" (click)="toggleTarget(player)">
+              <app-player-portrait [player]="player" [team]="team()!" [size]="40" />
+              <span><b>{{ player.firstName }} {{ player.lastName }}</b><small>{{ player.position }} · POT {{ player.potential }} · FIT {{ player.fitness }}</small><i><em [style.width.%]="xpPercent(player)"></em></i></span>
+              <strong [style.color]="ratingColor(player.overall)">{{ player.overall }}</strong>
+              @if (player.injuryWeeks > 0) { <u>+</u> } @else { <u>{{ isTarget(player.id) ? '✓' : '+' }}</u> }
+            </button>
+          }
+        </div>
+      }
+      @if (selectedPlan()?.scope === 'unit') {
+        <div class="unit-rule"><b>{{ text('GRUPPENREGEL', 'UNIT RULE') }}</b><span>{{ text('3–5 Spieler derselben Positionsgruppe · 55% XP · 75% Fitnesskosten', '3–5 players from one position group · 55% XP · 75% fitness cost') }}</span></div>
+      }
+    </aside>
   </div>
-</div>
+
+  <div class="mobile-execute"><button class="btn btn--primary" [disabled]="!preview().valid" (click)="execute()">▶ {{ text('PLAN AUSFÜHREN', 'EXECUTE PLAN') }} · {{ plans().length }}</button></div>
+</section>
