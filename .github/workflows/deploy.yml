@@ -64,10 +64,22 @@ jobs:
       - name: SPA fallback (404.html)
         run: cp dist/pitch-legends/browser/index.html dist/pitch-legends/browser/404.html
 
+      - name: Archive Pages artifact
+        run: >-
+          tar --dereference --hard-dereference
+          --directory dist/pitch-legends/browser
+          -cvf "$RUNNER_TEMP/artifact.tar"
+          --exclude=.git
+          --exclude=.github
+          .
+
       - name: Upload Pages artifact
-        uses: actions/upload-pages-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
-          path: dist/pitch-legends/browser
+          name: github-pages
+          path: ${{ runner.temp }}/artifact.tar
+          retention-days: 1
+          if-no-files-found: error
 
   deploy:
     needs: build
