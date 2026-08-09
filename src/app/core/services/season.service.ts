@@ -30,7 +30,7 @@ export class SeasonService {
   }
 
   /** Commit the watched player result, simulate the rest of the week, then advance. */
-  commitWeek(playerResult: MatchResult): boolean {
+  async commitWeek(playerResult: MatchResult): Promise<boolean> {
     const current = this.gs.game();
     if (!current) return false;
     const pendingFixture = current.league.fixtures.find(
@@ -45,9 +45,15 @@ export class SeasonService {
       current.results.some((result) => result.id === playerResult.id || (!!playerResult.fixtureId && result.fixtureId === playerResult.fixtureId))
     ) return false;
     playerResult.fixtureId ??= pendingFixture.id;
+    const week = current.league.currentWeek;
+    const otherFixtures = current.league.fixtures.filter((fixture) => fixture.week === week && !fixture.played && fixture.id !== pendingFixture.id);
+    const otherResults = await Promise.all(otherFixtures.map((fixture) => {
+      const home = current.teams.find((team) => team.id === fixture.homeTeamId)!;
+      const away = current.teams.find((team) => team.id === fixture.awayTeamId)!;
+      return this.engine.simulateAsync(home, away, week, undefined, fixture.id);
+    }));
+    let committed = false;
     this.gs.mutate((draft) => {
-      const week = draft.league.currentWeek;
-
       // Mark & apply the player's fixture first.
       const playerFixture = draft.league.fixtures.find(
         (f) =>
@@ -56,23 +62,19 @@ export class SeasonService {
           f.homeTeamId === playerResult.homeTeamId &&
           f.awayTeamId === playerResult.awayTeamId,
       );
-      if (playerFixture) {
-        playerFixture.homeScore = playerResult.homeScore;
-        playerFixture.awayScore = playerResult.awayScore;
-        playerFixture.played = true;
-      }
+      if (!playerFixture) return;
+      playerFixture.homeScore = playerResult.homeScore;
+      playerFixture.awayScore = playerResult.awayScore;
+      playerFixture.played = true;
       this.applyResult(draft, playerResult, true);
 
-      // Simulate every other fixture in this matchweek.
-      for (const fx of draft.league.fixtures) {
-        if (fx.week !== week || fx.played) continue;
-        const home = draft.teams.find((t) => t.id === fx.homeTeamId)!;
-        const away = draft.teams.find((t) => t.id === fx.awayTeamId)!;
-        const r = this.engine.simulate(home, away, week, undefined, fx.id);
-        fx.homeScore = r.homeScore;
-        fx.awayScore = r.awayScore;
-        fx.played = true;
-        this.applyResult(draft, r, false);
+      for (const result of otherResults) {
+        const fixture = draft.league.fixtures.find((candidate) => candidate.id === result.fixtureId && !candidate.played);
+        if (!fixture) continue;
+        fixture.homeScore = result.homeScore;
+        fixture.awayScore = result.awayScore;
+        fixture.played = true;
+        this.applyResult(draft, result, false);
       }
 
       this.weeklyUpkeep(draft);
@@ -87,8 +89,9 @@ export class SeasonService {
       };
       draft.transferMarket = [];
       draft.transferMarketWeek = 0;
+      committed = true;
     });
-    return true;
+    return committed;
   }
 
   private applyResult(draft: GameState, result: MatchResult, isPlayerMatch: boolean): void {

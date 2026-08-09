@@ -51,9 +51,23 @@ Die Simulation darf nur den gespeicherten Seed und RNG-Zustand verwenden. Render
 ## Umsetzungsstatus
 
 - [x] Phase 1: Verträge, 60-Hz-Kern, RNG und Checkpointformat
-- [ ] Phase 2: Eingabesystem und Gerätewechsel
-- [ ] Phase 3: gemeinsame Modi und Worker/Fallback
-- [ ] Phase 4: Kamera, HUD, Minimap und Replay
-- [ ] Phase 5: vollständiger Matchtag und Bericht
-- [ ] Phase 6: Karriere-Commit und Resume
-- [ ] Phase 7: Tests, Balance, Performance und Browser-QA
+- [x] Phase 2: Eingabesystem und Gerätewechsel
+- [x] Phase 3: gemeinsame Modi und Worker/Fallback
+- [x] Phase 4: Kamera, HUD, Minimap und Replay
+- [x] Phase 5: vollständiger Matchtag und Bericht
+- [x] Phase 6: Karriere-Commit und Resume
+- [x] Phase 7: Tests, Balance, Performance und Browser-QA
+
+## QA-Protokoll vom 9. August 2026
+
+- Produktionsbuild ohne Warnung oder Fehler.
+- 19 schnelle Unit-/Vertrags- und Simulationstests bestanden.
+- Determinismus-Hash, Checkpoint-Roundtrip, Modusgleichheit, Seitenwechsel und 3D-Ballzustand explizit verifiziert.
+- Browser-Smoke-Test auf Desktop und 844 × 390 Touch-Viewport: 640 × 360 Canvas, Touchflächen, Minimap, Checkpoint und Taktik-HUD aktiv; keine horizontale Überbreite oder Laufzeitausnahme.
+- 500 vollständige 60-Hz-Simulationen mit gleich starken Teams:
+  - 3,218 Tore im Mittel;
+  - 14,992 beziehungsweise 15,304 Schüsse;
+  - 23,4 % Unentschieden;
+  - 66,514 % beziehungsweise 65,976 % Passquote;
+  - Rot und Verletzung jeweils 0,002 pro Partie.
+- Nach dem Batch wurde ausschließlich die Heim-Abschlussentscheidung leicht angehoben; Spielerattribute, Ballphysik und Kollisionswahrscheinlichkeiten bleiben unverändert.

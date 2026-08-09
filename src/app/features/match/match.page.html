@@ -313,7 +313,7 @@
         <p class="heatmap-note">HEATMAP · {{ report.heatmaps ? 'Positionsdaten für ' + playerRatings().length + ' Spieler erfasst' : 'Keine Daten' }}</p>
       </article>
 
-      <button class="btn btn--primary big continue" (click)="confirm()">KARRIERE FORTSETZEN →</button>
+      <button class="btn btn--primary big continue" [disabled]="committing()" (click)="confirm()">{{ committing() ? 'LIGASPIELE WERDEN SIMULIERT…' : 'KARRIERE FORTSETZEN →' }}</button>
     </section>
   }
 }

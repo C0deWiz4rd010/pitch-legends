@@ -160,11 +160,14 @@ export class ArcadeMatch {
   private readonly passCompletions: Record<Side, number> = { home: 0, away: 0 };
   private lastPasser: { id: string; side: Side; at: number } | null = null;
   private pendingOffsideTargetId: string | null = null;
+  private intendedReceiverId: string | null = null;
   private activeShot: ActiveShot | null = null;
   private safeSnapshot!: MatchSnapshot;
   private readonly replayBuffer: MatchSnapshot[] = [];
   private frozenReplay: MatchSnapshot[] = [];
   private lastSubAt = -100;
+  private readonly collisionGrid: ArcadeActor[][] = Array.from({ length: 216 }, () => []);
+  private readonly usedCollisionBuckets: number[] = [];
 
   constructor(
     home: Team,
@@ -244,11 +247,21 @@ export class ArcadeMatch {
 
     this.elapsed += safeDt;
     this.handleSelection(input);
+    const ownerBeforeMovement = this.owner();
+    const supportPresser = input.skill && ownerBeforeMovement && ownerBeforeMovement.side !== this.controlledSide
+      ? this.actors
+          .filter((actor) => actor.active && actor.side === this.controlledSide && actor.player.id !== this.selectedPlayerId && actor.player.positionGroup !== 'GK')
+          .sort((a, b) => distance(a, this.ball) - distance(b, this.ball))[0]
+      : undefined;
     for (const actor of this.actors) {
       if (!actor.active) continue;
       actor.skillCooldown = Math.max(0, actor.skillCooldown - safeDt);
       actor.tackleCooldown = Math.max(0, actor.tackleCooldown - safeDt);
-      if (this.isHumanControlled(actor)) this.moveControlled(actor, input, safeDt);
+      const keeperRush = input.keeperRush && actor.side === this.controlledSide && actor.player.positionGroup === 'GK' && ownerBeforeMovement?.side !== actor.side;
+      if (keeperRush || supportPresser?.player.id === actor.player.id) {
+        actor.action = keeperRush ? 'keeper-rush' : 'support-press';
+        this.moveActor(actor, this.ball.x - actor.x, this.ball.y - actor.y, true, safeDt);
+      } else if (this.isHumanControlled(actor)) this.moveControlled(actor, input, safeDt);
       else this.moveAi(actor, safeDt);
     }
     this.resolvePlayerCollisions();
@@ -256,6 +269,7 @@ export class ArcadeMatch {
     this.resolvePressureTackles(safeDt);
     this.updateBall(safeDt);
     this.updatePossessionStats(safeDt);
+    this.updateAdvantage(safeDt);
     this.recordTelemetry();
     this.validateState();
 
@@ -426,6 +440,25 @@ export class ArcadeMatch {
       ratings: { ...this.ratings },
       contributions: structuredClone(this.contributions),
       safeSnapshot: structuredClone(this.safeSnapshot),
+      runtime: {
+        previousInput: { ...this.previousInput },
+        actionHeld: { ...this.actionHeld },
+        possessionHomeSeconds: this.possessionHomeSeconds,
+        possessionAwaySeconds: this.possessionAwaySeconds,
+        passAttempts: { ...this.passAttempts },
+        passCompletions: { ...this.passCompletions },
+        lastPasser: this.lastPasser ? { ...this.lastPasser } : null,
+        pendingOffsideTargetId: this.pendingOffsideTargetId,
+        intendedReceiverId: this.intendedReceiverId,
+        activeShot: this.activeShot ? { ...this.activeShot } : null,
+        halftimeReached: this.halftimeReached,
+        halftimeRecoveryApplied: this.halftimeRecoveryApplied,
+        subsUsed: this.subsUsed,
+        substitutionWindows: this.substitutionWindows,
+        lastSubAt: this.lastSubAt,
+        keyframes: structuredClone(this.keyframes),
+        heatmaps: structuredClone(this.heatmaps),
+      },
       savedAt: Date.now(),
     };
   }
@@ -458,6 +491,24 @@ export class ArcadeMatch {
     Object.assign(this.ratings, checkpoint.ratings);
     Object.assign(this.contributions, structuredClone(checkpoint.contributions));
     this.safeSnapshot = structuredClone(checkpoint.safeSnapshot);
+    this.previousInput = { ...checkpoint.runtime.previousInput };
+    this.actionHeld = { ...checkpoint.runtime.actionHeld };
+    this.possessionHomeSeconds = checkpoint.runtime.possessionHomeSeconds;
+    this.possessionAwaySeconds = checkpoint.runtime.possessionAwaySeconds;
+    Object.assign(this.passAttempts, checkpoint.runtime.passAttempts);
+    Object.assign(this.passCompletions, checkpoint.runtime.passCompletions);
+    this.lastPasser = checkpoint.runtime.lastPasser ? { ...checkpoint.runtime.lastPasser } : null;
+    this.pendingOffsideTargetId = checkpoint.runtime.pendingOffsideTargetId;
+    this.intendedReceiverId = checkpoint.runtime.intendedReceiverId;
+    this.activeShot = checkpoint.runtime.activeShot ? { ...checkpoint.runtime.activeShot } : null;
+    this.halftimeReached = checkpoint.runtime.halftimeReached;
+    this.halftimeRecoveryApplied = checkpoint.runtime.halftimeRecoveryApplied;
+    this.subsUsed = checkpoint.runtime.subsUsed;
+    this.substitutionWindows = checkpoint.runtime.substitutionWindows;
+    this.lastSubAt = checkpoint.runtime.lastSubAt;
+    this.keyframes.splice(0, this.keyframes.length, ...structuredClone(checkpoint.runtime.keyframes));
+    for (const key of Object.keys(this.heatmaps)) delete this.heatmaps[key];
+    Object.assign(this.heatmaps, structuredClone(checkpoint.runtime.heatmaps));
     this.rng.restore(checkpoint.rngState);
     return this.isFiniteState();
   }
@@ -610,7 +661,8 @@ export class ArcadeMatch {
       this.chooseAiIntent(actor);
       const base = this.config.difficulty === 'easy' ? 0.42 : this.config.difficulty === 'hard' ? 0.16 : 0.26;
       const spread = this.config.difficulty === 'easy' ? 0.28 : this.config.difficulty === 'hard' ? 0.08 : 0.16;
-      actor.decisionCooldown = base + this.rng.float(0, spread);
+      const homeAwareness = actor.side === 'home' ? 0.96 : 1;
+      actor.decisionCooldown = (base + this.rng.float(0, spread)) * homeAwareness;
     }
     const dx = actor.intentX - actor.x;
     const dy = actor.intentY - actor.y;
@@ -629,7 +681,14 @@ export class ArcadeMatch {
       actor.intentY = clamp(actor.y + this.rng.float(-4, 4), 2, FIELD_WIDTH - 2);
       const goalDistance = direction > 0 ? FIELD_LENGTH - actor.x : actor.x;
       const pressured = this.closestOpponent(actor) < 4;
-      if (goalDistance < 23 && this.rng.bool(0.48 + actor.player.attributes.shooting / 250)) {
+      const shootingLane = Math.abs(actor.y - FIELD_WIDTH / 2) < 21;
+      const shotProbabilityBase = goalDistance < 23
+        ? 0.26 + actor.player.attributes.shooting / 320
+        : goalDistance < 32
+          ? 0.18 + actor.player.attributes.shooting / 700
+          : 0.035 + actor.player.attributes.shooting / 1600;
+      const shotProbability = shotProbabilityBase * (actor.side === 'home' ? 1.1 : 1);
+      if (goalDistance < 50 && shootingLane && this.rng.bool(shotProbability)) {
         this.shoot(actor, this.rng.float(0.55, 1), 0, this.rng.float(-0.45, 0.45), false, false);
       } else if ((pressured || this.rng.bool(0.38)) && actor.player.positionGroup !== 'GK') {
         this.pass(actor, this.rng.bool(0.28), false, this.rng.float(0.35, 0.8), direction, this.rng.float(-0.5, 0.5));
@@ -705,8 +764,9 @@ export class ArcadeMatch {
     const nx = aimX / aimLength;
     const ny = aimY / aimLength;
     const assistCone: Record<AssistPreset, number> = { assisted: 0.2, balanced: 0.42, manual: 0.72 };
+    const humanPass = this.isHumanControlled(actor);
     const teammates = this.actors.filter((candidate) => candidate.active && candidate.side === actor.side && candidate.player.id !== actor.player.id);
-    const target = teammates
+    const targetOptions = teammates
       .map((candidate) => {
         const dx = candidate.x - actor.x;
         const dy = candidate.y - actor.y;
@@ -714,31 +774,42 @@ export class ArcadeMatch {
         const angle = Math.acos(clamp((dx / length) * nx + (dy / length) * ny, -1, 1));
         const lanePressure = this.passLanePressure(actor, candidate);
         const runBonus = through ? Math.max(0, (candidate.vx * this.attackDirection(actor.side) + 1) * 0.12) : 0;
-        return { candidate, score: angle * 2.2 + length * 0.012 + lanePressure * 0.45 - runBonus };
+        return { candidate, length, lanePressure, score: angle * 2.2 + length * (humanPass ? 0.012 : 0.04) + lanePressure * (humanPass ? 0.45 : 2.8) - runBonus };
       })
-      .filter(({ score }) => score < assistCone[this.config.assist] * 2.2 + 0.7)
-      .sort((a, b) => a.score - b.score)[0]?.candidate;
+      .sort((a, b) => a.score - b.score);
+    const assistedOptions = humanPass
+      ? targetOptions.filter(({ score }) => score < assistCone[this.config.assist] * 2.2 + 0.7)
+      : targetOptions.filter(({ length, lanePressure }) => length < 22 && lanePressure === 0);
+    const target = (assistedOptions.length ? assistedOptions : targetOptions)[0]?.candidate;
     const manualTarget = { x: actor.x + nx * (8 + power * 24), y: actor.y + ny * (8 + power * 24) };
-    const targetX = target ? target.x + (through ? target.vx * 1.2 + this.attackDirection(actor.side) * 2.5 : 0) : manualTarget.x;
-    const targetY = target ? target.y + (through ? target.vy * 1.2 : 0) : manualTarget.y;
+    const rawDistance = target ? distance(actor, target) : Math.hypot(manualTarget.x - actor.x, manualTarget.y - actor.y);
+    const travelEstimate = rawDistance / 19;
+    const targetX = target ? clamp(target.x + target.vx * travelEstimate * 0.65 + (through ? this.attackDirection(actor.side) * 2.5 : 0), 1, FIELD_LENGTH - 1) : manualTarget.x;
+    const targetY = target ? clamp(target.y + target.vy * travelEstimate * 0.65, 1, FIELD_WIDTH - 1) : manualTarget.y;
     const dx = targetX - actor.x;
     const dy = targetY - actor.y;
     const length = Math.hypot(dx, dy) || 1;
     const pressure = clamp((5 - this.closestOpponent(actor)) / 5, 0, 1);
     const weakFoot = actor.player.foot !== 'Both' && ((actor.player.foot === 'Right' && dy < -1) || (actor.player.foot === 'Left' && dy > 1)) ? 1 : 0;
     const fatigue = actor.stamina < 30 ? (30 - actor.stamina) / 30 : 0;
-    const manualFactor = this.config.assist === 'manual' ? 1.2 : this.config.assist === 'assisted' ? 0.55 : 0.82;
+    const manualFactor = humanPass
+      ? this.config.assist === 'manual' ? 1.2 : this.config.assist === 'assisted' ? 0.55 : 0.82
+      : this.config.difficulty === 'easy' ? 0.58 : this.config.difficulty === 'hard' ? 0.26 : 0.34;
     const error = (100 - actor.player.attributes.passing) / 100 * 0.22 + pressure * 0.08 + weakFoot * 0.05 + fatigue * 0.08;
     const angleError = this.rng.gaussian(0, error * manualFactor);
     const cos = Math.cos(angleError);
     const sin = Math.sin(angleError);
     const px = dx / length * cos - dy / length * sin;
     const py = dx / length * sin + dy / length * cos;
-    const speed = (lob ? 14 : through ? 13 : 10.5) + power * (lob ? 12 : 13) + actor.player.attributes.passing * 0.025;
+    const speed = target && !lob
+      ? clamp(7 + length * 0.45 + power * 4 + (through ? 2.5 : 0), 10, 23)
+      : (lob ? 14 : through ? 13 : 10.5) + power * (lob ? 12 : 13) + actor.player.attributes.passing * 0.025;
     this.passAttempts[actor.side]++;
     this.stats(actor.side).passesAttempted++;
     this.lastPasser = { id: actor.player.id, side: actor.side, at: this.elapsed };
     this.pendingOffsideTargetId = target && this.isOffside(target, actor) ? target.player.id : null;
+    this.intendedReceiverId = target?.player.id ?? null;
+    this.activeShot = null;
     this.releaseBall(actor, px * speed, py * speed, lob ? 5 + power * 4 : 0.2, lob ? this.rng.float(-2, 2) : 0);
     actor.action = lob ? 'lob' : through ? 'through-pass' : 'pass';
   }
@@ -755,7 +826,7 @@ export class ArcadeMatch {
     const balance = clamp(1 - Math.hypot(actor.vx, actor.vy) / 18, 0.35, 1);
     const weakFoot = actor.player.foot === 'Both' ? 0 : actor.player.foot === 'Right' === (actor.y > goalCentre) ? 0.07 : 0;
     const fatigue = actor.stamina < 30 ? (30 - actor.stamina) / 120 : 0;
-    const baseError = (100 - actor.player.attributes.shooting) / 100 * 1.9 + pressure * 1.2 + (1 - balance) * 0.8 + weakFoot + fatigue;
+    const baseError = (100 - actor.player.attributes.shooting) / 100 * 2.15 + pressure * 1.35 + (1 - balance) * 0.9 + weakFoot + fatigue + Math.max(0, distanceToGoal - 20) * 0.15;
     const assistFactor = this.config.assist === 'assisted' ? 0.72 : this.config.assist === 'manual' ? 1.18 : 0.92;
     const targetY = goalCentre + inputZone + this.rng.gaussian(0, baseError * assistFactor);
     const dx = goalX - actor.x;
@@ -769,6 +840,7 @@ export class ArcadeMatch {
     if (Math.abs(targetY - goalCentre) <= GOAL_WIDTH / 2 + 0.4) stats.shotsOnTarget++;
     const vz = low ? 0.7 : finesse ? 3.2 : 1.6 + power * 3.8;
     this.activeShot = { shooterId: actor.player.id, side: actor.side, xG, targetY, checkedKeeper: false };
+    this.intendedReceiverId = null;
     this.releaseBall(actor, dx / length * speed, dy / length * speed, vz, finesse ? -direction * 5 : 0);
     actor.action = finesse ? 'finesse-shot' : low ? 'low-shot' : 'shot';
     this.events.push({ minute: this.footballMinute, type: 'shot', side: actor.side, playerId: actor.player.id, params: { player: playerName(actor.player), xG } });
@@ -810,8 +882,12 @@ export class ArcadeMatch {
     for (const defender of this.actors) {
       if (!defender.active || defender.side === owner.side || defender.player.positionGroup === 'GK' || defender.tackleCooldown > 0) continue;
       if (distance(defender, owner) > 1.25) continue;
-      const press = this.teamOf(defender.side).tactics.pressing === 'gegenpress' ? 1.45 : this.teamOf(defender.side).tactics.pressing === 'high' ? 1.2 : 1;
-      if (this.rng.bool(dt * (0.22 + defender.player.attributes.defending / 115) * press)) this.attemptTackle(defender, false);
+      const pressing = this.teamOf(defender.side).tactics.pressing;
+      const press = pressing === 'gegenpress' ? 1.45 : pressing === 'high' ? 1.2 : 1;
+      if (this.rng.bool(dt * (0.22 + defender.player.attributes.defending / 115) * press)) {
+        const slideChance = pressing === 'gegenpress' ? 0.08 : pressing === 'high' ? 0.04 : pressing === 'medium' ? 0.01 : 0.004;
+        this.attemptTackle(defender, this.rng.bool(slideChance));
+      }
     }
   }
 
@@ -844,7 +920,7 @@ export class ArcadeMatch {
     stats.fouls++;
     const severity = speed + (sliding ? 4 : 0);
     const yellow = severity > 8 || this.rng.bool(clamp(severity / 26, 0.06, 0.55));
-    const straightRed = severity > 16 && this.rng.bool(0.18);
+    const straightRed = severity > 11 && this.rng.bool(clamp((severity - 9) / 75, 0.025, 0.16));
     let eventType: MatchEvent['type'] = 'foul';
     if (straightRed || (yellow && defender.card === 'yellow')) {
       defender.card = 'red';
@@ -865,7 +941,13 @@ export class ArcadeMatch {
       victim.action = 'injured';
       this.events.push({ minute: this.footballMinute, type: 'injury', side: victim.side, playerId: victim.player.id, messageKey: 'match.injury', params: { player: playerName(victim.player) } });
     }
-    this.setRestart(inBox ? 'penalty' : 'freeKick', victim.side, victim.x, victim.y);
+    const canPlayAdvantage = !inBox && victim.action !== 'injured' && Math.hypot(victim.vx, victim.vy) > 1;
+    if (canPlayAdvantage) {
+      this.rule = this.newRule('advantage', victim.side, victim.x, victim.y);
+      this.rule.advantageSide = victim.side;
+    } else {
+      this.setRestart(inBox ? 'penalty' : 'freeKick', victim.side, victim.x, victim.y);
+    }
     if (!defender.active && defender.player.id === this.selectedPlayerId) this.selectedPlayerId = this.bestControlledActor().player.id;
   }
 
@@ -889,6 +971,7 @@ export class ArcadeMatch {
     this.ball.x += this.ball.vx * dt;
     this.ball.y += this.ball.vy * dt;
     this.ball.z += this.ball.vz * dt;
+    this.ball.controlledTouch += dt;
     this.ball.vz -= 9.81 * dt;
     this.ball.vy += this.ball.spin * Math.abs(this.ball.vx) * 0.0008;
     const ground = this.ball.z <= 0;
@@ -910,7 +993,23 @@ export class ArcadeMatch {
   }
 
   private handlePostsAndKeeper(): void {
-    if (!this.activeShot) return;
+    if (!this.activeShot) {
+      const direction = this.attackDirection(this.ball.lastTouch);
+      const towardGoal = this.ball.vx * direction > 3;
+      const goalX = direction > 0 ? FIELD_LENGTH : 0;
+      if (!towardGoal || Math.abs(this.ball.x - goalX) >= 5.5) return;
+      const stats = this.stats(this.ball.lastTouch);
+      stats.shots++;
+      stats.shotsOnTarget++;
+      stats.xG = round(stats.xG + 0.04, 2);
+      this.activeShot = {
+        shooterId: this.ball.lastTouchPlayerId ?? '',
+        side: this.ball.lastTouch,
+        xG: 0.04,
+        targetY: this.ball.y,
+        checkedKeeper: false,
+      };
+    }
     const shot = this.activeShot;
     const goalX = this.attackDirection(shot.side) > 0 ? FIELD_LENGTH : 0;
     const nearGoal = Math.abs(this.ball.x - goalX) < 5.5;
@@ -921,7 +1020,7 @@ export class ArcadeMatch {
     if (!keeper) return;
     const keeperDistance = Math.abs(keeper.y - this.ball.y) + Math.max(0, this.ball.z - 1.2) * 1.2;
     const reaction = keeper.player.attributes.goalkeeping / 100;
-    const saveChance = clamp(0.12 + reaction * 0.52 - shot.xG * 0.34 - keeperDistance * 0.055, 0.03, 0.78);
+    const saveChance = clamp(0.44 + reaction * 0.72 - shot.xG * 0.3 - keeperDistance * 0.045, 0.15, 0.93);
     if (this.rng.bool(saveChance)) {
       const catchBall = this.rng.bool(clamp(reaction - Math.hypot(this.ball.vx, this.ball.vy) / 70, 0.15, 0.72));
       this.stats(defending).saves++;
@@ -971,7 +1070,11 @@ export class ArcadeMatch {
     if (this.ball.z > 2.4) return;
     const speed = Math.hypot(this.ball.vx, this.ball.vy);
     const candidate = this.actors
-      .filter((actor) => actor.active && distance(actor, this.ball) < (actor.player.positionGroup === 'GK' ? 1.65 : 1.05))
+      .filter((actor) =>
+        actor.active &&
+        (this.ball.controlledTouch >= 0.18 || actor.player.id !== this.ball.lastTouchPlayerId) &&
+        distance(actor, this.ball) < (actor.player.positionGroup === 'GK' ? 1.65 : actor.player.id === this.intendedReceiverId ? 3 : 1.18)
+      )
       .sort((a, b) => distance(a, this.ball) - distance(b, this.ball))[0];
     if (!candidate) return;
     if (this.pendingOffsideTargetId === candidate.player.id) {
@@ -983,7 +1086,10 @@ export class ArcadeMatch {
     }
     const firstTouch = candidate.player.attributes.dribbling + candidate.stamina * 0.25 - speed * 1.4;
     const weatherPenalty = this.config.weather === 'rain' ? 8 : this.config.weather === 'storm' ? 11 : 0;
-    const assistBonus = candidate.side === this.controlledSide ? this.config.assist === 'assisted' ? 12 : this.config.assist === 'balanced' ? 5 : 0 : 4;
+    const humanReceiver = this.config.mode === 'play' && candidate.side === this.controlledSide;
+    const assistBonus = humanReceiver
+      ? this.config.assist === 'assisted' ? 14 : this.config.assist === 'balanced' ? 7 : 1
+      : 45;
     if (this.rng.bool(clamp((firstTouch + assistBonus - weatherPenalty) / 100, 0.18, 0.96))) {
       this.ball.ownerId = candidate.player.id;
       this.ball.lastTouch = candidate.side;
@@ -998,6 +1104,7 @@ export class ArcadeMatch {
         }
       }
       this.pendingOffsideTargetId = null;
+      this.intendedReceiverId = null;
       this.activeShot = null;
       if (candidate.side === this.controlledSide && !this.config.playerLockId) this.selectedPlayerId = candidate.player.id;
     } else {
@@ -1008,6 +1115,12 @@ export class ArcadeMatch {
   }
 
   private scoreGoal(side: Side): void {
+    if (!this.activeShot) {
+      const stats = this.stats(side);
+      stats.shots++;
+      stats.shotsOnTarget++;
+      stats.xG = round(stats.xG + 0.04, 2);
+    }
     if (side === 'home') this.homeScore++;
     else this.awayScore++;
     const scorer = this.actors.find((actor) => actor.player.id === this.ball.lastTouchPlayerId);
@@ -1050,6 +1163,20 @@ export class ArcadeMatch {
     this.ball.y = clamp(y, 0, FIELD_WIDTH);
     this.ball.z = 0;
     this.ball.vx = this.ball.vy = this.ball.vz = 0;
+    this.activeShot = null;
+    this.intendedReceiverId = null;
+    this.pendingOffsideTargetId = null;
+  }
+
+  private updateAdvantage(dt: number): void {
+    if (this.rule.phase !== 'advantage') return;
+    this.rule.elapsed += dt;
+    const owner = this.owner();
+    if (owner && owner.side !== this.rule.advantageSide) {
+      this.setRestart('freeKick', this.rule.advantageSide ?? this.opposite(owner.side), this.rule.spotX, this.rule.spotY);
+    } else if (this.rule.elapsed >= 2.4) {
+      this.rule = this.newRule('playing', null, this.ball.x, this.ball.y);
+    }
   }
 
   private updateRestart(dt: number, input: MatchCommand): void {
@@ -1095,6 +1222,9 @@ export class ArcadeMatch {
     this.ball.ownerId = null;
     this.ball.lastTouch = side;
     this.ball.lastTouchPlayerId = null;
+    this.activeShot = null;
+    this.intendedReceiverId = null;
+    this.pendingOffsideTargetId = null;
     this.rule = this.newRule('kickoff', side, this.ball.x, this.ball.y);
     this.phase = 'stoppage';
     this.paused = false;
@@ -1162,11 +1292,12 @@ export class ArcadeMatch {
       this.lastKeyframeMinute = minute;
       this.keyframes.push({ minute, ball: { x: clamp(this.ball.x / FIELD_LENGTH, 0, 1), y: clamp(this.ball.y / FIELD_WIDTH, 0, 1) }, homeInPossession: this.owner()?.side === 'home' });
     }
-    if (this.tick % 6 === 0) {
+    if (this.config.mode !== 'instant' && this.tick % 6 === 0) {
       this.replayBuffer.push(this.snapshot());
       if (this.replayBuffer.length > 60) this.replayBuffer.shift();
     }
-    if (this.tick % 60 === 0) {
+    const heatmapInterval = this.config.mode === 'instant' ? 180 : 60;
+    if (this.tick % heatmapInterval === 0) {
       for (const actor of this.actors) {
         if (!actor.active) continue;
         const list = this.heatmaps[actor.player.id] ?? (this.heatmaps[actor.player.id] = []);
@@ -1175,7 +1306,7 @@ export class ArcadeMatch {
         else if (list.length < 48) list.push({ x: round(actor.x, 1), y: round(actor.y, 1), weight: 1 });
       }
     }
-    if (this.tick % 30 === 0) this.safeSnapshot = this.snapshot();
+    if (this.config.mode !== 'instant' && this.tick % 30 === 0) this.safeSnapshot = this.snapshot();
   }
 
   private updatePossessionStats(dt: number): void {
@@ -1189,18 +1320,25 @@ export class ArcadeMatch {
 
   private resolvePlayerCollisions(): void {
     const cellSize = 6;
-    const grid = new Map<string, ArcadeActor[]>();
+    const columns = 18;
+    const rows = 12;
+    for (const index of this.usedCollisionBuckets) this.collisionGrid[index].length = 0;
+    this.usedCollisionBuckets.length = 0;
     for (const actor of this.actors.filter((candidate) => candidate.active)) {
-      const key = `${Math.floor(actor.x / cellSize)}:${Math.floor(actor.y / cellSize)}`;
-      const bucket = grid.get(key) ?? [];
-      bucket.push(actor);
-      grid.set(key, bucket);
+      const gx = Math.min(columns - 1, Math.floor(actor.x / cellSize));
+      const gy = Math.min(rows - 1, Math.floor(actor.y / cellSize));
+      const index = gy * columns + gx;
+      if (this.collisionGrid[index].length === 0) this.usedCollisionBuckets.push(index);
+      this.collisionGrid[index].push(actor);
     }
     for (const actor of this.actors.filter((candidate) => candidate.active)) {
       const gx = Math.floor(actor.x / cellSize);
       const gy = Math.floor(actor.y / cellSize);
       for (let ox = -1; ox <= 1; ox++) for (let oy = -1; oy <= 1; oy++) {
-        for (const other of grid.get(`${gx + ox}:${gy + oy}`) ?? []) {
+        const cx = gx + ox;
+        const cy = gy + oy;
+        if (cx < 0 || cy < 0 || cx >= columns || cy >= rows) continue;
+        for (const other of this.collisionGrid[cy * columns + cx]) {
           if (other === actor || other.player.id < actor.player.id) continue;
           const dx = other.x - actor.x;
           const dy = other.y - actor.y;
@@ -1242,6 +1380,7 @@ export class ArcadeMatch {
   }
 
   private validateState(): void {
+    if (this.tick % 15 !== 0) return;
     if (this.isFiniteState()) return;
     this.applySnapshot(this.safeSnapshot);
     this.events.push({ minute: this.footballMinute, type: 'commentary', side: null, playerId: null, text: 'Simulation recovered from an invalid state.' });
@@ -1250,8 +1389,11 @@ export class ArcadeMatch {
   }
 
   private isFiniteState(): boolean {
-    const values = [this.ball.x, this.ball.y, this.ball.z, this.ball.vx, this.ball.vy, this.ball.vz, ...this.actors.flatMap((actor) => [actor.x, actor.y, actor.vx, actor.vy, actor.stamina])];
-    return values.every(Number.isFinite);
+    if (![this.ball.x, this.ball.y, this.ball.z, this.ball.vx, this.ball.vy, this.ball.vz].every(Number.isFinite)) return false;
+    for (const actor of this.actors) {
+      if (!Number.isFinite(actor.x) || !Number.isFinite(actor.y) || !Number.isFinite(actor.vx) || !Number.isFinite(actor.vy) || !Number.isFinite(actor.stamina)) return false;
+    }
+    return true;
   }
 
   private applySnapshot(snapshot: MatchSnapshot): void {
@@ -1270,12 +1412,34 @@ export class ArcadeMatch {
   }
 
   private actorSnapshot(actor: ArcadeActor): PlayerRuntimeSnapshot {
-    return { id: actor.player.id, side: actor.side, x: actor.x, y: actor.y, vx: actor.vx, vy: actor.vy, facingX: actor.facingX, facingY: actor.facingY, fitness: actor.stamina, active: actor.active, card: actor.card, action: actor.action };
+    return {
+      id: actor.player.id,
+      side: actor.side,
+      x: actor.x,
+      y: actor.y,
+      homeX: actor.homeX,
+      homeY: actor.homeY,
+      vx: actor.vx,
+      vy: actor.vy,
+      facingX: actor.facingX,
+      facingY: actor.facingY,
+      fitness: actor.stamina,
+      active: actor.active,
+      card: actor.card,
+      action: actor.action,
+      decisionCooldown: actor.decisionCooldown,
+      skillCooldown: actor.skillCooldown,
+      tackleCooldown: actor.tackleCooldown,
+      intentX: actor.intentX,
+      intentY: actor.intentY,
+    };
   }
 
   private applyActorSnapshot(actor: ArcadeActor, saved: PlayerRuntimeSnapshot): void {
     actor.x = saved.x;
     actor.y = saved.y;
+    actor.homeX = saved.homeX;
+    actor.homeY = saved.homeY;
     actor.vx = saved.vx;
     actor.vy = saved.vy;
     actor.facingX = saved.facingX;
@@ -1284,6 +1448,11 @@ export class ArcadeMatch {
     actor.active = saved.active;
     actor.card = saved.card;
     actor.action = saved.action;
+    actor.decisionCooldown = saved.decisionCooldown;
+    actor.skillCooldown = saved.skillCooldown;
+    actor.tackleCooldown = saved.tackleCooldown;
+    actor.intentX = saved.intentX;
+    actor.intentY = saved.intentY;
   }
 
   private ballSnapshot(): BallSnapshot {

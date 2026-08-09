@@ -71,6 +71,7 @@ export class MatchPage implements OnDestroy {
   protected readonly flash = signal<string | null>(null);
   protected readonly performanceMessage = signal('');
   protected readonly inputDevice = signal<InputDevice>('keyboard');
+  protected readonly committing = signal(false);
   protected readonly showSubs = signal(false);
   protected readonly showTactics = signal(false);
   protected readonly subOutId = signal('');
@@ -331,7 +332,8 @@ export class MatchPage implements OnDestroy {
       return;
     }
     if (this.playing()) {
-      this.fixedAccumulator += dt * (this.selectedMode() === 'coach' ? this.speed() : 1);
+      const tacticalTimeScale = this.showTactics() ? 0.15 : 1;
+      this.fixedAccumulator += dt * (this.selectedMode() === 'coach' ? this.speed() : 1) * tacticalTimeScale;
       if (this.fixedAccumulator > 0.25) {
         this.fixedAccumulator = 0;
         this.pauseFor('Performance-Schutz: Die Simulation lag mehr als 250 ms zurück.');
@@ -466,13 +468,14 @@ export class MatchPage implements OnDestroy {
     this.audio.whistle();
   }
 
-  protected confirm(): void {
+  protected async confirm(): Promise<void> {
     const result = this.result();
-    if (!result) return;
-    const committed = this.season.commitWeek(result);
+    if (!result || this.committing()) return;
+    this.committing.set(true);
+    const committed = await this.season.commitWeek(result);
     if (committed) this.checkpoints.clear();
     this.reset();
-    void this.router.navigateByUrl(this.gs.seasonOver() ? '/league' : '/');
+    await this.router.navigateByUrl(this.gs.seasonOver() ? '/league' : '/');
   }
 
   protected currentMentality(): Mentality | undefined { return this.arcade?.controlledTeam.tactics.mentality; }
@@ -606,6 +609,7 @@ export class MatchPage implements OnDestroy {
     this.arcade = null;
     this.result.set(null);
     this.revealed.set([]);
+    this.committing.set(false);
     this.phase.set('preview');
     this.audio.stopMusic();
   }

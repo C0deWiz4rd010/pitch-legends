@@ -18,6 +18,7 @@ export class MatchCheckpointService {
         !value.ball ||
         !Array.isArray(value.actors) ||
         !value.safeSnapshot ||
+        !value.runtime ||
         (fixtureId && value.fixtureId !== fixtureId)
       ) {
         this.clear();

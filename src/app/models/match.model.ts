@@ -171,6 +171,8 @@ export interface PlayerRuntimeSnapshot {
   side: Side;
   x: number;
   y: number;
+  homeX: number;
+  homeY: number;
   vx: number;
   vy: number;
   facingX: number;
@@ -179,6 +181,11 @@ export interface PlayerRuntimeSnapshot {
   active: boolean;
   card: 'none' | 'yellow' | 'red';
   action: string;
+  decisionCooldown: number;
+  skillCooldown: number;
+  tackleCooldown: number;
+  intentX: number;
+  intentY: number;
 }
 
 export interface BallSnapshot {
@@ -227,6 +234,25 @@ export interface MatchCheckpoint {
   ratings: Record<string, number>;
   contributions: Record<string, MatchContribution>;
   safeSnapshot: MatchSnapshot;
+  runtime: {
+    previousInput: MatchCommand;
+    actionHeld: { pass: number; through: number; lob: number; shoot: number };
+    possessionHomeSeconds: number;
+    possessionAwaySeconds: number;
+    passAttempts: Record<Side, number>;
+    passCompletions: Record<Side, number>;
+    lastPasser: { id: string; side: Side; at: number } | null;
+    pendingOffsideTargetId: string | null;
+    intendedReceiverId: string | null;
+    activeShot: { shooterId: string; side: Side; xG: number; targetY: number; checkedKeeper: boolean } | null;
+    halftimeReached: boolean;
+    halftimeRecoveryApplied: boolean;
+    subsUsed: number;
+    substitutionWindows: number;
+    lastSubAt: number;
+    keyframes: MatchKeyframe[];
+    heatmaps: Record<string, { x: number; y: number; weight: number }[]>;
+  };
   savedAt: number;
 }
 
