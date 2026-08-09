@@ -178,7 +178,7 @@
         @for (e of tickerEvents(); track $index) {
           <div class="event" [class.goal]="e.type === 'goal'" [class.card-ev]="e.type === 'yellow'" [class.info]="e.type === 'commentary'">
             <span class="min">{{ e.minute }}'</span>
-            <span class="txt">{{ e.text }}</span>
+            <span class="txt">{{ i18n.event(e) }}</span>
           </div>
         }
       </div>

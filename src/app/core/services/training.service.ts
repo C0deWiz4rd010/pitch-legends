@@ -43,7 +43,12 @@ export class TrainingService {
   private readonly rng = new Rng();
 
   /** Run one training session for a player. Mutates the player (call in mutate). */
-  train(player: Player, drill: TrainingDrill, trainingGroundLevel: number): TrainingOutcome {
+  train(
+    player: Player,
+    drill: TrainingDrill,
+    trainingGroundLevel: number,
+    coachingMultiplier = 1,
+  ): TrainingOutcome {
     if (player.injuryWeeks > 0) {
       return this.fail('Injured players cannot train.');
     }
@@ -57,9 +62,11 @@ export class TrainingService {
       return this.fail(`${player.firstName} is too fatigued — run a Recovery session first.`);
     }
 
-    player.fitness = clamp(player.fitness - FITNESS_COST, 0, 100);
+    player.fitness = clamp(player.fitness - Math.max(7, Math.round(FITNESS_COST / coachingMultiplier)), 0, 100);
 
-    const xp = Math.round(30 * (1 + trainingGroundLevel * 0.18) * this.rng.float(0.85, 1.2));
+    const xp = Math.round(
+      30 * (1 + trainingGroundLevel * 0.18) * coachingMultiplier * this.rng.float(0.85, 1.2),
+    );
     const { levelsGained } = this.rpg.awardXp(player, xp);
 
     // Chance of a direct attribute bump, better facilities help.

@@ -16,7 +16,7 @@ export class MatchEngineService {
   }
 
   /** Interactive match the manager can influence live (used for their own fixture). */
-  createLiveMatch(home: Team, away: Team, week: number, seed?: number): LiveMatch {
-    return new LiveMatch(home, away, week, seed);
+  createLiveMatch(home: Team, away: Team, week: number, controlledTeamId = home.id, seed?: number): LiveMatch {
+    return new LiveMatch(home, away, week, controlledTeamId, seed);
   }
 }

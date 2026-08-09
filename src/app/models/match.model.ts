@@ -15,6 +15,14 @@ export type MatchEventType =
   | 'commentary';
 
 export type Side = 'home' | 'away';
+export type MatchMode = 'play' | 'coach' | 'instant';
+
+export interface MatchConfig {
+  mode: MatchMode;
+  controlledTeamId: string;
+  halfMinutes: 3 | 5 | 8;
+  seed?: number;
+}
 
 export interface MatchEvent {
   minute: number;
@@ -23,7 +31,20 @@ export interface MatchEvent {
   playerId: string | null;
   playerName?: string;
   assistName?: string;
-  text: string;
+  messageKey?: string;
+  params?: Record<string, string | number>;
+  /** Fallback for legacy/internal commentary while every event is localised. */
+  text?: string;
+}
+
+export interface InputFrame {
+  moveX: number;
+  moveY: number;
+  sprint: boolean;
+  pass: boolean;
+  through: boolean;
+  shoot: boolean;
+  switchPlayer: boolean;
 }
 
 export interface TeamMatchStats {

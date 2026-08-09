@@ -107,8 +107,8 @@
           <div class="news-item">
             <span class="news-ico">{{ item.icon }}</span>
             <div class="news-body">
-              <strong>{{ item.title }}</strong>
-              <p class="muted">{{ item.body }}</p>
+              <strong>{{ i18n.t(item.titleKey, item.params) }}</strong>
+              <p class="muted">{{ i18n.t(item.bodyKey, item.params) }}</p>
             </div>
           </div>
         } @empty {

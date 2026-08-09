@@ -35,11 +35,25 @@ export class TrainingPage {
   }
 
   protected train(playerId: string): void {
+    if (this.gs.trainingSlotsRemaining() <= 0) {
+      this.message.set('All three training slots for this week are used.');
+      return;
+    }
     let outcome: TrainingOutcome | undefined;
     this.gs.mutate((draft) => {
       const club = draft.teams.find((t) => t.id === draft.clubId)!;
       const target = club.players.find((p) => p.id === playerId);
-      if (target) outcome = this.training.train(target, this.activeDrill(), club.facilities.trainingGround);
+      const coachingRank = draft.manager.perks.coaching ?? 0;
+      const difficulty = draft.settings.difficulty === 'easy' ? 1.12 : draft.settings.difficulty === 'hard' ? 0.94 : 1;
+      if (target) {
+        outcome = this.training.train(
+          target,
+          this.activeDrill(),
+          club.facilities.trainingGround,
+          (1 + coachingRank * 0.04) * difficulty,
+        );
+        if (outcome.ok) draft.trainingWeek.slotsUsed++;
+      }
     });
     if (outcome) {
       this.message.set(outcome.message);
@@ -48,12 +62,19 @@ export class TrainingPage {
   }
 
   protected recover(playerId: string): void {
+    if (this.gs.trainingSlotsRemaining() <= 0) {
+      this.message.set('All three training slots for this week are used.');
+      return;
+    }
     const recovery = this.drills.find((d) => d.focus === 'recovery')!;
     let outcome: TrainingOutcome | undefined;
     this.gs.mutate((draft) => {
       const club = draft.teams.find((t) => t.id === draft.clubId)!;
       const target = club.players.find((p) => p.id === playerId);
-      if (target) outcome = this.training.train(target, recovery, club.facilities.trainingGround);
+      if (target) {
+        outcome = this.training.train(target, recovery, club.facilities.trainingGround);
+        if (outcome.ok) draft.trainingWeek.slotsUsed++;
+      }
     });
     if (outcome) this.message.set(outcome.message);
   }

@@ -15,6 +15,31 @@ export interface Trait {
 
 export type PlayerAttributes = Record<AttributeKey, number>;
 
+export type PlayerArchetype =
+  | 'shot-stopper'
+  | 'sweeper'
+  | 'distributor'
+  | 'stopper'
+  | 'ball-player'
+  | 'runner'
+  | 'ball-winner'
+  | 'playmaker'
+  | 'box-to-box'
+  | 'finisher'
+  | 'creator'
+  | 'speedster';
+
+export type DevelopmentPlan = 'balanced' | 'technical' | 'physical' | 'position';
+export type PlayerPersonality = 'professional' | 'driven' | 'flair' | 'team-player' | 'volatile';
+
+export interface PersonalGoal {
+  type: 'appearances' | 'goals' | 'assists' | 'clean-sheets' | 'rating';
+  target: number;
+  progress: number;
+  rewardXp: number;
+  completed: boolean;
+}
+
 export interface Player {
   id: string;
   firstName: string;
@@ -41,6 +66,11 @@ export interface Player {
   xpToNext: number;
   skillPoints: number;
   traitIds: string[];
+  archetype: PlayerArchetype;
+  developmentPlan: DevelopmentPlan;
+  talentRanks: Record<string, number>;
+  personality: PlayerPersonality;
+  personalGoal: PersonalGoal;
 
   // Condition & psychology (0-100 unless noted)
   morale: number;

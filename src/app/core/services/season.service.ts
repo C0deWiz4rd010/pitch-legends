@@ -63,6 +63,14 @@ export class SeasonService {
       if (draft.league.currentWeek <= draft.league.totalWeeks) {
         draft.league.currentWeek++;
       }
+      draft.trainingWeek = {
+        season: draft.league.season,
+        week: draft.league.currentWeek,
+        slotsUsed: 0,
+        maxSlots: 3,
+      };
+      draft.transferMarket = [];
+      draft.transferMarketWeek = 0;
     });
   }
 
@@ -130,14 +138,23 @@ export class SeasonService {
     const prize = won ? 60000 : drew ? 25000 : 8000;
     const income = Math.round(gate + prize);
     club.coins += income;
+    this.rpg.awardManagerXp(draft.manager, won ? 90 : drew ? 55 : 35);
 
     const opp = isHome ? away : home;
     draft.news.unshift({
       id: uid('news'),
       week: draft.league.currentWeek,
-      icon: won ? '🏆' : drew ? '🤝' : '😞',
-      title: `${result.homeTeamName} ${result.homeScore}-${result.awayScore} ${result.awayTeamName}`,
-      body: `${won ? 'Victory' : drew ? 'A share of the spoils' : 'Defeat'} against ${opp.name}. Matchday income: ${income.toLocaleString()} coins.`,
+      icon: won ? 'trophy' : drew ? 'handshake' : 'whistle',
+      titleKey: 'news.match.title',
+      bodyKey: won ? 'news.match.win' : drew ? 'news.match.draw' : 'news.match.loss',
+      params: {
+        home: result.homeTeamName,
+        away: result.awayTeamName,
+        homeScore: result.homeScore,
+        awayScore: result.awayScore,
+        opponent: opp.name,
+        income,
+      },
     });
     draft.news = draft.news.slice(0, 20);
   }
@@ -155,18 +172,29 @@ export class SeasonService {
           if (this.rng.bool(Math.max(0.006, injuryChance)) && p.fitness < 70) {
             p.injuryWeeks = this.rng.int(1, 4);
             if (team.id === draft.clubId) {
-              this.pushNews(draft, '🚑', 'Injury blow', `${playerName(p)} picked up a knock and will be out for ${p.injuryWeeks} week(s).`);
+              this.pushNews(draft, 'medical', 'news.injury.title', 'news.injury.body', {
+                player: playerName(p),
+                weeks: p.injuryWeeks,
+              });
             }
           }
         }
         p.morale = clamp(p.morale + Math.sign(70 - p.morale) * 2, 15, 100);
         if (p.contractWeeks > 0) p.contractWeeks--;
       }
+      const wages = team.players.reduce((sum, player) => sum + player.salary, 0);
+      team.coins = Math.max(0, team.coins - wages);
     }
   }
 
-  private pushNews(draft: GameState, icon: string, title: string, body: string): void {
-    const item: NewsItem = { id: uid('news'), week: draft.league.currentWeek, icon, title, body };
+  private pushNews(
+    draft: GameState,
+    icon: string,
+    titleKey: string,
+    bodyKey: string,
+    params?: Record<string, string | number>,
+  ): void {
+    const item: NewsItem = { id: uid('news'), week: draft.league.currentWeek, icon, titleKey, bodyKey, params };
     draft.news.unshift(item);
     draft.news = draft.news.slice(0, 20);
   }
@@ -176,6 +204,9 @@ export class SeasonService {
     this.gs.mutate((draft) => {
       draft.league.season++;
       draft.league.currentWeek = 1;
+      draft.trainingWeek = { season: draft.league.season, week: 1, slotsUsed: 0, maxSlots: 3 };
+      draft.transferMarket = [];
+      draft.transferMarketWeek = 0;
       draft.league.fixtures.forEach((f) => {
         f.played = false;
         f.homeScore = null;
@@ -198,7 +229,9 @@ export class SeasonService {
           p.fitness = 100;
         }
       }
-      this.pushNews(draft, '🎬', `Season ${draft.league.season} kicks off!`, 'A fresh campaign begins. Time to push for the title.');
+      this.pushNews(draft, 'flag', 'news.season.title', 'news.season.body', {
+        season: draft.league.season,
+      });
     });
   }
 }

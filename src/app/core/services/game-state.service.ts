@@ -27,6 +27,11 @@ export class GameStateService {
   readonly season = computed(() => this.state()?.league.season ?? 1);
   readonly totalWeeks = computed(() => this.state()?.league.totalWeeks ?? 0);
   readonly news = computed(() => this.state()?.news ?? []);
+  readonly trainingSlotsRemaining = computed(() => {
+    const training = this.state()?.trainingWeek;
+    return training ? Math.max(0, training.maxSlots - training.slotsUsed) : 0;
+  });
+  readonly manager = computed(() => this.state()?.manager ?? null);
 
   /** Full league standings sorted by points, then goal difference, then goals. */
   readonly standings = computed<StandingRow[]>(() => {
@@ -129,6 +134,10 @@ export class GameStateService {
 
   hasStoredSave(): boolean {
     return this.saves.hasSave();
+  }
+
+  hasLegacySave(): boolean {
+    return this.saves.hasLegacySave();
   }
 
   /**

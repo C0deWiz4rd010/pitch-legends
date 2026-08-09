@@ -2,6 +2,9 @@ import { computeOverall } from './core/ratings';
 import { Rng } from './core/util';
 import { createNewGame } from './data/generators';
 import { MatchEngineService } from './core/services/match-engine.service';
+import { buildProfile, LiveMatch } from './core/services/match-sim';
+import { RpgService } from './core/services/rpg.service';
+import { SAVE_VERSION } from './models/game.model';
 
 describe('ratings', () => {
   it('computes a goalkeeper overall dominated by goalkeeping', () => {
@@ -44,5 +47,57 @@ describe('match engine', () => {
     expect(r1.events.length).toBeGreaterThan(0);
     expect(r1.homeStats.possession + r1.awayStats.possession).toBe(100);
   });
+
+  it('controls the selected club even when it is the away team', () => {
+    const game = createNewGame({ managerName: 'Test', clubName: 'Test FC', seed: 77 });
+    const home = game.teams[1];
+    const away = game.teams[0];
+    const originalHome = home.tactics.mentality;
+    const live = new LiveMatch(home, away, 1, away.id, 123);
+
+    live.setMentality('ultra-attacking');
+
+    expect(live.controlled.id).toBe(away.id);
+    expect(live.away.tactics.mentality).toBe('ultra-attacking');
+    expect(live.home.tactics.mentality).toBe(originalHome);
+  });
+
+  it('maps build-up, width and player instructions into team strength', () => {
+    const game = createNewGame({ managerName: 'Test', clubName: 'Test FC', seed: 11 });
+    const team = structuredClone(game.teams[0]);
+    const baseline = buildProfile(team, false);
+    team.tactics.buildUp = 'play-out-of-defence';
+    team.tactics.width = 'narrow';
+    team.formation.slots.forEach((slot) => {
+      slot.instruction.duty = 'attack';
+      slot.instruction.forwardRuns = 'often';
+    });
+    const adjusted = buildProfile(team, false);
+
+    expect(adjusted.midfield).toBeGreaterThan(baseline.midfield);
+    expect(adjusted.attack).toBeGreaterThan(baseline.attack);
+  });
 });
 
+describe('v2 progression', () => {
+  it('creates a fresh versioned career with manager and player RPG data', () => {
+    const game = createNewGame({ managerName: 'Pixel', clubName: 'Arcade FC', seed: 2 });
+    expect(game.version).toBe(SAVE_VERSION);
+    expect(game.manager.level).toBe(1);
+    expect(game.trainingWeek.maxSlots).toBe(3);
+    expect(game.teams[0].players.every((player) => !!player.archetype && !!player.personalGoal)).toBe(true);
+  });
+
+  it('spends points on an archetype talent and applies its effective bonus', () => {
+    const game = createNewGame({ managerName: 'Pixel', clubName: 'Arcade FC', seed: 3 });
+    const player = game.teams[0].players[0];
+    player.level = 10;
+    player.skillPoints = 10;
+    const service = new RpgService();
+    const talent = service.availableTalents(player)[0];
+
+    expect(service.unlockTalent(player, talent.id)).toBe(true);
+    expect(player.talentRanks[talent.id]).toBe(1);
+    expect(player.skillPoints).toBe(10 - talent.cost);
+  });
+});

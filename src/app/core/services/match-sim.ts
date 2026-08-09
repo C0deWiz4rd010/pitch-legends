@@ -12,7 +12,7 @@ import {
 } from '../../models/match.model';
 import { Tactics } from '../../models/tactics.model';
 import { AttributeKey } from '../../models/enums';
-import { effectiveRating, playerName } from '../ratings';
+import { effectiveRating, groupForPosition, playerName } from '../ratings';
 import { getRole } from '../../data/roles';
 import { Rng, clamp, uid } from '../util';
 
@@ -78,10 +78,17 @@ function roleOf(team: Team, playerId: string): string {
   return group === 'GK' ? 'gk' : group === 'DEF' ? 'cd' : group === 'MID' ? 'cm' : 'cf';
 }
 
+function slotOf(team: Team, playerId: string) {
+  return team.formation.slots.find((slot) => slot.playerId === playerId);
+}
+
 function avgRating(team: Team, players: Player[]): number {
   if (!players.length) return 45;
   const sum = players.reduce(
-    (acc, p) => acc + effectiveRating(p, getRole(roleOf(team, p.id)), p.position),
+    (acc, p) => {
+      const slot = slotOf(team, p.id);
+      return acc + effectiveRating(p, getRole(roleOf(team, p.id)), slot?.position ?? p.position);
+    },
     0,
   );
   return sum / players.length;
@@ -101,23 +108,54 @@ export function buildProfile(team: Team, isHome: boolean): TeamProfile {
   let keeper = 40;
 
   if (starters.length) {
-    const attackers = starters.filter((p) => p.positionGroup === 'ATT');
-    const mids = starters.filter((p) => p.positionGroup === 'MID');
-    const defs = starters.filter((p) => p.positionGroup === 'DEF');
-    const gk = starters.find((p) => p.positionGroup === 'GK');
+    const attackers = starters.filter((p) => groupForPosition(slotOf(team, p.id)?.position ?? p.position) === 'ATT');
+    const mids = starters.filter((p) => groupForPosition(slotOf(team, p.id)?.position ?? p.position) === 'MID');
+    const defs = starters.filter((p) => groupForPosition(slotOf(team, p.id)?.position ?? p.position) === 'DEF');
+    const gk = starters.find((p) => groupForPosition(slotOf(team, p.id)?.position ?? p.position) === 'GK');
 
     attack = avgRating(team, attackers.length ? attackers : mids) + MENTALITY_ATT[t.mentality] + homeBonus;
     midfield = avgRating(team, mids.length ? mids : starters) + homeBonus;
     defence = avgRating(team, defs.length ? defs : mids) + MENTALITY_DEF[t.mentality] + homeBonus;
-    keeper = gk ? effectiveRating(gk, getRole(roleOf(team, gk.id)), 'GK') + homeBonus : 45;
+    keeper = gk ? effectiveRating(gk, getRole(roleOf(team, gk.id)), slotOf(team, gk.id)?.position ?? 'GK') + homeBonus : 45;
   }
 
   const press = PRESS_AGGRO[t.pressing];
   defence += press * 0.5;
-  if (t.counterAttack) attack += 2;
+  const instructions = team.formation.slots.map((slot) => slot.instruction);
+  const attackDuties = instructions.filter((instruction) => instruction.duty === 'attack').length;
+  const defendDuties = instructions.filter((instruction) => instruction.duty === 'defend').length;
+  const forwardRuns = instructions.reduce(
+    (sum, instruction) => sum + (instruction.forwardRuns === 'often' ? 1 : instruction.forwardRuns === 'rarely' ? -1 : 0),
+    0,
+  );
+  const pressBias = instructions.reduce((sum, instruction) => sum + instruction.pressingBias, 0);
+  const aggressiveMarking = instructions.filter((instruction) => instruction.marking === 'aggressive').length;
+
+  attack += attackDuties * 0.45 + forwardRuns * 0.3;
+  defence += defendDuties * 0.4 + pressBias * 0.2;
+  midfield += instructions.filter((instruction) => instruction.stayInPosition).length * 0.18;
+
+  if (t.counterAttack) attack += t.mentality === 'defensive' || t.mentality === 'ultra-defensive' ? 3 : 1;
+  if (t.width === 'wide') attack += 1.5;
+  if (t.width === 'narrow') midfield += 2;
+  if (t.buildUp === 'play-out-of-defence') {
+    midfield += 2;
+    defence += 1;
+  } else if (t.buildUp === 'long-ball') {
+    attack += 2;
+    midfield -= 1.5;
+  }
+  if (t.passing === 'short') midfield += 2;
+  if (t.passing === 'direct') {
+    attack += 1.5;
+    midfield -= 1;
+  }
   if (t.defensiveLine === 'high') {
     attack += 2;
-    defence -= t.offsideTrap ? 0 : 2;
+    defence += t.offsideTrap ? 1.5 : -2;
+  } else if (t.defensiveLine === 'deep') {
+    defence += 2;
+    attack -= 1;
   }
 
   return {
@@ -128,7 +166,7 @@ export function buildProfile(team: Team, isHome: boolean): TeamProfile {
     midfield: clamp(midfield, 30, 99),
     defence: clamp(defence, 30, 99),
     keeper: clamp(keeper, 30, 99),
-    aggression: 20 + press * 3,
+    aggression: 20 + press * 3 + aggressiveMarking * 0.8 + Math.max(0, pressBias),
   };
 }
 
@@ -154,7 +192,7 @@ export function initMatchState(home: Team, away: Team, week: number, rng: Rng): 
     rng,
     H,
     A,
-    events: [{ minute: 0, type: 'kickoff', side: null, playerId: null, text: 'Kick-off!' }],
+    events: [{ minute: 0, type: 'kickoff', side: null, playerId: null, messageKey: 'match.kickoff' }],
     homeStats,
     awayStats,
     keyframes: [],
@@ -247,9 +285,8 @@ export function simulateMinute(state: MatchState, minute: number): void {
           playerId: shooter.id,
           playerName: playerName(shooter),
           assistName: assist ? playerName(assist) : undefined,
-          text: assist
-            ? `⚽ GOAL! ${playerName(shooter)} finishes off a pass from ${playerName(assist)}!`
-            : `⚽ GOAL! ${playerName(shooter)} strikes!`,
+          messageKey: assist ? 'match.goal.assist' : 'match.goal.solo',
+          params: { player: playerName(shooter), assist: assist ? playerName(assist) : '' },
         });
       } else {
         const gk = def.starters.find((p) => p.positionGroup === 'GK');
@@ -259,20 +296,35 @@ export function simulateMinute(state: MatchState, minute: number): void {
           type: 'save',
           side: atkSide,
           playerId: gk?.id ?? null,
-          text: `🧤 Great save! ${gk ? playerName(gk) : 'The keeper'} denies ${playerName(shooter)}.`,
+          messageKey: 'match.save',
+          params: { keeper: gk ? playerName(gk) : 'Keeper', shooter: playerName(shooter) },
         });
       }
     } else {
       if (rng.next() < 0.4) {
         atkStats.corners++;
-        state.events.push({ minute, type: 'corner', side: atkSide, playerId: null, text: `Corner for ${atk.team.shortName}.` });
+        state.events.push({
+          minute,
+          type: 'corner',
+          side: atkSide,
+          playerId: atk.team.tactics.cornerTakerId,
+          messageKey: 'match.corner',
+          params: { team: atk.team.shortName },
+        });
       } else {
-        state.events.push({ minute, type: 'shot', side: atkSide, playerId: shooter.id, text: `${playerName(shooter)} fires just wide.` });
+        state.events.push({
+          minute,
+          type: 'shot',
+          side: atkSide,
+          playerId: shooter.id,
+          messageKey: 'match.wide',
+          params: { player: playerName(shooter) },
+        });
       }
     }
   }
 
-  if (rng.next() < 0.03 + def.aggression / 900) {
+  if (def.starters.length && rng.next() < 0.03 + def.aggression / 900) {
     const fouler = rng.pick(def.starters);
     defStats.fouls++;
     if (rng.next() < 0.16) {
@@ -284,7 +336,8 @@ export function simulateMinute(state: MatchState, minute: number): void {
         type: 'yellow',
         side: homeTurn ? 'away' : 'home',
         playerId: fouler.id,
-        text: `🟨 Yellow card for ${playerName(fouler)}.`,
+        messageKey: 'match.yellow',
+        params: { player: playerName(fouler) },
       });
     }
   }
@@ -308,7 +361,13 @@ export function simulateMinute(state: MatchState, minute: number): void {
       type: 'halftime',
       side: null,
       playerId: null,
-      text: `Half-time: ${state.home.shortName} ${state.homeScore} - ${state.awayScore} ${state.away.shortName}`,
+      messageKey: 'match.halftime',
+      params: {
+        home: state.home.shortName,
+        away: state.away.shortName,
+        homeScore: state.homeScore,
+        awayScore: state.awayScore,
+      },
     });
   }
 
@@ -328,7 +387,8 @@ export function finalizeMatch(state: MatchState): MatchResult {
     type: 'fulltime',
     side: null,
     playerId: null,
-    text: `Full-time: ${home.shortName} ${state.homeScore} - ${state.awayScore} ${away.shortName}`,
+    messageKey: 'match.fulltime',
+    params: { home: home.shortName, away: away.shortName, homeScore: state.homeScore, awayScore: state.awayScore },
   });
 
   state.homeStats.passAccuracy = clamp(Math.round(70 + (H.midfield - 60) / 2), 55, 94);
@@ -406,14 +466,18 @@ function manOfTheMatch(
 export class LiveMatch {
   readonly home: Team;
   readonly away: Team;
+  readonly controlled: Team;
+  readonly controlledSide: Side;
   private state: MatchState;
   private subsUsed = 0;
   private subbedOut = new Set<string>();
   readonly maxSubs = 5;
 
-  constructor(home: Team, away: Team, week: number, seed?: number) {
+  constructor(home: Team, away: Team, week: number, controlledTeamId = home.id, seed?: number) {
     this.home = structuredClone(home);
     this.away = structuredClone(away);
+    this.controlledSide = this.away.id === controlledTeamId ? 'away' : 'home';
+    this.controlled = this.controlledSide === 'home' ? this.home : this.away;
     this.state = initMatchState(this.home, this.away, week, new Rng(seed ?? (Date.now() >>> 0)));
   }
 
@@ -441,8 +505,8 @@ export class LiveMatch {
 
   /** Players available to bring on (fit, not already used or on the pitch). */
   bench(): Player[] {
-    const onPitch = new Set(this.home.formation.slots.map((s) => s.playerId));
-    return this.home.players.filter(
+    const onPitch = new Set(this.controlled.formation.slots.map((s) => s.playerId));
+    return this.controlled.players.filter(
       (p) => !onPitch.has(p.id) && !this.subbedOut.has(p.id) && p.injuryWeeks === 0,
     );
   }
@@ -456,21 +520,21 @@ export class LiveMatch {
   }
 
   setMentality(mentality: Tactics['mentality']): void {
-    this.home.tactics.mentality = mentality;
+    this.controlled.tactics.mentality = mentality;
     refreshProfiles(this.state);
-    this.pushLive(`📋 Mentality switched to ${mentality.replace('-', ' ')}.`);
+    this.pushLive('match.mentality', { value: mentality.replace('-', ' ') });
   }
 
   setPressing(pressing: Tactics['pressing']): void {
-    this.home.tactics.pressing = pressing;
+    this.controlled.tactics.pressing = pressing;
     refreshProfiles(this.state);
-    this.pushLive(`📋 Pressing set to ${pressing}.`);
+    this.pushLive('match.pressing', { value: pressing });
   }
 
   makeSub(outId: string, inId: string): boolean {
     if (this.subsUsed >= this.maxSubs) return false;
-    const slot = this.home.formation.slots.find((s) => s.playerId === outId);
-    const incoming = this.home.players.find((p) => p.id === inId);
+    const slot = this.controlled.formation.slots.find((s) => s.playerId === outId);
+    const incoming = this.controlled.players.find((p) => p.id === inId);
     if (!slot || !incoming) return false;
     slot.playerId = inId;
     this.subbedOut.add(outId);
@@ -478,8 +542,11 @@ export class LiveMatch {
     this.state.ratings[inId] ??= 6.5;
     this.state.contributions[inId] ??= emptyContribution();
     refreshProfiles(this.state);
-    const out = this.home.players.find((p) => p.id === outId);
-    this.pushLive(`🔄 Substitution: ${playerName(incoming)} on${out ? `, ${playerName(out)} off` : ''}.`);
+    const out = this.controlled.players.find((p) => p.id === outId);
+    this.pushLive('match.sub', {
+      incoming: playerName(incoming),
+      outgoing: out ? playerName(out) : '',
+    });
     return true;
   }
 
@@ -488,7 +555,14 @@ export class LiveMatch {
     return finalizeMatch(this.state);
   }
 
-  private pushLive(text: string): void {
-    this.state.events.push({ minute: this.state.minute, type: 'commentary', side: 'home', playerId: null, text });
+  private pushLive(messageKey: string, params?: Record<string, string | number>): void {
+    this.state.events.push({
+      minute: this.state.minute,
+      type: 'commentary',
+      side: this.controlledSide,
+      playerId: null,
+      messageKey,
+      params,
+    });
   }
 }

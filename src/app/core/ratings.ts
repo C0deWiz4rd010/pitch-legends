@@ -2,6 +2,7 @@ import { AttributeKey, PositionGroup } from '../models/enums';
 import { Player, PlayerAttributes } from '../models/player.model';
 import { Role } from '../models/tactics.model';
 import { getTrait } from '../data/traits';
+import { getTalent } from '../data/talents';
 import { clamp } from './util';
 
 /** Weightings that turn raw attributes into an overall rating per position group. */
@@ -77,6 +78,13 @@ export function withTraitBonuses(player: Player): PlayerAttributes {
     if (!trait) continue;
     for (const key of Object.keys(trait.modifiers) as AttributeKey[]) {
       attrs[key] = clamp(attrs[key] + trait.modifiers[key]!, 1, 99);
+    }
+  }
+  for (const [id, rank] of Object.entries(player.talentRanks ?? {})) {
+    const talent = getTalent(id);
+    if (!talent || rank <= 0) continue;
+    for (const key of Object.keys(talent.modifiers) as AttributeKey[]) {
+      attrs[key] = clamp(attrs[key] + talent.modifiers[key]! * rank, 1, 99);
     }
   }
   return attrs;

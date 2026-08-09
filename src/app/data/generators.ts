@@ -1,5 +1,12 @@
 import { AttributeKey, Position, PositionGroup } from '../models/enums';
-import { Player, PlayerAttributes, emptySeasonStats } from '../models/player.model';
+import {
+  PersonalGoal,
+  Player,
+  PlayerArchetype,
+  PlayerAttributes,
+  PlayerPersonality,
+  emptySeasonStats,
+} from '../models/player.model';
 import { Team } from '../models/team.model';
 import { League, Fixture } from '../models/league.model';
 import { GameState, SAVE_VERSION, defaultSettings } from '../models/game.model';
@@ -11,6 +18,7 @@ import { xpToNextForLevel } from '../core/progression';
 import { createFormation } from './formations';
 import { CLUB_IDENTITIES, FIRST_NAMES, LAST_NAMES, NATIONALITIES, ClubIdentity } from './names';
 import { TRAITS } from './traits';
+import { ARCHETYPES_BY_GROUP } from './talents';
 
 /** Squad template: which positions to fill and their alternates. */
 const SQUAD_TEMPLATE: { position: Position; alts: Position[] }[] = [
@@ -89,6 +97,15 @@ export function generatePlayer(
     if (eligible.length) traitIds.push(rng.pick(eligible).id);
   }
 
+  const archetype = rng.pick(ARCHETYPES_BY_GROUP[group]) as PlayerArchetype;
+  const personalities: PlayerPersonality[] = ['professional', 'driven', 'flair', 'team-player', 'volatile'];
+  const goalPool: PersonalGoal[] =
+    group === 'ATT'
+      ? [{ type: 'goals', target: rng.int(5, 12), progress: 0, rewardXp: 220, completed: false }]
+      : group === 'GK' || group === 'DEF'
+        ? [{ type: 'clean-sheets', target: rng.int(4, 9), progress: 0, rewardXp: 220, completed: false }]
+        : [{ type: 'assists', target: rng.int(4, 10), progress: 0, rewardXp: 220, completed: false }];
+
   return {
     id: uid('ply'),
     firstName: rng.pick(FIRST_NAMES),
@@ -108,6 +125,11 @@ export function generatePlayer(
     xpToNext: xpToNextForLevel(level),
     skillPoints: 0,
     traitIds,
+    archetype,
+    developmentPlan: 'balanced',
+    talentRanks: {},
+    personality: rng.pick(personalities),
+    personalGoal: goalPool[0],
     morale: rng.int(60, 85),
     fitness: rng.int(88, 100),
     form: rng.int(-1, 2),
@@ -151,6 +173,7 @@ export function generateTeam(
     facilities: defaultFacilities(),
     coins: isPlayerControlled ? 250000 : 150000,
     reputation: clamp(Math.round(strength), 30, 95),
+    wageBudget: isPlayerControlled ? 120000 : 90000,
     isPlayerControlled,
     strength,
   };
@@ -290,11 +313,42 @@ export function createNewGame(opts: NewGameOptions): GameState {
       {
         id: uid('news'),
         week: 1,
-        icon: '🎉',
-        title: `Welcome to ${playerIdentity.name}!`,
-        body: `${opts.managerName || 'Boss'}, the board expects steady progress this season. Build your squad, master your tactics and climb the Legends League.`,
+        icon: 'star',
+        titleKey: 'news.welcome.title',
+        bodyKey: 'news.welcome.body',
+        params: { club: playerIdentity.name, manager: opts.managerName || 'Boss' },
       },
     ],
     settings: { ...defaultSettings(), difficulty: opts.difficulty ?? 'normal' },
+    manager: {
+      level: 1,
+      xp: 0,
+      xpToNext: 250,
+      skillPoints: 0,
+      perks: {},
+    },
+    trainingWeek: { season: 1, week: 1, slotsUsed: 0, maxSlots: 3 },
+    objectives: [
+      {
+        id: uid('objective'),
+        type: 'league-position',
+        target: 6,
+        progress: 12,
+        rewardCoins: 180000,
+        rewardXp: 300,
+        completed: false,
+      },
+      {
+        id: uid('objective'),
+        type: 'player-growth',
+        target: 3,
+        progress: 0,
+        rewardCoins: 80000,
+        rewardXp: 180,
+        completed: false,
+      },
+    ],
+    transferMarket: [],
+    transferMarketWeek: 0,
   };
 }

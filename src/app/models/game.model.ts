@@ -3,27 +3,69 @@ import { MatchResult } from './match.model';
 import { Team } from './team.model';
 
 export type Difficulty = 'easy' | 'normal' | 'hard';
+export type Locale = 'de' | 'en';
+export type MatchDuration = 3 | 5 | 8;
+export type ManagerPerkPath = 'coaching' | 'tactics' | 'scouting' | 'leadership';
+
+export type MessageParams = Record<string, string | number>;
 
 export interface NewsItem {
   id: string;
   week: number;
   icon: string;
-  title: string;
-  body: string;
+  titleKey: string;
+  bodyKey: string;
+  params?: MessageParams;
+}
+
+export interface ManagerProfile {
+  level: number;
+  xp: number;
+  xpToNext: number;
+  skillPoints: number;
+  perks: Partial<Record<ManagerPerkPath, number>>;
+}
+
+export interface TrainingWeekState {
+  season: number;
+  week: number;
+  slotsUsed: number;
+  maxSlots: number;
+}
+
+export interface CareerObjective {
+  id: string;
+  type: 'league-position' | 'player-growth' | 'wins';
+  target: number;
+  progress: number;
+  rewardCoins: number;
+  rewardXp: number;
+  completed: boolean;
 }
 
 export interface GameSettings {
   difficulty: Difficulty;
   soundEnabled: boolean;
-  /** Seed for reproducible match simulation when enabled. */
   autoSave: boolean;
+  locale: Locale;
+  matchDuration: MatchDuration;
+  musicVolume: number;
+  sfxVolume: number;
 }
 
 export function defaultSettings(): GameSettings {
-  return { difficulty: 'normal', soundEnabled: false, autoSave: true };
+  return {
+    difficulty: 'normal',
+    soundEnabled: true,
+    autoSave: true,
+    locale: 'de',
+    matchDuration: 3,
+    musicVolume: 0.35,
+    sfxVolume: 0.65,
+  };
 }
 
-export const SAVE_VERSION = 1;
+export const SAVE_VERSION = 2;
 
 export interface GameState {
   version: number;
@@ -36,4 +78,9 @@ export interface GameState {
   results: MatchResult[];
   news: NewsItem[];
   settings: GameSettings;
+  manager: ManagerProfile;
+  trainingWeek: TrainingWeekState;
+  objectives: CareerObjective[];
+  transferMarket: import('./player.model').Player[];
+  transferMarketWeek: number;
 }

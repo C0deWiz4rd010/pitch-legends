@@ -30,6 +30,7 @@ export interface Team {
   facilities: Facilities;
   coins: number;
   reputation: number; // 0-100
+  wageBudget: number;
   isPlayerControlled: boolean;
   /** AI strength baseline, used to generate squads of varying quality. */
   strength: number;

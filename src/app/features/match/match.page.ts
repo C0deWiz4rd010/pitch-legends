@@ -22,6 +22,7 @@ import { Mentality, PressingIntensity } from '../../models/enums';
 import { ratingColor } from '../../shared/rating-color';
 import { playerName } from '../../core/ratings';
 import { MatchPitchRenderer } from './match-renderer';
+import { I18nService } from '../../core/services/i18n.service';
 
 type Phase = 'preview' | 'live' | 'result';
 
@@ -37,6 +38,7 @@ export class MatchPage implements OnDestroy {
   private readonly season = inject(SeasonService);
   private readonly engine = inject(MatchEngineService);
   private readonly router = inject(Router);
+  protected readonly i18n = inject(I18nService);
   protected readonly ratingColor = ratingColor;
   protected readonly playerName = playerName;
 
@@ -142,7 +144,8 @@ export class MatchPage implements OnDestroy {
     const away = this.awayTeam();
     const fx = this.gs.nextFixture();
     if (!home || !away || !fx) return;
-    this.live = this.engine.createLiveMatch(home, away, fx.week);
+    const controlledTeamId = this.gs.playerTeam()?.id ?? home.id;
+    this.live = this.engine.createLiveMatch(home, away, fx.week, controlledTeamId);
     this.revealed.set([...this.live.events]);
     this.virtualMinute = 0;
     this.minute.set(0);
@@ -205,10 +208,10 @@ export class MatchPage implements OnDestroy {
 
   // ── Live management ────────────────────────────────────────────────────────
   protected currentMentality(): Mentality | undefined {
-    return this.live?.home.tactics.mentality;
+    return this.live?.controlled.tactics.mentality;
   }
   protected currentPressing(): PressingIntensity | undefined {
-    return this.live?.home.tactics.pressing;
+    return this.live?.controlled.tactics.pressing;
   }
   protected setMentality(m: Mentality): void {
     this.live?.setMentality(m);
@@ -221,8 +224,8 @@ export class MatchPage implements OnDestroy {
 
   protected onPitchPlayers(): Player[] {
     if (!this.live) return [];
-    return this.live.home.formation.slots
-      .map((s) => this.live!.home.players.find((p) => p.id === s.playerId))
+    return this.live.controlled.formation.slots
+      .map((s) => this.live!.controlled.players.find((p) => p.id === s.playerId))
       .filter((p): p is Player => !!p);
   }
   protected benchPlayers(): Player[] {

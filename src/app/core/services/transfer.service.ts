@@ -1,4 +1,4 @@
-import { Injectable, inject, signal } from '@angular/core';
+import { Injectable, computed, inject } from '@angular/core';
 import { Player } from '../../models/player.model';
 import { Position } from '../../models/enums';
 import { generatePlayer } from '../../data/generators';
@@ -24,33 +24,53 @@ const REFRESH_COST = 15000;
 @Injectable({ providedIn: 'root' })
 export class TransferService {
   private readonly gs = inject(GameStateService);
-  private readonly rng = new Rng();
-  readonly market = signal<Player[]>([]);
+  private rng = new Rng();
+  readonly market = computed<Player[]>(() => this.gs.game()?.transferMarket ?? []);
 
   ensureMarket(): void {
-    if (this.market().length === 0) this.generateMarket();
+    const game = this.gs.game();
+    if (!game) return;
+    const weekKey = game.league.season * 100 + game.league.currentWeek;
+    if (game.transferMarketWeek === weekKey && game.transferMarket.length) return;
+    this.gs.mutate((draft) => {
+      const club = draft.teams.find((t) => t.id === draft.clubId)!;
+      draft.transferMarket = this.generatePlayers(14, club.facilities.youthAcademy);
+      draft.transferMarketWeek = weekKey;
+    });
   }
 
   generateMarket(size = 14): void {
+    this.gs.mutate((draft) => {
+      const club = draft.teams.find((t) => t.id === draft.clubId)!;
+      draft.transferMarket = this.generatePlayers(size, club.facilities.youthAcademy);
+      draft.transferMarketWeek = draft.league.season * 100 + draft.league.currentWeek;
+    });
+  }
+
+  private generatePlayers(size: number, academyLevel: number): Player[] {
     const players: Player[] = [];
     for (let i = 0; i < size; i++) {
       const slot = this.rng.pick(MARKET_POSITIONS);
-      const target = clamp(Math.round(this.rng.gaussian(66, 11)), 46, 90);
-      players.push(generatePlayer(this.rng, slot.position, slot.alts, target, this.rng.int(2, 39)));
+      const target = clamp(Math.round(this.rng.gaussian(64 + academyLevel, 11)), 46, 91);
+      const player = generatePlayer(this.rng, slot.position, slot.alts, target, this.rng.int(2, 39));
+      if (academyLevel >= 3 && this.rng.bool(0.35)) player.age = this.rng.int(17, 22);
+      players.push(player);
     }
     players.sort((a, b) => b.overall - a.overall);
-    this.market.set(players);
+    return players;
   }
 
   /** Refresh scouting for a coin fee. Returns false if unaffordable. */
   refresh(): boolean {
     const club = this.gs.playerTeam();
     if (!club || club.coins < REFRESH_COST) return false;
+    this.rng = new Rng(Date.now() >>> 0);
     this.gs.mutate((draft) => {
       const c = draft.teams.find((t) => t.id === draft.clubId)!;
       c.coins -= REFRESH_COST;
+      draft.transferMarket = this.generatePlayers(14, c.facilities.youthAcademy);
+      draft.transferMarketWeek = draft.league.season * 100 + draft.league.currentWeek;
     });
-    this.generateMarket();
     return true;
   }
 
@@ -77,8 +97,8 @@ export class TransferService {
       let kit = player.kitNumber;
       while (used.has(kit)) kit = clamp(kit + 1, 1, 99);
       club.players.push({ ...structuredClone(player), kitNumber: kit });
+      draft.transferMarket = draft.transferMarket.filter((candidate) => candidate.id !== player.id);
     });
-    this.market.update((m) => m.filter((p) => p.id !== player.id));
     return true;
   }
 

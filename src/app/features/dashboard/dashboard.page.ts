@@ -4,6 +4,7 @@ import { GameStateService } from '../../core/services/game-state.service';
 import { formatCoins, ratingColor, moraleIcon } from '../../shared/rating-color';
 import { playerName } from '../../core/ratings';
 import { Player } from '../../models/player.model';
+import { I18nService } from '../../core/services/i18n.service';
 
 @Component({
   selector: 'app-dashboard',
@@ -14,6 +15,7 @@ import { Player } from '../../models/player.model';
 })
 export class DashboardPage {
   protected readonly gs = inject(GameStateService);
+  protected readonly i18n = inject(I18nService);
   protected readonly playerName = playerName;
   protected readonly formatCoins = formatCoins;
   protected readonly ratingColor = ratingColor;

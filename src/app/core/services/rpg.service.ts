@@ -10,6 +10,8 @@ import {
 } from '../progression';
 import { TRAITS, getTrait } from '../../data/traits';
 import { clamp } from '../util';
+import { getTalent, talentsFor } from '../../data/talents';
+import { ManagerProfile } from '../../models/game.model';
 
 export interface LevelUpResult {
   levelsGained: number;
@@ -75,6 +77,42 @@ export class RpgService {
   /** Traits the player is eligible to unlock right now. */
   availableTraits(player: Player) {
     return TRAITS.filter((t) => !player.traitIds.includes(t.id));
+  }
+
+  availableTalents(player: Player) {
+    return talentsFor(player.archetype);
+  }
+
+  unlockTalent(player: Player, talentId: string): boolean {
+    const talent = getTalent(talentId);
+    if (!talent || talent.archetype !== player.archetype || player.level < talent.unlockLevel) return false;
+    const current = player.talentRanks[talentId] ?? 0;
+    if (current >= talent.maxRank || player.skillPoints < talent.cost) return false;
+    player.skillPoints -= talent.cost;
+    player.talentRanks[talentId] = current + 1;
+    this.recompute(player);
+    return true;
+  }
+
+  awardManagerXp(manager: ManagerProfile, amount: number): number {
+    manager.xp += Math.max(0, Math.round(amount));
+    let levels = 0;
+    while (manager.xp >= manager.xpToNext) {
+      manager.xp -= manager.xpToNext;
+      manager.level++;
+      manager.skillPoints++;
+      manager.xpToNext = Math.round(250 * Math.pow(1.22, manager.level - 1));
+      levels++;
+    }
+    return levels;
+  }
+
+  unlockManagerPerk(manager: ManagerProfile, path: keyof ManagerProfile['perks']): boolean {
+    const rank = manager.perks[path] ?? 0;
+    if (manager.skillPoints < 1 || rank >= 5) return false;
+    manager.skillPoints--;
+    manager.perks[path] = rank + 1;
+    return true;
   }
 
   private isCoreAttribute(player: Player, attr: AttributeKey): boolean {
