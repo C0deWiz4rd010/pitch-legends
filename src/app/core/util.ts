@@ -17,6 +17,15 @@ export class Rng {
     this.state = seed >>> 0;
   }
 
+  /** Serializable state used by deterministic match checkpoints. */
+  snapshot(): number {
+    return this.state >>> 0;
+  }
+
+  restore(state: number): void {
+    this.state = state >>> 0;
+  }
+
   /** Float in [0, 1). */
   next(): number {
     this.state |= 0;

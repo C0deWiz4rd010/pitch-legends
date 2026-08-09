@@ -1,5 +1,5 @@
 import { Injectable } from '@angular/core';
-import { GameState, SAVE_VERSION } from '../../models/game.model';
+import { defaultSettings, GameState, SAVE_VERSION } from '../../models/game.model';
 
 const STORAGE_KEY = 'pitch-legends:save:v2';
 const LEGACY_STORAGE_KEY = 'pitch-legends:save:v1';
@@ -11,7 +11,9 @@ export class SaveService {
       const raw = localStorage.getItem(STORAGE_KEY);
       if (!raw) return null;
       const parsed = JSON.parse(raw);
-      return this.validate(parsed) ? parsed : null;
+      if (!this.validate(parsed)) return null;
+      parsed.settings = { ...defaultSettings(), ...parsed.settings };
+      return parsed;
     } catch {
       return null;
     }
@@ -54,6 +56,7 @@ export class SaveService {
     if (!this.validate(parsed)) {
       throw new Error('Invalid save file.');
     }
+    parsed.settings = { ...defaultSettings(), ...parsed.settings };
     return parsed;
   }
 

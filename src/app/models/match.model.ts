@@ -16,12 +16,52 @@ export type MatchEventType =
 
 export type Side = 'home' | 'away';
 export type MatchMode = 'play' | 'coach' | 'instant';
+export type AssistPreset = 'assisted' | 'balanced' | 'manual';
+export type MatchWeather = 'clear' | 'rain' | 'storm';
+export type InputDevice = 'keyboard' | 'gamepad' | 'touch' | 'ai';
+export type MatchPhase =
+  | 'preMatch'
+  | 'intro'
+  | 'firstHalf'
+  | 'stoppage'
+  | 'goalReplay'
+  | 'halftime'
+  | 'secondHalf'
+  | 'fulltime'
+  | 'report'
+  | 'paused';
+export type RulePhase =
+  | 'playing'
+  | 'advantage'
+  | 'freeKick'
+  | 'corner'
+  | 'throwIn'
+  | 'goalKick'
+  | 'penalty'
+  | 'kickoff'
+  | 'halftime'
+  | 'fulltime';
+export type Difficulty = 'easy' | 'normal' | 'hard';
 
 export interface MatchConfig {
   mode: MatchMode;
   controlledTeamId: string;
   halfMinutes: 3 | 5 | 8;
-  seed?: number;
+  seed: number;
+  fixtureId?: string;
+  difficulty: Difficulty;
+  assist: AssistPreset;
+  playerLockId: string | null;
+  weather: MatchWeather;
+  inputDevice: InputDevice;
+  camera: MatchCameraSettings;
+}
+
+export interface MatchCameraSettings {
+  zoom: number;
+  lookAhead: number;
+  shake: boolean;
+  reducedMotion: boolean;
 }
 
 export interface MatchEvent {
@@ -45,7 +85,38 @@ export interface InputFrame {
   through: boolean;
   shoot: boolean;
   switchPlayer: boolean;
+  lob?: boolean;
+  skill?: boolean;
+  keeperRush?: boolean;
+  tacticX?: number;
+  tacticY?: number;
+  pause?: boolean;
+  device?: InputDevice;
 }
+
+export interface MatchCommand extends Required<InputFrame> {
+  aimX: number;
+  aimY: number;
+}
+
+export const EMPTY_MATCH_COMMAND: MatchCommand = {
+  moveX: 0,
+  moveY: 0,
+  aimX: 0,
+  aimY: 0,
+  sprint: false,
+  pass: false,
+  through: false,
+  lob: false,
+  shoot: false,
+  skill: false,
+  switchPlayer: false,
+  keeperRush: false,
+  tacticX: 0,
+  tacticY: 0,
+  pause: false,
+  device: 'ai',
+};
 
 export interface TeamMatchStats {
   possession: number; // percentage 0-100
@@ -56,6 +127,13 @@ export interface TeamMatchStats {
   yellows: number;
   reds: number;
   passAccuracy: number;
+  xG: number;
+  passesAttempted: number;
+  passesCompleted: number;
+  tacklesWon: number;
+  interceptions: number;
+  saves: number;
+  offsides: number;
 }
 
 export function emptyTeamMatchStats(): TeamMatchStats {
@@ -68,7 +146,89 @@ export function emptyTeamMatchStats(): TeamMatchStats {
     yellows: 0,
     reds: 0,
     passAccuracy: 80,
+    xG: 0,
+    passesAttempted: 0,
+    passesCompleted: 0,
+    tacklesWon: 0,
+    interceptions: 0,
+    saves: 0,
+    offsides: 0,
   };
+}
+
+export interface RuleState {
+  phase: RulePhase;
+  restartSide: Side | null;
+  spotX: number;
+  spotY: number;
+  elapsed: number;
+  indirect: boolean;
+  advantageSide: Side | null;
+  pendingCardPlayerId: string | null;
+}
+
+export interface PlayerRuntimeSnapshot {
+  id: string;
+  side: Side;
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  facingX: number;
+  facingY: number;
+  fitness: number;
+  active: boolean;
+  card: 'none' | 'yellow' | 'red';
+  action: string;
+}
+
+export interface BallSnapshot {
+  x: number;
+  y: number;
+  z: number;
+  vx: number;
+  vy: number;
+  vz: number;
+  spin: number;
+  ownerId: string | null;
+}
+
+export interface MatchSnapshot {
+  tick: number;
+  phase: MatchPhase;
+  footballMinute: number;
+  elapsed: number;
+  homeScore: number;
+  awayScore: number;
+  controlledPlayerId: string;
+  attackDirection: 1 | -1;
+  rule: RuleState;
+  ball: BallSnapshot;
+  players: PlayerRuntimeSnapshot[];
+}
+
+export interface MatchCheckpoint {
+  version: 1;
+  fixtureId: string;
+  matchId: string;
+  config: MatchConfig;
+  tick: number;
+  elapsed: number;
+  phase: MatchPhase;
+  rngState: number;
+  homeScore: number;
+  awayScore: number;
+  selectedPlayerId: string;
+  ball: BallSnapshot & { lastTouch: Side; lastTouchPlayerId: string | null };
+  actors: PlayerRuntimeSnapshot[];
+  rule: RuleState;
+  events: MatchEvent[];
+  homeStats: TeamMatchStats;
+  awayStats: TeamMatchStats;
+  ratings: Record<string, number>;
+  contributions: Record<string, MatchContribution>;
+  safeSnapshot: MatchSnapshot;
+  savedAt: number;
 }
 
 /** A lightweight positional snapshot used by the canvas renderer. */
@@ -99,6 +259,11 @@ export interface MatchResult {
   /** Per-player goal/assist/card tallies keyed by player id. */
   contributions: Record<string, MatchContribution>;
   played: boolean;
+  /** Stable career commit key. Older saves may not contain it. */
+  fixtureId?: string;
+  matchSeed?: number;
+  weather?: MatchWeather;
+  heatmaps?: Record<string, { x: number; y: number; weight: number }[]>;
 }
 
 export interface MatchContribution {

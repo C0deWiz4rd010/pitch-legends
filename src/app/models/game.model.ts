@@ -1,5 +1,5 @@
 import { League } from './league.model';
-import { MatchResult } from './match.model';
+import { AssistPreset, MatchResult } from './match.model';
 import { Team } from './team.model';
 
 export type Difficulty = 'easy' | 'normal' | 'hard';
@@ -51,6 +51,9 @@ export interface GameSettings {
   matchDuration: MatchDuration;
   musicVolume: number;
   sfxVolume: number;
+  assistPreset: AssistPreset;
+  cameraShake: boolean;
+  reducedMotion: boolean;
 }
 
 export function defaultSettings(): GameSettings {
@@ -62,6 +65,9 @@ export function defaultSettings(): GameSettings {
     matchDuration: 3,
     musicVolume: 0.35,
     sfxVolume: 0.65,
+    assistPreset: 'balanced',
+    cameraShake: true,
+    reducedMotion: false,
   };
 }
 
