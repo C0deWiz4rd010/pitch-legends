@@ -1,90 +1,106 @@
-<header class="page-head fade-up">
-  <div>
-    <p class="eyebrow">{{ gs.game()?.league?.name }} · Season {{ gs.season() }}</p>
-    <h1>League</h1>
-  </div>
-  <div class="segmented">
-    <button [class.active]="tab() === 'table'" (click)="tab.set('table')">Table</button>
-    <button [class.active]="tab() === 'fixtures'" (click)="tab.set('fixtures')">Fixtures</button>
-    <button [class.active]="tab() === 'scorers'" (click)="tab.set('scorers')">Scorers</button>
-  </div>
-</header>
+<div class="league-workspace">
+  <header class="league-head fade-up">
+    @if (world(); as map) {
+      <div class="country-flag" [style.--flag-a]="map.country.flag.primary" [style.--flag-b]="map.country.flag.secondary"><i></i></div>
+      <div class="league-title"><span>{{ map.country.name }} · {{ text('SAISON', 'SEASON') }} {{ gs.season() }}</span><h1>{{ map.country.leagueName }}</h1></div>
+    }
+    <nav class="league-tabs" aria-label="Ligaansichten">
+      <button [class.active]="tab() === 'overview'" (click)="tab.set('overview')">{{ text('ÜBERSICHT', 'OVERVIEW') }}</button>
+      <button [class.active]="tab() === 'fixtures'" (click)="tab.set('fixtures')">{{ text('SPIELTAGE', 'FIXTURES') }}</button>
+      <button [class.active]="tab() === 'map'" (click)="tab.set('map')">{{ text('KARTE', 'MAP') }}</button>
+      <button [class.active]="tab() === 'stats'" (click)="tab.set('stats')">{{ text('STATISTIKEN', 'STATS') }}</button>
+    </nav>
+  </header>
 
-@switch (tab()) {
-  @case ('table') {
-    <div class="card table-card fade-up">
-      <div class="table">
-        <div class="thead">
-          <span class="c">#</span>
-          <span>Club</span>
-          <span class="c">P</span>
-          <span class="c">W</span>
-          <span class="c">D</span>
-          <span class="c">L</span>
-          <span class="c hide-sm">GF</span>
-          <span class="c hide-sm">GA</span>
-          <span class="c">GD</span>
-          <span class="c">Pts</span>
-        </div>
-        @for (row of gs.standings(); track row.teamId; let i = $index) {
-          <div class="trow" [class.me]="row.teamId === clubId()" [class.top]="i < 3">
-            <span class="c pos">{{ i + 1 }}</span>
-            <span class="club">
-              <span class="dot" [style.background]="gs.teamById(row.teamId)?.kit?.primary"></span>
-              {{ row.teamName }}
-            </span>
-            <span class="c">{{ row.played }}</span>
-            <span class="c">{{ row.won }}</span>
-            <span class="c">{{ row.drawn }}</span>
-            <span class="c">{{ row.lost }}</span>
-            <span class="c hide-sm">{{ row.goalsFor }}</span>
-            <span class="c hide-sm">{{ row.goalsAgainst }}</span>
-            <span class="c">{{ row.goalsFor - row.goalsAgainst }}</span>
-            <span class="c pts">{{ row.points }}</span>
-          </div>
-        }
-      </div>
-    </div>
-  }
+  <main class="league-content">
+    @switch (tab()) {
+      @case ('overview') {
+        <section class="overview-grid">
+          <article class="panel standings-panel">
+            <header><span>{{ text('TITELRENNEN', 'TITLE RACE') }}</span><b>{{ gs.currentWeek() }}/{{ gs.totalWeeks() }}</b></header>
+            <div class="standing-head"><i>#</i><span>{{ text('VEREIN', 'CLUB') }}</span><i>SP</i><i>TD</i><i>PKT</i><i>FORM</i></div>
+            <div class="standing-scroll">
+              @for (row of gs.standings(); track row.teamId; let rank = $index) {
+                @if (gs.teamById(row.teamId); as team) {
+                  <button class="standing-row" [class.me]="row.teamId === clubId()" [class.selected]="row.teamId === selectedTeamId()" (click)="selectTeam(row.teamId)">
+                    <i>{{ rank + 1 }}</i><span class="club-cell"><app-club-crest [team]="team" [size]="34" /><b>{{ team.name }}</b></span><i>{{ row.played }}</i><i>{{ row.goalsFor - row.goalsAgainst }}</i><strong>{{ row.points }}</strong>
+                    <span class="form">@for (result of formFor(row.teamId); track $index) { <em [class]="result">{{ result }}</em> }</span>
+                  </button>
+                }
+              }
+            </div>
+          </article>
 
-  @case ('fixtures') {
-    <div class="card fade-up">
-      <div class="week-nav">
-        <button class="btn btn--ghost btn--sm" (click)="prevWeek()">‹</button>
-        <strong>Matchweek {{ viewWeek() }}</strong>
-        <button class="btn btn--ghost btn--sm" (click)="nextWeek()">›</button>
-      </div>
-      <div class="fixtures">
-        @for (f of weekFixtures(); track f.id) {
-          <div class="fixture" [class.me]="f.homeTeamId === clubId() || f.awayTeamId === clubId()">
-            <span class="ft home">{{ teamName(f.homeTeamId) }}</span>
-            @if (f.played) {
-              <span class="ft-score">{{ f.homeScore }} - {{ f.awayScore }}</span>
-            } @else {
-              <span class="ft-score vs">vs</span>
+          @if (selectedTeam(); as team) {
+            <aside class="panel club-spotlight">
+              <div class="spotlight-hero"><app-club-crest [team]="team" [size]="104" /><div><span>{{ selectedCity()?.regionId }}</span><h2>{{ team.name }}</h2><p>{{ selectedCity()?.name }} · {{ selectedCity()?.stadiumName }}</p></div><app-mini-kit [kit]="team.visuals.kits.home" [size]="82" /></div>
+              @if (selectedManager(); as manager) {
+                <div class="coach-card"><app-manager-portrait [manager]="manager" [size]="76" /><div><small>{{ text('CHEFTRAINER', 'HEAD COACH') }}</small><strong>{{ manager.firstName }} {{ manager.lastName }}</strong><span>{{ manager.tacticalPhilosophy }} · {{ manager.preferredFormation }}</span></div></div>
+                <div class="coach-stats"><span>TAK <b>{{ manager.attributes.tactics }}</b></span><span>COA <b>{{ manager.attributes.coaching }}</b></span><span>JUG <b>{{ manager.attributes.youthDevelopment }}</b></span></div>
+              }
+              <div class="club-meta"><span>{{ text('STÄRKE', 'STRENGTH') }} <b>{{ team.strength }}</b></span><span>{{ text('RUHM', 'REPUTATION') }} <b>{{ team.reputation }}</b></span><span>{{ text('RIVALEN', 'RIVALS') }} <b>{{ team.rivalTeamIds.length }}</b></span></div>
+              <button class="map-jump" (click)="tab.set('map')">{{ text('AUF DER KARTE ZEIGEN', 'SHOW ON MAP') }} ›</button>
+            </aside>
+          }
+        </section>
+      }
+
+      @case ('fixtures') {
+        <section class="panel fixture-board">
+          <header class="week-nav"><button (click)="prevWeek()">‹</button><div><span>{{ text('SPIELTAG', 'MATCHWEEK') }}</span><b>{{ viewWeek() }}</b></div><button (click)="nextWeek()">›</button></header>
+          <div class="fixture-scroll">
+            @for (fixture of weekFixtures(); track fixture.id) {
+              <article class="fixture-card" [class.me]="fixture.homeTeamId === clubId() || fixture.awayTeamId === clubId()">
+                @if (gs.teamById(fixture.homeTeamId); as home) { <div class="fixture-team home"><span>{{ home.name }}</span><app-club-crest [team]="home" [size]="48" /></div> }
+                <div class="fixture-score">@if (fixture.played) { <strong>{{ fixture.homeScore }}:{{ fixture.awayScore }}</strong> } @else { <strong>VS</strong> }<small>{{ cityFor(fixture.homeTeamId)?.stadiumName }}</small></div>
+                @if (gs.teamById(fixture.awayTeamId); as away) { <div class="fixture-team"><app-club-crest [team]="away" [size]="48" /><span>{{ away.name }}</span></div> }
+                <div class="journey-tag">{{ travelMode(fixtureDistance(fixture)) }} · {{ fixtureDistance(fixture) }} KM</div>
+              </article>
             }
-            <span class="ft away">{{ teamName(f.awayTeamId) }}</span>
           </div>
-        }
-      </div>
-    </div>
-  }
+        </section>
+      }
 
-  @case ('scorers') {
-    <div class="card fade-up">
-      <p class="eyebrow">Top scorers</p>
-      <ol class="scorers">
-        @for (entry of gs.topScorers(); track entry.player.id) {
-          <li>
-            <span class="name">{{ playerName(entry.player) }}</span>
-            <span class="team-tag">{{ entry.teamName }}</span>
-            <span class="stat">{{ entry.player.seasonStats.assists }} A</span>
-            <span class="goals tabular">{{ entry.player.seasonStats.goals }}</span>
-          </li>
-        } @empty {
-          <li class="muted">No goals scored yet this season.</li>
-        }
-      </ol>
-    </div>
-  }
-}
+      @case ('map') {
+        <section class="map-layout">
+          <article class="panel atlas-panel">
+            @if (world(); as map) {
+              <svg class="world-map" viewBox="0 0 960 600" role="img" [attr.aria-label]="map.country.name + ' Ligakarte'" shape-rendering="crispEdges">
+                <defs><clipPath id="country-clip"><polygon [attr.points]="outlinePoints()" /></clipPath></defs>
+                <polygon class="land-shadow" [attr.points]="outlinePoints()" transform="translate(8 10)" />
+                <polygon class="land" [attr.points]="outlinePoints()" />
+                <g clip-path="url(#country-clip)">@for (cell of regionCells(); track cell.region.id) { <path class="region" [attr.d]="cell.path" [attr.fill]="cell.region.color" /> }</g>
+                <g class="routes">@for (route of map.routes; track route.id) { @if (cityById(route.fromCityId); as a) { @if (cityById(route.toCityId); as b) { <line [attr.x1]="a.position.x" [attr.y1]="a.position.y" [attr.x2]="b.position.x" [attr.y2]="b.position.y" /> } } }</g>
+                <g class="rivalries">@for (rivalry of map.rivalries; track rivalry.teamAId + rivalry.teamBId) { @if (cityFor(rivalry.teamAId); as a) { @if (cityFor(rivalry.teamBId); as b) { <line [attr.x1]="a.position.x" [attr.y1]="a.position.y" [attr.x2]="b.position.x" [attr.y2]="b.position.y" /> } } }</g>
+                @for (city of map.cities; track city.id) {
+                  <g class="city" [class.me]="city.teamId === clubId()" [class.selected]="city.teamId === selectedTeamId()" role="button" tabindex="0" (click)="selectTeam(city.teamId)" (keydown.enter)="selectTeam(city.teamId)" [attr.transform]="'translate(' + city.position.x + ' ' + city.position.y + ')'">
+                    <circle r="14" /><rect x="-5" y="-5" width="10" height="10" /><text y="28">{{ teamShort(city.teamId) }}</text>
+                  </g>
+                }
+              </svg>
+            }
+          </article>
+          <aside class="panel map-dossier">
+            @if (selectedTeam(); as team) {
+              <app-club-crest [team]="team" [size]="88" /><h2>{{ team.name }}</h2><span>{{ selectedCity()?.name }} · {{ selectedCity()?.landmark }}</span>
+              <div class="map-facts"><p><small>{{ text('STADION', 'STADIUM') }}</small><b>{{ selectedCity()?.stadiumName }}</b></p><p><small>{{ text('REGION', 'REGION') }}</small><b>{{ selectedCity()?.regionId }}</b></p></div>
+              @if (selectedManager(); as manager) { <div class="mini-coach"><app-manager-portrait [manager]="manager" [size]="54" /><span><small>MANAGER</small><b>{{ manager.firstName }} {{ manager.lastName }}</b></span></div> }
+            }
+            @if (currentEvent(); as event) {
+              <div class="travel-event" [class.resolved]="event.resolved"><small>{{ event.params['mode'] }} · {{ event.params['distance'] }} KM</small><h3>{{ translate(event.titleKey) }}</h3><p>{{ translate(event.bodyKey, event.params) }}</p>
+                @if (!event.resolved) { @for (choice of event.choices; track choice.id) { <button (click)="resolveEvent(event.id, choice.id)"><b>{{ translate(choice.labelKey) }}</b><span>{{ effectLabel(choice.effect) }}</span></button> } } @else { <strong>✓ {{ text('ENTSCHEIDUNG GETROFFEN', 'DECISION LOCKED') }}</strong> }
+              </div>
+            }
+          </aside>
+        </section>
+      }
+
+      @case ('stats') {
+        <section class="stats-grid">
+          <article class="panel ranking"><header><span>{{ text('TORJÄGER', 'TOP SCORERS') }}</span><b>G</b></header>@for (entry of gs.topScorers(); track entry.player.id; let rank = $index) { @if (teamForPlayer(entry.player.id); as team) { <div><i>{{ rank + 1 }}</i><app-player-portrait [player]="entry.player" [team]="team" [size]="40" /><span><b>{{ playerName(entry.player) }}</b><small>{{ team.shortName }} · {{ entry.player.position }}</small></span><strong>{{ entry.player.seasonStats.goals }}</strong></div> } }</article>
+          <article class="panel ranking"><header><span>{{ text('VORLAGEN', 'ASSISTS') }}</span><b>A</b></header>@for (entry of topAssists(); track entry.player.id; let rank = $index) { <div><i>{{ rank + 1 }}</i><app-player-portrait [player]="entry.player" [team]="entry.team" [size]="40" /><span><b>{{ playerName(entry.player) }}</b><small>{{ entry.team.shortName }} · {{ entry.player.position }}</small></span><strong>{{ entry.player.seasonStats.assists }}</strong></div> }</article>
+        </section>
+      }
+    }
+  </main>
+</div>

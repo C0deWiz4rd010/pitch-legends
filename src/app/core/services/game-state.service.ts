@@ -6,6 +6,7 @@ import { Fixture, StandingRow, emptyStanding } from '../../models/league.model';
 import { createNewGame, NewGameOptions } from '../../data/generators';
 import { playerName } from '../ratings';
 import { SaveService } from './save.service';
+import { prepareTravelEvent } from '../travel-engine';
 
 @Injectable({ providedIn: 'root' })
 export class GameStateService {
@@ -104,6 +105,7 @@ export class GameStateService {
   // ── Lifecycle ──────────────────────────────────────────────────────────────
   newGame(opts: NewGameOptions): void {
     const g = createNewGame(opts);
+    prepareTravelEvent(g);
     this.state.set(g);
     this.saves.save(g);
   }
@@ -111,6 +113,7 @@ export class GameStateService {
   loadFromStorage(): boolean {
     const g = this.saves.load();
     if (g) {
+      prepareTravelEvent(g);
       this.state.set(g);
       return true;
     }
@@ -157,6 +160,16 @@ export class GameStateService {
   /** Convenience lookup helpers. */
   teamById(id: string): Team | undefined {
     return this.state()?.teams.find((t) => t.id === id);
+  }
+
+  managerForTeam(teamId: string) {
+    const game = this.state();
+    if (!game) return undefined;
+    return teamId === game.clubId ? game.manager : game.managers.find((manager) => manager.clubId === teamId);
+  }
+
+  cityForTeam(teamId: string) {
+    return this.state()?.world.cities.find((city) => city.teamId === teamId);
   }
 
   playerLabel(id: string | null): string {
