@@ -122,7 +122,7 @@ describe('arcade match', () => {
   });
 });
 
-describe('v2 progression', () => {
+describe('career progression', () => {
   it('creates a fresh versioned career with manager and player RPG data', () => {
     const game = createNewGame({ managerName: 'Pixel', clubName: 'Arcade FC', seed: 2 });
     expect(game.version).toBe(SAVE_VERSION);
@@ -155,7 +155,7 @@ describe('v2 progression', () => {
     expect(Object.keys(TRANSLATIONS.de).sort()).toEqual(Object.keys(TRANSLATIONS.en).sort());
   });
 
-  it('accepts complete V2 saves and rejects version or schema mismatches', () => {
+  it('accepts complete V4 saves and rejects version or schema mismatches', () => {
     const service = new SaveService();
     const game = createNewGame({ managerName: 'Save', clubName: 'Schema FC', seed: 14 });
     expect(service.parseImport(JSON.stringify(game)).clubId).toBe(game.clubId);

@@ -749,11 +749,11 @@ export class ArcadeMatch {
         : goalDistance < 32
           ? 0.18 + actor.player.attributes.shooting / 700
           : 0.035 + actor.player.attributes.shooting / 1600;
-      const shotProbability = shotProbabilityBase * 0.82;
+      const shotProbability = shotProbabilityBase * 0.47;
       if (goalDistance < 50 && shootingLane && this.rng.bool(shotProbability)) {
         this.shoot(actor, this.rng.float(0.55, 1), 0, this.rng.float(-0.45, 0.45), false, false);
       } else if ((pressured || this.rng.bool(0.28)) && actor.player.positionGroup !== 'GK') {
-        this.pass(actor, this.rng.bool(0.28), false, this.rng.float(0.35, 0.8), direction, this.rng.float(-0.5, 0.5));
+        this.pass(actor, this.rng.bool(0.18), false, this.rng.float(0.35, 0.8), direction, this.rng.float(-0.5, 0.5));
       } else if (actor.player.positionGroup === 'GK') {
         this.pass(actor, false, this.rng.bool(0.4), 0.8, direction, this.rng.float(-0.4, 0.4));
       }
@@ -836,7 +836,7 @@ export class ArcadeMatch {
         const angle = Math.acos(clamp((dx / length) * nx + (dy / length) * ny, -1, 1));
         const lanePressure = this.passLanePressure(actor, candidate);
         const runBonus = through ? Math.max(0, (candidate.vx * this.attackDirection(actor.side) + 1) * 0.12) : 0;
-        return { candidate, length, lanePressure, score: angle * 2.2 + length * (humanPass ? 0.012 : 0.04) + lanePressure * (humanPass ? 0.45 : 2.8) - runBonus };
+        return { candidate, length, lanePressure, score: angle * (humanPass ? 2.2 : 0.75) + length * (humanPass ? 0.012 : 0.055) + lanePressure * (humanPass ? 0.45 : 2.8) - runBonus };
       })
       .sort((a, b) => a.score - b.score);
     const assistedOptions = humanPass
@@ -1082,7 +1082,10 @@ export class ArcadeMatch {
     if (!keeper) return;
     const keeperDistance = Math.abs(keeper.y - this.ball.y) + Math.max(0, this.ball.z - 1.2) * 1.2;
     const reaction = keeper.player.attributes.goalkeeping / 100;
-    const saveChance = clamp(0.44 + reaction * 0.72 - shot.xG * 0.3 - keeperDistance * 0.045, 0.15, 0.93);
+    // A small, explicit venue-composure effect models the normal home edge
+    // without changing player attributes, ball physics or difficulty values.
+    const venueComposure = defending === 'home' ? 0.06 : -0.02;
+    const saveChance = clamp(0.44 + reaction * 0.72 - shot.xG * 0.3 - keeperDistance * 0.045 + venueComposure, 0.15, 0.93);
     if (this.rng.bool(saveChance)) {
       const catchBall = this.rng.bool(clamp(reaction - Math.hypot(this.ball.vx, this.ball.vy) / 70, 0.15, 0.72));
       this.stats(defending).saves++;
@@ -1135,7 +1138,7 @@ export class ArcadeMatch {
       .filter((actor) =>
         actor.active &&
         (this.ball.controlledTouch >= 0.14 || actor.player.id !== this.ball.lastTouchPlayerId) &&
-        distance(actor, this.ball) < (actor.player.positionGroup === 'GK' ? 1.65 : actor.player.id === this.intendedReceiverId ? 3 : 1.18)
+        distance(actor, this.ball) < (actor.player.positionGroup === 'GK' ? 1.65 : actor.player.id === this.intendedReceiverId ? 4.2 : 1.18)
       )
       .sort((a, b) => distance(a, this.ball) - distance(b, this.ball))[0];
     if (!candidate) return;
@@ -1151,7 +1154,7 @@ export class ArcadeMatch {
     const humanReceiver = this.config.controllerMode === 'human' && candidate.side === this.controlledSide;
     const assistBonus = humanReceiver
       ? this.config.assist === 'assisted' ? 14 : this.config.assist === 'balanced' ? 7 : 1
-      : 45;
+      : 55;
     if (this.rng.bool(clamp((firstTouch + assistBonus - weatherPenalty) / 100, 0.18, 0.96))) {
       this.ball.ownerId = candidate.player.id;
       this.ball.lastTouch = candidate.side;

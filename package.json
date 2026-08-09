@@ -8,6 +8,7 @@
     "watch": "ng build --watch --configuration development",
     "test": "ng test",
     "test:e2e": "playwright test",
+    "balance:check": "esbuild tools/balance-check.ts --bundle --platform=node --format=esm --outfile=tmp/balance-check.mjs && node tmp/balance-check.mjs 500",
     "version:check": "node tools/check-version.mjs"
   },
   "private": true,

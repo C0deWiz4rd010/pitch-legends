@@ -2,6 +2,7 @@ import { arcadeJogSpeed, arcadeSprintSpeed, ArcadeMatch, MATCH_TICK } from './co
 import { MATCH_CHECKPOINT_KEY, MatchCheckpointService } from './core/services/match-checkpoint.service';
 import { createNewGame } from './data/generators';
 import { EMPTY_MATCH_COMMAND, MatchCommand, MatchConfig } from './models/match.model';
+import { interpolateMatchRenderFrame } from './features/match/arcade-renderer';
 
 function config(teamId: string, mode: MatchConfig['mode'] = 'coach', seed = 20260809): MatchConfig {
   return {
@@ -62,6 +63,46 @@ describe('Gameplay V3 match contracts', () => {
     }
 
     expect(first.stateHash()).toBe(second.stateHash());
+  });
+
+  it('interpolates players and ball between ticks but snaps across discontinuities', () => {
+    const game = createNewGame({ managerName: 'Render', clubName: 'Render FC', seed: 811 });
+    const [home, away] = game.teams;
+    const match = new ArcadeMatch(home, away, config(home.id, 'play', 4431));
+    advance(match, 30, { ...EMPTY_MATCH_COMMAND, moveX: 1, aimX: 1, sprint: true, device: 'keyboard' });
+    const previous = match.renderState();
+    match.step(MATCH_TICK, { ...EMPTY_MATCH_COMMAND, moveX: 1, aimX: 1, sprint: true, device: 'keyboard' });
+    const current = match.renderState();
+    const midpoint = interpolateMatchRenderFrame({ previous, current, alpha: 0.5, deltaSeconds: 1 / 144 });
+    const previousActor = previous.players.find((actor) => actor.id === current.controlledPlayerId)!;
+    const currentActor = current.players.find((actor) => actor.id === current.controlledPlayerId)!;
+    const midpointActor = midpoint.players.find((actor) => actor.id === current.controlledPlayerId)!;
+
+    expect(midpointActor.x).toBeCloseTo((previousActor.x + currentActor.x) / 2, 8);
+    expect(midpointActor.y).toBeCloseTo((previousActor.y + currentActor.y) / 2, 8);
+    expect(midpoint.ball.x).toBeCloseTo((previous.ball.x + current.ball.x) / 2, 8);
+
+    const teleported = { ...current, discontinuityKey: `${current.discontinuityKey}-teleport` };
+    expect(interpolateMatchRenderFrame({ previous, current: teleported, alpha: 0.5, deltaSeconds: 1 / 60 })).toBe(teleported);
+  });
+
+  it('keeps simulation state identical under 60, 120 and 144 Hz render sampling', () => {
+    const game = createNewGame({ managerName: 'Frame', clubName: 'Frame FC', seed: 812 });
+    const [home, away] = game.teams;
+    const base = new ArcadeMatch(home, away, config(home.id, 'play', 4432));
+    const sampled = new ArcadeMatch(home, away, config(home.id, 'play', 4432));
+    let previous = sampled.renderState();
+    for (let tick = 0; tick < 480; tick++) {
+      const command = { ...EMPTY_MATCH_COMMAND, moveX: tick % 120 < 70 ? 1 : -0.25, moveY: 0.2, aimX: 1, sprint: tick % 90 < 45, device: 'keyboard' as const };
+      base.step(MATCH_TICK, command);
+      sampled.step(MATCH_TICK, command);
+      const current = sampled.renderState();
+      for (const alpha of [0, 0.42, 0.84]) interpolateMatchRenderFrame({ previous, current, alpha, deltaSeconds: 1 / 144 });
+      for (const alpha of [0.2, 0.7]) interpolateMatchRenderFrame({ previous, current, alpha, deltaSeconds: 1 / 120 });
+      interpolateMatchRenderFrame({ previous, current, alpha: 1, deltaSeconds: 1 / 60 });
+      previous = current;
+    }
+    expect(sampled.stateHash()).toBe(base.stateHash());
   });
 
   it('round-trips every state needed for deterministic checkpoint resume', () => {

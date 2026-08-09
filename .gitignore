@@ -3,6 +3,7 @@
 # Compiled output
 /dist
 /tmp
+/.codex-tmp
 /out-tsc
 /bazel-out
 
