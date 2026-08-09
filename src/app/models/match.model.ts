@@ -19,6 +19,41 @@ export type MatchMode = 'play' | 'coach' | 'instant';
 export type AssistPreset = 'assisted' | 'balanced' | 'manual';
 export type MatchWeather = 'clear' | 'rain' | 'storm';
 export type InputDevice = 'keyboard' | 'gamepad' | 'touch' | 'ai';
+export type PlayerActionState =
+  | 'formation'
+  | 'idle'
+  | 'jog'
+  | 'sprint'
+  | 'carry'
+  | 'close-control'
+  | 'receive'
+  | 'heavy-touch'
+  | 'pass'
+  | 'through-pass'
+  | 'lob'
+  | 'shot'
+  | 'low-shot'
+  | 'finesse-shot'
+  | 'chip-shot'
+  | 'header'
+  | 'ball-roll'
+  | 'drag-back'
+  | 'skill-failed'
+  | 'press'
+  | 'support-press'
+  | 'standing-tackle'
+  | 'slide'
+  | 'stumble'
+  | 'injured'
+  | 'celebrate'
+  | 'keeper-ready'
+  | 'keeper-rush'
+  | 'keeper-catch'
+  | 'keeper-parry'
+  | 'keeper-dive'
+  | 'keeper-throw'
+  | 'keeper-kick'
+  | 'subbed-on';
 export type MatchPhase =
   | 'preMatch'
   | 'intro'
@@ -180,7 +215,8 @@ export interface PlayerRuntimeSnapshot {
   fitness: number;
   active: boolean;
   card: 'none' | 'yellow' | 'red';
-  action: string;
+  action: PlayerActionState;
+  actionStartedTick: number;
   decisionCooldown: number;
   skillCooldown: number;
   tackleCooldown: number;

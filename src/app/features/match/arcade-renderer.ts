@@ -1,5 +1,7 @@
 import { ArcadeActor, ArcadeMatch, FIELD_LENGTH, FIELD_WIDTH, GOAL_WIDTH } from '../../core/services/arcade-match';
 import { MatchSnapshot, PlayerRuntimeSnapshot } from '../../models/match.model';
+import { KitDesign } from '../../models/visual.model';
+import { PlayerSpriteFactory } from './player-sprite.factory';
 
 interface Point { x: number; y: number }
 
@@ -12,6 +14,8 @@ export class ArcadePitchRenderer {
   private cameraX = FIELD_LENGTH / 2;
   private cameraY = FIELD_WIDTH / 2;
   private cameraScale = 8.2;
+  private readonly sprites = new PlayerSpriteFactory();
+  private prewarmedMatchId = '';
 
   constructor(private readonly canvas: HTMLCanvasElement) {
     const ctx = canvas.getContext('2d', { alpha: false });
@@ -29,6 +33,10 @@ export class ArcadePitchRenderer {
 
   render(match: ArcadeMatch, replay?: MatchSnapshot): void {
     this.time += 1 / 60;
+    if (this.prewarmedMatchId !== match.matchId) {
+      this.prewarmedMatchId = match.matchId;
+      this.sprites.prewarm(match.actors, (actor) => this.kitFor(actor, match));
+    }
     this.updateCamera(match, replay);
     this.drawBackdrop(match);
     this.drawPitch(match);
@@ -46,7 +54,7 @@ export class ArcadePitchRenderer {
   }
 
   destroy(): void {
-    // Shared renderer lifecycle hook.
+    this.sprites.destroy();
   }
 
   private updateCamera(match: ArcadeMatch, replay?: MatchSnapshot): void {
@@ -159,23 +167,20 @@ export class ArcadePitchRenderer {
     const sorted = players.filter((actor) => actor.active).sort((a, b) => a.y - b.y);
     for (const position of sorted) {
       const actor = match.actors.find((candidate) => candidate.player.id === ('id' in position ? position.id : position.player.id));
-      if (actor) this.drawActor(actor, position, match, replay?.controlledPlayerId ?? match.selectedPlayerId);
+      if (actor) this.drawActor(actor, position, match, replay?.controlledPlayerId ?? match.selectedPlayerId, replay?.tick ?? match.tick);
     }
   }
 
-  private drawActor(actor: ArcadeActor, position: ArcadeActor | PlayerRuntimeSnapshot, match: ArcadeMatch, selectedId: string): void {
+  private drawActor(actor: ArcadeActor, position: ArcadeActor | PlayerRuntimeSnapshot, match: ArcadeMatch, selectedId: string, renderTick: number): void {
     const ctx = this.ctx;
     const point = this.worldToScreen(match, position.x, position.y);
     if (point.x < -20 || point.x > this.w + 20 || point.y < -25 || point.y > this.h + 25) return;
     const x = Math.round(point.x);
     const y = Math.round(point.y);
     const team = actor.side === 'home' ? match.home : match.away;
-    const goalkeeper = actor.player.positionGroup === 'GK';
     const selected = actor.player.id === selectedId;
-    const moving = Math.abs(position.vx) + Math.abs(position.vy) > 0.8;
-    const frame = moving ? Math.floor(this.time * 10 + actor.player.kitNumber) % 2 : 0;
     ctx.fillStyle = 'rgba(2,4,10,.48)';
-    ctx.fillRect(x - 7, y + 9, 15, 4);
+    ctx.fillRect(x - 8, y + 8, 17, 4);
     if (selected) {
       ctx.fillStyle = '#ffd34e';
       ctx.fillRect(x - 8, y - 20, 16, 3);
@@ -185,23 +190,34 @@ export class ArcadePitchRenderer {
       ctx.fillStyle = '#ffd34e';
       ctx.fillRect(x + 8, y - 18, 3, 5);
     }
-    ctx.fillStyle = goalkeeper ? '#172144' : team.kit.secondary;
-    ctx.fillRect(x - 5, y + 4 + frame, 4, 7);
-    ctx.fillRect(x + 2, y + 4 + (1 - frame), 4, 7);
-    ctx.fillStyle = goalkeeper ? '#ffd34e' : team.kit.primary;
-    ctx.fillRect(x - 8, y - 8, 17, 13);
-    ctx.fillStyle = team.kit.secondary;
-    ctx.fillRect(x - 8, y - 8, 3, 10);
-    ctx.fillRect(x + 6, y - 8, 3, 10);
+    const kit = this.kitFor(actor, match);
+    try {
+      const sprite = this.sprites.get(actor, position, kit, renderTick);
+      ctx.drawImage(sprite, x - 16, y - 29, 32, 40);
+    } catch {
+      this.drawPrimitiveActor(x, y, kit, actor.player.kitNumber);
+    }
+  }
+
+  private kitFor(actor: ArcadeActor, match: ArcadeMatch): KitDesign {
+    const team = actor.side === 'home' ? match.home : match.away;
+    if (actor.player.positionGroup === 'GK') return team.visuals.kits.goalkeeper;
+    return actor.side === 'home' ? team.visuals.kits.home : team.visuals.kits.away;
+  }
+
+  private drawPrimitiveActor(x: number, y: number, kit: KitDesign, number: number): void {
+    const ctx = this.ctx;
+    ctx.fillStyle = kit.shorts;
+    ctx.fillRect(x - 5, y + 2, 4, 8);
+    ctx.fillRect(x + 2, y + 2, 4, 8);
+    ctx.fillStyle = kit.shirt;
+    ctx.fillRect(x - 8, y - 10, 17, 13);
     ctx.fillStyle = '#d79a69';
-    ctx.fillRect(x - 4, y - 16, 9, 8);
-    ctx.fillStyle = '#2a1730';
-    ctx.fillRect(x - 4, y - 17, 9, 2);
-    ctx.fillStyle = this.contrast(goalkeeper ? '#ffd34e' : team.kit.primary);
+    ctx.fillRect(x - 4, y - 18, 9, 8);
+    ctx.fillStyle = this.contrast(kit.shirt);
     ctx.font = '7px monospace';
     ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(String(actor.player.kitNumber), x, y - 1);
+    ctx.fillText(String(number), x, y - 2);
   }
 
   private drawBall(match: ArcadeMatch, replay?: MatchSnapshot): void {

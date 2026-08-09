@@ -13,6 +13,7 @@ import {
   MatchPhase,
   MatchResult,
   MatchSnapshot,
+  PlayerActionState,
   PlayerRuntimeSnapshot,
   RuleState,
   Side,
@@ -46,7 +47,8 @@ export interface ArcadeActor {
   facingY: number;
   active: boolean;
   card: 'none' | 'yellow' | 'red';
-  action: string;
+  action: PlayerActionState;
+  actionStartedTick: number;
   decisionCooldown: number;
   skillCooldown: number;
   tackleCooldown: number;
@@ -259,7 +261,7 @@ export class ArcadeMatch {
       actor.tackleCooldown = Math.max(0, actor.tackleCooldown - safeDt);
       const keeperRush = input.keeperRush && actor.side === this.controlledSide && actor.player.positionGroup === 'GK' && ownerBeforeMovement?.side !== actor.side;
       if (keeperRush || supportPresser?.player.id === actor.player.id) {
-        actor.action = keeperRush ? 'keeper-rush' : 'support-press';
+        this.setAction(actor, keeperRush ? 'keeper-rush' : 'support-press');
         this.moveActor(actor, this.ball.x - actor.x, this.ball.y - actor.y, true, safeDt);
       } else if (this.isHumanControlled(actor)) this.moveControlled(actor, input, safeDt);
       else this.moveAi(actor, safeDt);
@@ -363,7 +365,7 @@ export class ArcadeMatch {
     actor.player = incoming;
     actor.stamina = incoming.fitness;
     actor.card = 'none';
-    actor.action = 'subbed-on';
+    this.setAction(actor, 'subbed-on');
     this.ratings[incoming.id] = 6.5;
     this.contributions[incoming.id] = emptyContribution();
     this.heatmaps[incoming.id] = [];
@@ -555,6 +557,7 @@ export class ArcadeMatch {
         active: true,
         card: 'none',
         action: 'formation',
+        actionStartedTick: this.tick,
         decisionCooldown: this.rng.float(0.05, 0.35),
         skillCooldown: 0,
         tackleCooldown: 0,
@@ -621,7 +624,7 @@ export class ArcadeMatch {
   private moveControlled(actor: ArcadeActor, input: MatchCommand, dt: number): void {
     const worldX = input.moveX * this.currentAttackDirection;
     this.moveActor(actor, worldX, input.moveY, input.sprint, dt);
-    actor.action = input.sprint ? 'sprint' : Math.hypot(worldX, input.moveY) > 0.1 ? 'carry' : 'idle';
+    this.setAction(actor, input.sprint ? 'sprint' : Math.hypot(worldX, input.moveY) > 0.1 ? 'carry' : 'idle');
     if (input.skill && !this.previousInput.skill) this.performSkill(actor, worldX, input.moveY);
   }
 
@@ -674,9 +677,9 @@ export class ArcadeMatch {
     const owner = this.owner();
     const team = this.teamOf(actor.side);
     const direction = this.attackDirection(actor.side);
-    actor.action = 'formation';
+    this.setAction(actor, 'formation');
     if (owner?.player.id === actor.player.id) {
-      actor.action = 'carry';
+      this.setAction(actor, 'carry');
       actor.intentX = clamp(actor.x + direction * 9, 1, FIELD_LENGTH - 1);
       actor.intentY = clamp(actor.y + this.rng.float(-4, 4), 2, FIELD_WIDTH - 2);
       const goalDistance = direction > 0 ? FIELD_LENGTH - actor.x : actor.x;
@@ -704,7 +707,7 @@ export class ArcadeMatch {
         .sort((a, b) => distance(a, this.ball) - distance(b, this.ball));
       const maxPressers = team.tactics.pressing === 'low' ? 1 : 2;
       if (pressers.slice(0, maxPressers).includes(actor)) {
-        actor.action = 'press';
+        this.setAction(actor, 'press');
         actor.intentX = this.ball.x + this.ball.vx * 0.25;
         actor.intentY = this.ball.y + this.ball.vy * 0.25;
         return;
@@ -811,7 +814,7 @@ export class ArcadeMatch {
     this.intendedReceiverId = target?.player.id ?? null;
     this.activeShot = null;
     this.releaseBall(actor, px * speed, py * speed, lob ? 5 + power * 4 : 0.2, lob ? this.rng.float(-2, 2) : 0);
-    actor.action = lob ? 'lob' : through ? 'through-pass' : 'pass';
+    this.setAction(actor, lob ? 'lob' : through ? 'through-pass' : 'pass');
   }
 
   private shoot(actor: ArcadeActor, power: number, aimX: number, aimY: number, finesse: boolean, low: boolean): void {
@@ -842,7 +845,7 @@ export class ArcadeMatch {
     this.activeShot = { shooterId: actor.player.id, side: actor.side, xG, targetY, checkedKeeper: false };
     this.intendedReceiverId = null;
     this.releaseBall(actor, dx / length * speed, dy / length * speed, vz, finesse ? -direction * 5 : 0);
-    actor.action = finesse ? 'finesse-shot' : low ? 'low-shot' : 'shot';
+    this.setAction(actor, finesse ? 'finesse-shot' : low ? 'low-shot' : 'shot');
     this.events.push({ minute: this.footballMinute, type: 'shot', side: actor.side, playerId: actor.player.id, params: { player: playerName(actor.player), xG } });
   }
 
@@ -855,10 +858,10 @@ export class ArcadeMatch {
       const lateral = Math.abs(dy) > Math.abs(dx);
       actor.x = clamp(actor.x + (lateral ? actor.facingX : -actor.facingX) * 1.4, 1, FIELD_LENGTH - 1);
       actor.y = clamp(actor.y + (lateral ? Math.sign(dy || 1) : -actor.facingY) * 1.7, 1, FIELD_WIDTH - 1);
-      actor.action = lateral ? 'ball-roll' : 'drag-back';
+      this.setAction(actor, lateral ? 'ball-roll' : 'drag-back');
     } else {
       this.releaseBall(actor, actor.facingX * 4 + this.rng.float(-2, 2), actor.facingY * 4 + this.rng.float(-2, 2), 0.5, 0);
-      actor.action = 'skill-failed';
+      this.setAction(actor, 'skill-failed');
     }
   }
 
@@ -897,7 +900,7 @@ export class ArcadeMatch {
     const reach = sliding ? 2.25 : 1.45;
     if (distance(actor, owner) > reach) return;
     actor.tackleCooldown = sliding ? 1.15 : 0.45;
-    actor.action = sliding ? 'slide' : 'standing-tackle';
+    this.setAction(actor, sliding ? 'slide' : 'standing-tackle');
     const relativeX = owner.x - actor.x;
     const relativeY = owner.y - actor.y;
     const approach = (relativeX * actor.facingX + relativeY * actor.facingY) / Math.max(0.1, Math.hypot(relativeX, relativeY));
@@ -938,7 +941,7 @@ export class ArcadeMatch {
     const inBox = victimDirection > 0 ? victim.x > FIELD_LENGTH - 16.5 : victim.x < 16.5;
     this.events.push({ minute: this.footballMinute, type: eventType, side: defender.side, playerId: defender.player.id, messageKey: inBox ? 'match.penalty' : eventType === 'red' ? 'match.red' : eventType === 'yellow' ? 'match.yellow' : 'match.freeKick', params: { player: playerName(defender.player) } });
     if (this.rng.bool(clamp((severity - 8) / 220, 0.005, 0.06))) {
-      victim.action = 'injured';
+      this.setAction(victim, 'injured');
       this.events.push({ minute: this.footballMinute, type: 'injury', side: victim.side, playerId: victim.player.id, messageKey: 'match.injury', params: { player: playerName(victim.player) } });
     }
     const canPlayAdvantage = !inBox && victim.action !== 'injured' && Math.hypot(victim.vx, victim.vy) > 1;
@@ -1032,12 +1035,12 @@ export class ArcadeMatch {
         this.ball.y = keeper.y;
         this.ball.z = 0.5;
         this.ball.vx = this.ball.vy = this.ball.vz = 0;
-        keeper.action = 'keeper-catch';
+        this.setAction(keeper, 'keeper-catch');
       } else {
         this.ball.vx *= -0.38;
         this.ball.vy += this.rng.float(-5, 5);
         this.ball.vz = Math.max(1.8, this.ball.vz * 0.5);
-        keeper.action = 'keeper-parry';
+        this.setAction(keeper, 'keeper-parry');
       }
       this.activeShot = null;
     }
@@ -1110,7 +1113,7 @@ export class ArcadeMatch {
     } else {
       this.ball.vx *= 0.48;
       this.ball.vy += this.rng.float(-2.5, 2.5);
-      candidate.action = 'heavy-touch';
+      this.setAction(candidate, 'heavy-touch');
     }
   }
 
@@ -1427,6 +1430,7 @@ export class ArcadeMatch {
       active: actor.active,
       card: actor.card,
       action: actor.action,
+      actionStartedTick: actor.actionStartedTick,
       decisionCooldown: actor.decisionCooldown,
       skillCooldown: actor.skillCooldown,
       tackleCooldown: actor.tackleCooldown,
@@ -1448,6 +1452,7 @@ export class ArcadeMatch {
     actor.active = saved.active;
     actor.card = saved.card;
     actor.action = saved.action;
+    actor.actionStartedTick = saved.actionStartedTick ?? this.tick;
     actor.decisionCooldown = saved.decisionCooldown;
     actor.skillCooldown = saved.skillCooldown;
     actor.tackleCooldown = saved.tackleCooldown;
@@ -1462,6 +1467,12 @@ export class ArcadeMatch {
 
   private newRule(phase: RuleState['phase'], restartSide: Side | null, spotX: number, spotY: number, indirect = false): RuleState {
     return { phase, restartSide, spotX, spotY, elapsed: 0, indirect, advantageSide: null, pendingCardPlayerId: null };
+  }
+
+  private setAction(actor: ArcadeActor, action: PlayerActionState): void {
+    if (actor.action === action) return;
+    actor.action = action;
+    actor.actionStartedTick = this.tick;
   }
 
   private maxSpeed(actor: ArcadeActor, sprint: boolean): number {
