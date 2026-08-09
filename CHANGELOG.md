@@ -4,6 +4,20 @@ All notable changes to Pitch Legends are recorded here. Releases follow
 [Semantic Versioning](https://semver.org/) and are generated from Conventional
 Commits by Release Please.
 
+## [1.3.0](https://github.com/C0deWiz4rd010/pitch-legends/compare/pitch-legends-v1.2.0...pitch-legends-v1.3.0) (2026-08-09)
+
+
+### Features
+
+* **match-art:** animate refined procedural player sprites ([c966495](https://github.com/C0deWiz4rd010/pitch-legends/commit/c966495b9bb3b011d18630648b78f4624289aaae))
+* **tactics:** rebuild the tactical command workspace ([227644a](https://github.com/C0deWiz4rd010/pitch-legends/commit/227644a0cb96976c828015076e0387ebac54e70a))
+* **training:** add deterministic weekly training plans ([16ef511](https://github.com/C0deWiz4rd010/pitch-legends/commit/16ef511b9a996de50caf1cb4e09a6cade9aa401b))
+
+
+### Bug Fixes
+
+* **layout:** constrain route workspaces to the main viewport ([09d2d79](https://github.com/C0deWiz4rd010/pitch-legends/commit/09d2d7986c4e29fe6e4db403c9024420e9a2e57c))
+
 ## [1.2.0](https://github.com/C0deWiz4rd010/pitch-legends/compare/pitch-legends-v1.1.0...pitch-legends-v1.2.0) (2026-08-09)
 
 
