@@ -25,7 +25,8 @@
     <section class="card preview fade-up">
       <div class="pv-teams">
         <div class="pv-team">
-          <span class="crest" [style.background]="homeTeam()?.kit?.primary" [style.color]="homeTeam()?.kit?.secondary">{{ homeTeam()?.shortName }}</span>
+          <app-club-crest [team]="$any(homeTeam())" [size]="72" />
+          @if (homeTeam()?.visuals?.kits?.home; as homeKit) { <app-mini-kit [kit]="homeKit" [size]="42" /> }
           <strong>{{ homeTeam()?.name }}</strong>
           <span class="chip">{{ homeTeam()?.formation?.name }}</span>
         </div>
@@ -34,7 +35,8 @@
           <small>{{ isHome() ? 'HOME' : 'AWAY' }}</small>
         </div>
         <div class="pv-team">
-          <span class="crest" [style.background]="awayTeam()?.kit?.primary" [style.color]="awayTeam()?.kit?.secondary">{{ awayTeam()?.shortName }}</span>
+          <app-club-crest [team]="$any(awayTeam())" [size]="72" />
+          @if (awayTeam()?.visuals?.kits?.away; as awayKit) { <app-mini-kit [kit]="awayKit" [size]="42" /> }
           <strong>{{ awayTeam()?.name }}</strong>
           <span class="chip">{{ awayTeam()?.formation?.name }}</span>
         </div>
@@ -131,9 +133,9 @@
     <p class="eyebrow">PIXEL LEAGUE · LIVE</p>
     <div class="intro-stadium"><i></i><i></i><i></i><i></i><i></i></div>
     <div class="intro-teams">
-      <div><span class="crest" [style.background]="homeTeam()?.kit?.primary">{{ homeTeam()?.shortName }}</span><strong>{{ homeTeam()?.name }}</strong><small>{{ homeTeam()?.formation?.name }}</small></div>
+      <div><app-club-crest [team]="$any(homeTeam())" [size]="76" /><strong>{{ homeTeam()?.name }}</strong><small>{{ homeTeam()?.formation?.name }}</small></div>
       <b>VS</b>
-      <div><span class="crest" [style.background]="awayTeam()?.kit?.primary">{{ awayTeam()?.shortName }}</span><strong>{{ awayTeam()?.name }}</strong><small>{{ awayTeam()?.formation?.name }}</small></div>
+      <div><app-club-crest [team]="$any(awayTeam())" [size]="76" /><strong>{{ awayTeam()?.name }}</strong><small>{{ awayTeam()?.formation?.name }}</small></div>
     </div>
     <p>REF · M. BYTE · {{ expectedWeather().toUpperCase() }}</p>
     <button class="btn btn--ghost" (click)="skipIntro()">INTRO ÜBERSPRINGEN</button>
@@ -151,9 +153,9 @@
 
 @if (phase() === 'match' || phase() === 'halftime' || phase() === 'result') {
   <header class="scoreboard fade-up">
-    <div class="sb-team"><span class="crest sm" [style.background]="homeTeam()?.kit?.primary">{{ homeTeam()?.shortName }}</span><strong>{{ homeTeam()?.shortName }}</strong></div>
+    <div class="sb-team"><app-club-crest class="crest sm" [team]="$any(homeTeam())" [size]="36" /><strong>{{ homeTeam()?.shortName }}</strong></div>
     <div class="sb-score"><span>{{ homeScore() }}</span><b>{{ minute() }}' · {{ matchPhase() === 'secondHalf' ? '2H' : matchPhase() === 'fulltime' ? 'FT' : '1H' }}</b><span>{{ awayScore() }}</span></div>
-    <div class="sb-team right"><strong>{{ awayTeam()?.shortName }}</strong><span class="crest sm" [style.background]="awayTeam()?.kit?.primary">{{ awayTeam()?.shortName }}</span></div>
+    <div class="sb-team right"><strong>{{ awayTeam()?.shortName }}</strong><app-club-crest class="crest sm" [team]="$any(awayTeam())" [size]="36" /></div>
   </header>
 }
 
@@ -165,6 +167,7 @@
         <div class="rotate-notice"><strong>GERÄT DREHEN</strong><span>Touchmatches benötigen Querformat.</span></div>
         @if (flash(); as scorer) { <div class="goal-flash"><strong>GOAL!</strong><span>{{ scorer }}</span></div> }
         @if (matchPhase() === 'goalReplay') { <button class="replay-skip" (click)="skipReplay()">REPLAY ÜBERSPRINGEN</button> }
+        <button class="auto-chip" [class.on]="autoEnabled()" (click)="toggleAuto()">◈ AUTO · {{ autoEnabled() ? 'KI STEUERT' : 'AUS' }}</button>
         @if (!playing()) {
           <div class="pause-layer">
             <p class="eyebrow">MATCH PAUSIERT</p>
@@ -195,8 +198,9 @@
 
       <div class="match-toolbar">
         <button class="btn btn--ghost btn--sm" (click)="togglePlay()">{{ playing() ? 'PAUSE' : 'PLAY' }}</button>
+        <button class="btn btn--ghost btn--sm auto-toggle" [class.on]="autoEnabled()" (click)="toggleAuto()">◈ AUTO · {{ autoEnabled() ? 'KI STEUERT' : 'AUS' }}</button>
         <button class="btn btn--ghost btn--sm" (click)="openControls()">? STEUERUNG</button>
-        @if (selectedMode() === 'coach') { <button class="btn btn--ghost btn--sm" (click)="cycleSpeed()">{{ speed() }}× SPEED</button> }
+        @if (selectedMode() === 'coach' && autoEnabled()) { <button class="btn btn--ghost btn--sm" (click)="cycleSpeed()">{{ speed() }}× SPEED</button> }
         <button class="btn btn--ghost btn--sm" [class.on]="showTactics()" (click)="showTactics.set(!showTactics())">Q · TAKTIK</button>
         <button class="btn btn--ghost btn--sm" [class.on]="showSubs()" (click)="showSubs.set(!showSubs())">WECHSEL {{ subsRemaining() }}</button>
         <button class="btn btn--ghost btn--sm" (click)="simulateRemainder()">REST SIM</button>

@@ -167,6 +167,9 @@ canvas { display: block; width: 100%; height: 100%; image-rendering: pixelated; 
 .pause-layer { background: rgba(5,7,19,.88); pointer-events: auto; text-align: center; }
 .pause-layer span { max-width: 480px; color: var(--accent-3); font-size: 12px; }
 .replay-skip { position: absolute; right: 12px; top: 12px; z-index: 3; padding: 7px 9px; border: 2px solid var(--accent-3); background: var(--bg-900); color: var(--accent-3); font: 8px var(--font-display); cursor: pointer; }
+.auto-chip { position: absolute; z-index: 5; right: 12px; bottom: 12px; padding: 6px 8px; border: 2px solid var(--border); background: rgba(5,7,19,.86); color: var(--text-dim); font: 7px var(--font-display); cursor: pointer; }
+.auto-chip.on, .auto-toggle.on { border-color: var(--accent-2); color: var(--accent-2); box-shadow: 0 0 0 2px rgba(57,200,255,.12); animation: auto-pulse 1.5s steps(3) infinite; }
+@keyframes auto-pulse { 50% { box-shadow: 0 0 0 4px rgba(57,200,255,.2); } }
 .device-chip { position: absolute; left: 12px; bottom: 12px; padding: 5px 7px; border: 1px solid var(--border); background: rgba(5,7,19,.78); color: var(--text-dim); font: 7px var(--font-display); opacity: .9; cursor: pointer; }
 .pass-guide { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 10px; }
 .pass-guide .eyebrow, .pass-guide .control-grid { grid-column: 1; }
@@ -269,6 +272,7 @@ canvas { display: block; width: 100%; height: 100%; image-rendering: pixelated; 
   .touch-actions .sw { left: 0; bottom: 8px; border-radius: 0; background: #273556; }
   .touch-actions .rt { left: 48px; bottom: 0; border-radius: 0; background: #204f63; }
   .device-chip { bottom: auto; top: 10px; }
+  .auto-chip { top: 10px; right: 10px; bottom: auto; }
 }
 
 @media (max-width: 900px) and (orientation: portrait) and (pointer: coarse) {
@@ -281,4 +285,8 @@ canvas { display: block; width: 100%; height: 100%; image-rendering: pixelated; 
   .canvas-wrap { height: calc(100vh - 112px); min-height: 250px; aspect-ratio: auto; }
   .canvas-wrap canvas { width: auto; max-width: 100%; margin: auto; }
   .match-toolbar { display: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .auto-chip.on, .auto-toggle.on { animation: none; }
 }

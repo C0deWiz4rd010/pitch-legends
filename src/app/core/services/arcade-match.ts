@@ -7,6 +7,7 @@ import {
   MatchCheckpoint,
   MatchCommand,
   MatchConfig,
+  MatchControllerMode,
   MatchContribution,
   MatchEvent,
   MatchKeyframe,
@@ -80,6 +81,7 @@ interface ActiveShot {
 
 const DEFAULT_CONFIG: Omit<MatchConfig, 'controlledTeamId' | 'seed'> = {
   mode: 'play',
+  controllerMode: 'human',
   halfMinutes: 3,
   difficulty: 'normal',
   assist: 'balanced',
@@ -147,6 +149,7 @@ export class ArcadeMatch {
   actionPower = 0;
   subsUsed = 0;
   substitutionWindows = 0;
+  controllerChangedAtTick = 0;
 
   private readonly rng: Rng;
   private readonly totalSeconds: number;
@@ -199,6 +202,7 @@ export class ArcadeMatch {
         };
     this.controlledTeamId = this.config.controlledTeamId;
     this.controlledSide = away.id === this.controlledTeamId ? 'away' : 'home';
+    this.controllerChangedAtTick = this.config.controllerMode === 'human' ? -15 : 0;
     this.matchId = `match-${this.config.fixtureId ?? `${home.id}-${away.id}`}-${this.config.seed}`;
     this.rng = new Rng(this.config.seed);
     this.totalSeconds = this.config.halfMinutes * 120;
@@ -222,6 +226,24 @@ export class ArcadeMatch {
     return this.controlledSide === 'home' ? this.home : this.away;
   }
 
+  get controllerMode(): MatchControllerMode {
+    return this.config.controllerMode;
+  }
+
+  setControllerMode(mode: MatchControllerMode): void {
+    if (this.config.mode === 'instant' || this.config.controllerMode === mode) return;
+    this.config.controllerMode = mode;
+    this.controllerChangedAtTick = this.tick;
+    this.previousInput = { ...EMPTY_MATCH_COMMAND };
+    this.actionHeld = { pass: 0, through: 0, lob: 0, shoot: 0 };
+    if (mode === 'human') {
+      const locked = this.config.playerLockId
+        ? this.actors.find((actor) => actor.active && actor.player.id === this.config.playerLockId)
+        : undefined;
+      this.selectedPlayerId = (locked ?? this.bestControlledActor()).player.id;
+    }
+  }
+
   get half(): 1 | 2 {
     return this.halftimeReached ? 2 : 1;
   }
@@ -237,7 +259,8 @@ export class ArcadeMatch {
 
   step(dt: number, rawInput: InputFrame | MatchCommand = EMPTY_MATCH_COMMAND): void {
     if (this.paused || this.finished || this.phase === 'halftime' || this.phase === 'goalReplay') return;
-    const input = normaliseCommand(rawInput);
+    const acceptsHumanInput = this.config.controllerMode === 'human' && this.tick - this.controllerChangedAtTick >= 15;
+    const input = normaliseCommand(acceptsHumanInput ? rawInput : EMPTY_MATCH_COMMAND);
     const safeDt = Math.min(dt, MATCH_TICK);
     this.tick++;
 
@@ -422,7 +445,9 @@ export class ArcadeMatch {
 
   checkpoint(): MatchCheckpoint {
     return {
-      version: 1,
+      version: 2,
+      controllerMode: this.config.controllerMode,
+      controllerChangedAtTick: this.controllerChangedAtTick,
       fixtureId: this.config.fixtureId ?? `${this.home.id}-${this.away.id}`,
       matchId: this.matchId,
       config: structuredClone(this.config),
@@ -466,7 +491,7 @@ export class ArcadeMatch {
   }
 
   restore(checkpoint: MatchCheckpoint): boolean {
-    if (checkpoint.version !== 1 || checkpoint.matchId !== this.matchId) return false;
+    if (checkpoint.version !== 2 || checkpoint.matchId !== this.matchId) return false;
     const players = [...this.home.players, ...this.away.players];
     for (let index = 0; index < checkpoint.actors.length; index++) {
       const saved = checkpoint.actors[index];
@@ -479,6 +504,8 @@ export class ArcadeMatch {
     }
     Object.assign(this.ball, checkpoint.ball);
     this.tick = checkpoint.tick;
+    this.config.controllerMode = checkpoint.controllerMode;
+    this.controllerChangedAtTick = checkpoint.controllerChangedAtTick;
     this.elapsed = checkpoint.elapsed;
     this.phase = checkpoint.phase;
     this.paused = checkpoint.phase === 'paused' || checkpoint.phase === 'halftime';
@@ -590,7 +617,7 @@ export class ArcadeMatch {
   }
 
   private isHumanControlled(actor: ArcadeActor): boolean {
-    return this.config.mode === 'play' && actor.player.id === this.selectedPlayerId;
+    return this.config.mode !== 'instant' && this.config.controllerMode === 'human' && this.tick - this.controllerChangedAtTick >= 15 && actor.player.id === this.selectedPlayerId;
   }
 
   private handleSelection(input: MatchCommand): void {
@@ -1089,7 +1116,7 @@ export class ArcadeMatch {
     }
     const firstTouch = candidate.player.attributes.dribbling + candidate.stamina * 0.25 - speed * 1.4;
     const weatherPenalty = this.config.weather === 'rain' ? 8 : this.config.weather === 'storm' ? 11 : 0;
-    const humanReceiver = this.config.mode === 'play' && candidate.side === this.controlledSide;
+    const humanReceiver = this.config.controllerMode === 'human' && candidate.side === this.controlledSide;
     const assistBonus = humanReceiver
       ? this.config.assist === 'assisted' ? 14 : this.config.assist === 'balanced' ? 7 : 1
       : 45;
@@ -1187,7 +1214,7 @@ export class ArcadeMatch {
     if (this.rule.phase === 'halftime' || this.rule.phase === 'fulltime') return;
     const minimum = this.config.mode === 'instant' ? 0.05 : 0.42;
     const forced = this.rule.elapsed >= (this.rule.phase === 'throwIn' ? 5 : 1.35);
-    const humanRestart = this.rule.restartSide === this.controlledSide && this.config.mode === 'play';
+    const humanRestart = this.rule.restartSide === this.controlledSide && this.config.controllerMode === 'human';
     const pressed = input.pass || input.through || input.lob || input.shoot;
     if (this.rule.elapsed < minimum || (humanRestart && !pressed && !forced)) return;
     const side = this.rule.restartSide ?? 'home';
@@ -1461,8 +1488,8 @@ export class ArcadeMatch {
   }
 
   private ballSnapshot(): BallSnapshot {
-    const { x, y, z, vx, vy, vz, spin, ownerId } = this.ball;
-    return { x, y, z, vx, vy, vz, spin, ownerId };
+    const { x, y, z, vx, vy, vz, spin, ownerId, controlledTouch } = this.ball;
+    return { x, y, z, vx, vy, vz, spin, ownerId, controlledTouch };
   }
 
   private newRule(phase: RuleState['phase'], restartSide: Side | null, spotX: number, spotY: number, indirect = false): RuleState {

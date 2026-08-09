@@ -1,10 +1,12 @@
 import { ArcadeMatch, MATCH_TICK } from './core/services/arcade-match';
+import { MATCH_CHECKPOINT_KEY, MatchCheckpointService } from './core/services/match-checkpoint.service';
 import { createNewGame } from './data/generators';
 import { EMPTY_MATCH_COMMAND, MatchCommand, MatchConfig } from './models/match.model';
 
 function config(teamId: string, mode: MatchConfig['mode'] = 'coach', seed = 20260809): MatchConfig {
   return {
     mode,
+    controllerMode: mode === 'play' ? 'human' : 'auto',
     seed,
     fixtureId: 'fixture-v3-test',
     controlledTeamId: teamId,
@@ -72,6 +74,78 @@ describe('Gameplay V3 match contracts', () => {
     expect(resumed.awayStats).toEqual(uninterrupted.awayStats);
   });
 
+  it('ignores every human gameplay command while live AUTO is active', () => {
+    const game = createNewGame({ managerName: 'Auto', clubName: 'Auto Athletic', seed: 182 });
+    const [home, away] = game.teams;
+    const withInput = new ArcadeMatch(home, away, config(home.id, 'play', 7781));
+    const withoutInput = new ArcadeMatch(home, away, config(home.id, 'play', 7781));
+    withInput.setControllerMode('auto');
+    withoutInput.setControllerMode('auto');
+
+    for (let tick = 0; tick < 720; tick++) {
+      withInput.step(MATCH_TICK, {
+        ...EMPTY_MATCH_COMMAND,
+        moveX: 1,
+        aimX: 1,
+        sprint: true,
+        pass: tick % 90 < 30,
+        shoot: tick % 210 < 45,
+        device: 'keyboard',
+      });
+      withoutInput.step(MATCH_TICK, EMPTY_MATCH_COMMAND);
+    }
+
+    expect(withInput.stateHash()).toBe(withoutInput.stateHash());
+  });
+
+  it('switches live control without changing clock or physics and persists AUTO in checkpoints', () => {
+    const game = createNewGame({ managerName: 'Toggle', clubName: 'Toggle Town', seed: 183 });
+    const [home, away] = game.teams;
+    const match = new ArcadeMatch(home, away, config(home.id, 'play', 7782));
+    advance(match, 180);
+    const before = match.snapshot();
+
+    match.setControllerMode('auto');
+    expect(match.tick).toBe(before.tick);
+    expect(match.elapsed).toBe(before.elapsed);
+    expect(match.ball).toMatchObject(before.ball);
+    const checkpoint = match.checkpoint();
+    expect(checkpoint.version).toBe(2);
+    expect(checkpoint.controllerMode).toBe('auto');
+
+    const resumed = new ArcadeMatch(home, away, checkpoint.config);
+    expect(resumed.restore(checkpoint)).toBe(true);
+    expect(resumed.controllerMode).toBe('auto');
+    expect(resumed.controllerChangedAtTick).toBe(match.controllerChangedAtTick);
+    expect(resumed.stateHash()).toBe(match.stateHash());
+
+    resumed.setControllerMode('human');
+    expect(resumed.controllerMode).toBe('human');
+    expect(resumed.tick).toBe(match.tick);
+    expect(resumed.snapshot().ball).toEqual(match.snapshot().ball);
+  });
+
+  it('migrates a V1 checkpoint to the controller-aware V2 format', () => {
+    const game = createNewGame({ managerName: 'Legacy Auto', clubName: 'Checkpoint FC', seed: 184 });
+    const [home, away] = game.teams;
+    const match = new ArcadeMatch(home, away, config(home.id, 'coach', 7783));
+    const legacy = match.checkpoint() as any;
+    legacy.version = 1;
+    delete legacy.controllerMode;
+    delete legacy.controllerChangedAtTick;
+    delete legacy.config.controllerMode;
+    localStorage.setItem('pitch-legends:match-checkpoint:v1', JSON.stringify(legacy));
+
+    const service = new MatchCheckpointService();
+    const migrated = service.load(legacy.fixtureId);
+
+    expect(migrated?.version).toBe(2);
+    expect(migrated?.controllerMode).toBe('auto');
+    expect(migrated?.config.controllerMode).toBe('auto');
+    expect(localStorage.getItem(MATCH_CHECKPOINT_KEY)).toBeTruthy();
+    service.clear();
+  });
+
   it('keeps coach and headless modes equivalent when they receive AI commands', () => {
     const game = createNewGame({ managerName: 'Modes', clubName: 'Modes FC', seed: 83 });
     const [home, away] = game.teams;
@@ -126,7 +200,7 @@ describe('Gameplay V3 match contracts', () => {
     advance(match, 120);
     const checkpoint = match.checkpoint();
 
-    expect(checkpoint.version).toBe(1);
+    expect(checkpoint.version).toBe(2);
     expect(checkpoint.actors).toHaveLength(22);
     expect(checkpoint.actors.every((actor) => Number.isFinite(actor.decisionCooldown) && Number.isFinite(actor.intentX))).toBe(true);
     expect(checkpoint.runtime.passAttempts).toEqual({ home: match.homeStats.passesAttempted, away: match.awayStats.passesAttempted });

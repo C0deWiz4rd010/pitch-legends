@@ -84,6 +84,7 @@ export class MatchEngineService {
   private headlessConfig(home: Team, away: Team, week: number, seed?: number, fixtureId?: string): MatchConfig {
     return {
       mode: 'instant',
+      controllerMode: 'auto',
       seed: seed ?? this.stableSeed(`${home.id}|${away.id}|${week}`),
       fixtureId,
       controlledTeamId: home.id,

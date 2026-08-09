@@ -10,7 +10,7 @@ import {
   viewChild,
 } from '@angular/core';
 import { DecimalPipe } from '@angular/common';
-import { Router, RouterLink } from '@angular/router';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { GameStateService } from '../../core/services/game-state.service';
 import { SeasonService } from '../../core/services/season.service';
 import { MatchEngineService } from '../../core/services/match-engine.service';
@@ -37,13 +37,15 @@ import { ArcadePitchRenderer } from './arcade-renderer';
 import { AudioService } from '../../core/services/audio.service';
 import { ControlHelpService } from '../../core/services/control-help.service';
 import { CONTROL_INPUT_MAP, MOVEMENT_KEYS } from '../../data/control-bindings';
+import { ClubCrestComponent } from '../../shared/components/club-crest.component';
+import { MiniKitComponent } from '../../shared/components/mini-kit.component';
 
 type PagePhase = 'preview' | 'intro' | 'simulating' | 'match' | 'halftime' | 'result';
 type TouchAction = 'sprint' | 'pass' | 'through' | 'lob' | 'shoot' | 'skill' | 'switch';
 
 @Component({
   selector: 'app-match',
-  imports: [RouterLink, DecimalPipe],
+  imports: [RouterLink, DecimalPipe, ClubCrestComponent, MiniKitComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './match.page.html',
   styleUrl: './match.page.scss',
@@ -54,6 +56,7 @@ export class MatchPage implements OnDestroy {
   private readonly engine = inject(MatchEngineService);
   private readonly checkpoints = inject(MatchCheckpointService);
   private readonly router = inject(Router);
+  private readonly route = inject(ActivatedRoute);
   protected readonly i18n = inject(I18nService);
   private readonly audio = inject(AudioService);
   protected readonly controlHelp = inject(ControlHelpService);
@@ -74,6 +77,7 @@ export class MatchPage implements OnDestroy {
   protected readonly flash = signal<string | null>(null);
   protected readonly performanceMessage = signal('');
   protected readonly inputDevice = signal<InputDevice>('keyboard');
+  protected readonly autoEnabled = signal(false);
   protected readonly committing = signal(false);
   protected readonly showSubs = signal(false);
   protected readonly showTactics = signal(false);
@@ -109,6 +113,8 @@ export class MatchPage implements OnDestroy {
   private pausedForHelp = false;
   private previousLearningPass = false;
   private pendingPassAttempt = -1;
+  private readonly autoStartRequested = this.route.snapshot.queryParamMap.get('auto') === '1';
+  private readonly instantStartRequested = this.route.snapshot.queryParamMap.get('mode') === 'instant';
 
   protected readonly mentalities: Mentality[] = ['ultra-defensive', 'defensive', 'balanced', 'attacking', 'ultra-attacking'];
   protected readonly pressings: PressingIntensity[] = ['low', 'medium', 'high', 'gegenpress'];
@@ -182,6 +188,8 @@ export class MatchPage implements OnDestroy {
   constructor() {
     const settings = this.gs.game()?.settings;
     this.assist.set(settings?.assistPreset ?? 'balanced');
+    if (this.instantStartRequested) this.selectedMode.set('instant');
+    else if (this.autoStartRequested) this.selectedMode.set('play');
     window.addEventListener('keydown', this.keyDown);
     window.addEventListener('keyup', this.keyUp);
     window.addEventListener('blur', this.blur);
@@ -208,6 +216,7 @@ export class MatchPage implements OnDestroy {
         this.arcade.setPaused(false);
       }
     });
+    if (this.autoStartRequested || this.instantStartRequested) queueMicrotask(() => this.kickOff());
   }
 
   protected teamRating(team: Team | null): number {
@@ -268,6 +277,7 @@ export class MatchPage implements OnDestroy {
     const lockId = this.playerLock() ? this.playerLockId() || this.starters().find((player) => player.positionGroup !== 'GK')?.id || null : null;
     this.arcade = this.engine.createSession(home, away, {
       mode: this.selectedMode(),
+      controllerMode: this.selectedMode() === 'coach' || this.autoStartRequested ? 'auto' : 'human',
       fixtureId: fixture.id,
       controlledTeamId: this.controlledTeam()?.id ?? home.id,
       halfMinutes: settings?.matchDuration ?? 3,
@@ -279,6 +289,7 @@ export class MatchPage implements OnDestroy {
       inputDevice: this.selectedMode() === 'coach' ? 'ai' : this.inputDevice(),
       camera: { zoom: 1, lookAhead: 0.18, shake: settings?.cameraShake ?? true, reducedMotion: settings?.reducedMotion ?? false },
     }, this.gs.manager()?.perks.tactics ?? 0);
+    this.autoEnabled.set(this.arcade.controllerMode === 'auto');
     this.prevHome = this.arcade.homeScore;
     this.prevAway = this.arcade.awayScore;
     this.revealed.set([...this.arcade.events]);
@@ -300,6 +311,8 @@ export class MatchPage implements OnDestroy {
       this.resumeOffer.set(null);
       return;
     }
+    this.selectedMode.set(this.arcade.config.mode);
+    this.autoEnabled.set(this.arcade.controllerMode === 'auto');
     this.prevHome = this.arcade.homeScore;
     this.prevAway = this.arcade.awayScore;
     this.revealed.set([...this.arcade.events]);
@@ -326,7 +339,7 @@ export class MatchPage implements OnDestroy {
     this.audio.whistle();
     this.phase.set('match');
     this.playing.set(true);
-    if (this.selectedMode() === 'play' && !this.gs.game()?.settings.controlLearning.introSeen) this.controlHelp.open('pass');
+    if (this.selectedMode() === 'play' && !this.autoEnabled() && !this.gs.game()?.settings.controlLearning.introSeen) this.controlHelp.open('pass');
   }
 
   protected openControls(): void {
@@ -357,12 +370,12 @@ export class MatchPage implements OnDestroy {
     }
     if (this.playing()) {
       const tacticalTimeScale = this.showTactics() ? 0.15 : 1;
-      this.fixedAccumulator += dt * (this.selectedMode() === 'coach' ? this.speed() : 1) * tacticalTimeScale;
+      this.fixedAccumulator += dt * (this.selectedMode() === 'coach' && this.autoEnabled() ? this.speed() : 1) * tacticalTimeScale;
       if (this.fixedAccumulator > 0.25) {
         this.fixedAccumulator = 0;
         this.pauseFor('Performance-Schutz: Die Simulation lag mehr als 250 ms zurück.');
       } else {
-        const input = this.selectedMode() === 'play' ? this.readInput() : EMPTY_MATCH_COMMAND;
+        const input = this.arcade.controllerMode === 'human' ? this.readInput() : EMPTY_MATCH_COMMAND;
         while (this.fixedAccumulator >= MATCH_TICK) {
           this.arcade.step(MATCH_TICK, input);
           this.fixedAccumulator -= MATCH_TICK;
@@ -463,8 +476,18 @@ export class MatchPage implements OnDestroy {
   }
 
   protected cycleSpeed(): void {
-    if (this.selectedMode() !== 'coach') return;
+    if (this.selectedMode() !== 'coach' || !this.autoEnabled()) return;
     this.speed.update((value) => value === 1 ? 2 : value === 2 ? 4 : 1);
+  }
+
+  protected toggleAuto(): void {
+    if (!this.arcade || this.arcade.config.mode === 'instant') return;
+    const mode = this.arcade.controllerMode === 'auto' ? 'human' : 'auto';
+    this.resetInputs();
+    this.arcade.setControllerMode(mode);
+    this.autoEnabled.set(mode === 'auto');
+    if (mode === 'human') this.speed.set(1);
+    this.checkpoints.save(this.arcade.checkpoint());
   }
 
   protected simulateRemainder(): void {
@@ -655,6 +678,7 @@ export class MatchPage implements OnDestroy {
     cancelAnimationFrame(this.raf);
     this.destroyRenderer();
     this.arcade = null;
+    this.autoEnabled.set(false);
     this.result.set(null);
     this.revealed.set([]);
     this.committing.set(false);

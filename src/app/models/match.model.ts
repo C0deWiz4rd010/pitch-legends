@@ -16,6 +16,7 @@ export type MatchEventType =
 
 export type Side = 'home' | 'away';
 export type MatchMode = 'play' | 'coach' | 'instant';
+export type MatchControllerMode = 'human' | 'auto';
 export type AssistPreset = 'assisted' | 'balanced' | 'manual';
 export type MatchWeather = 'clear' | 'rain' | 'storm';
 export type InputDevice = 'keyboard' | 'gamepad' | 'touch' | 'ai';
@@ -79,6 +80,7 @@ export type RulePhase =
 
 export interface MatchConfig {
   mode: MatchMode;
+  controllerMode: MatchControllerMode;
   controlledTeamId: string;
   halfMinutes: 3 | 5 | 8;
   seed: number;
@@ -233,6 +235,7 @@ export interface BallSnapshot {
   vz: number;
   spin: number;
   ownerId: string | null;
+  controlledTouch: number;
 }
 
 export interface MatchSnapshot {
@@ -250,7 +253,9 @@ export interface MatchSnapshot {
 }
 
 export interface MatchCheckpoint {
-  version: 1;
+  version: 2;
+  controllerMode: MatchControllerMode;
+  controllerChangedAtTick: number;
   fixtureId: string;
   matchId: string;
   config: MatchConfig;
