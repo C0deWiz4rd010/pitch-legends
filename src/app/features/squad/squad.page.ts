@@ -5,13 +5,14 @@ import { PlayerDetailComponent } from '../../shared/components/player-detail.com
 import { ratingColor, moraleIcon, formatCoins } from '../../shared/rating-color';
 import { PositionGroup } from '../../models/enums';
 import { Player } from '../../models/player.model';
+import { PlayerPortraitComponent } from '../../shared/components/player-portrait.component';
 
 type Filter = 'ALL' | PositionGroup;
 type Sort = 'overall' | 'level' | 'value' | 'position' | 'potential';
 
 @Component({
   selector: 'app-squad',
-  imports: [PlayerDetailComponent, FormsModule],
+  imports: [PlayerDetailComponent, FormsModule, PlayerPortraitComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './squad.page.html',
   styleUrl: './squad.page.scss',

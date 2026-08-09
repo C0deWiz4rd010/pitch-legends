@@ -4,6 +4,10 @@
       <button class="close" (click)="close.emit()" aria-label="Close">✕</button>
 
       <div class="head">
+        <div class="player-visuals">
+          <app-player-portrait [player]="p" [size]="86" />
+          @if (currentKit(); as kit) { <app-player-paper-doll [player]="p" [kit]="kit" [size]="84" /> }
+        </div>
         <div class="rating big" [style.background]="ratingColor(p.overall)">{{ p.overall }}</div>
         <div class="who">
           <h2>{{ p.firstName }} {{ p.lastName }}</h2>

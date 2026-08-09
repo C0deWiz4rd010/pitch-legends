@@ -183,6 +183,8 @@
 .traits {
   margin-top: 18px;
 }
+.player-visuals { display: flex; align-items: end; gap: 5px; padding: 5px; border: 2px solid var(--border); background: #0a1020; image-rendering: pixelated; }
+.player-visuals app-player-portrait { width: 86px; height: 86px; overflow: hidden; }
 .development,
 .personal-goal {
   display: flex;
@@ -299,6 +301,8 @@
 }
 
 @media (max-width: 620px) {
+  .head { align-items: flex-start; flex-wrap: wrap; }
+  .player-visuals { width: 100%; justify-content: center; }
   .body {
     grid-template-columns: 1fr;
   }

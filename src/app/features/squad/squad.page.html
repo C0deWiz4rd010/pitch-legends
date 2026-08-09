@@ -48,9 +48,7 @@
 <div class="list fade-up">
   @for (p of players(); track p.id) {
     <button class="pcard" (click)="select(p.id)" [class.injured]="p.injuryWeeks > 0">
-      <span class="kit" [style.background]="gs.playerTeam()?.kit?.primary" [style.color]="gs.playerTeam()?.kit?.secondary">
-        {{ p.kitNumber }}
-      </span>
+      <app-player-portrait class="kit" [player]="p" [size]="40" />
 
       <span class="ovr rating" [style.background]="ratingColor(p.overall)">{{ p.overall }}</span>
 

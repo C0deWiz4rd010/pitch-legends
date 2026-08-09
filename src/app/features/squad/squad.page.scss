@@ -148,6 +148,7 @@
   font-weight: 900;
   font-size: 15px;
 }
+.kit { overflow: hidden; image-rendering: pixelated; border: 2px solid var(--border); background: #0b1020; }
 .ovr {
   min-width: 40px;
   height: 40px;

@@ -9,10 +9,12 @@ import { ratingColor, moraleIcon } from '../rating-color';
 import { TRAITS, getTrait } from '../../data/traits';
 import { DevelopmentPlan, Trait } from '../../models/player.model';
 import { TalentNode } from '../../data/talents';
+import { PlayerPortraitComponent } from './player-portrait.component';
+import { PlayerPaperDollComponent } from './player-paper-doll.component';
 
 @Component({
   selector: 'app-player-detail',
-  imports: [RadarChartComponent, DecimalPipe],
+  imports: [RadarChartComponent, DecimalPipe, PlayerPortraitComponent, PlayerPaperDollComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './player-detail.component.html',
   styleUrl: './player-detail.component.scss',
@@ -31,6 +33,7 @@ export class PlayerDetailComponent {
   protected readonly developmentPlans: DevelopmentPlan[] = ['balanced', 'technical', 'physical', 'position'];
 
   protected readonly player = computed(() => this.gs.squad().find((p) => p.id === this.playerId()) ?? null);
+  protected readonly currentKit = computed(() => this.gs.playerTeam()?.visuals.kits.home ?? null);
 
   protected readonly xpPercent = computed(() => {
     const p = this.player();
