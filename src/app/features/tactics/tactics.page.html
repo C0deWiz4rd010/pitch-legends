@@ -1,261 +1,240 @@
-<header class="page-head fade-up">
-  <div>
-    <p class="eyebrow">Deep tactics</p>
-    <h1>Tactics &amp; Lineup</h1>
-  </div>
-  <div class="head-controls">
-    <div class="fitpill" [style.color]="ratingColor(teamFit())">
-      <span class="muted">Team fit</span> <strong>{{ teamFit() }}</strong>
-    </div>
-    <select class="form-select" [value]="team()?.formation?.id" (change)="changeFormation($any($event.target).value)">
-      @for (f of formations; track f.id) {
-        <option [value]="f.id">{{ f.name }}</option>
-      }
-    </select>
-    <button class="btn btn--ghost btn--sm" (click)="autoFill()">⚙ Auto-fill</button>
-  </div>
-</header>
-
-<div class="layout fade-up">
-  <!-- Pitch -->
-  <div class="pitch-wrap">
-    <div class="pitch">
-      <div class="line halfway"></div>
-      <div class="circle center"></div>
-      <div class="box left"></div>
-      <div class="box right"></div>
-      <div class="six left"></div>
-      <div class="six right"></div>
-      @for (slot of slots(); track slot.id) {
-        <button
-          class="slot"
-          [class.selected]="slot.id === selectedSlotId()"
-          [class.empty]="!slot.playerId"
-          [style.left.%]="slot.x * 100"
-          [style.top.%]="slot.y * 100"
-          (click)="selectSlot(slot.id)"
-        >
-          @if (slotPlayer(slot); as p) {
-            <span class="token" [style.borderColor]="ratingColor(slotFit(slot))">
-              <span class="num">{{ p.kitNumber }}</span>
-            </span>
-            <span class="slot-name">{{ p.lastName }}</span>
-            <span class="slot-role" [style.color]="ratingColor(slotFit(slot))">
-              {{ getRole(slot.roleId).shortName }} · {{ slotFit(slot) }}
-            </span>
-          } @else {
-            <span class="token empty"><span class="num">+</span></span>
-            <span class="slot-role">{{ slot.position }}</span>
-          }
-        </button>
-      }
-    </div>
-  </div>
-
-  <!-- Editor -->
-  <div class="editor card">
-    <div class="tabs">
-      <button [class.active]="tab() === 'lineup'" (click)="tab.set('lineup')">Lineup</button>
-      <button [class.active]="tab() === 'team'" (click)="tab.set('team')">Team Shape</button>
-      <button [class.active]="tab() === 'setpieces'" (click)="tab.set('setpieces')">Set Pieces</button>
+<section class="tactics-page fade-up">
+  <header class="command-head">
+    <div class="command-title">
+      <p class="eyebrow">{{ text('TAKTIKZENTRALE', 'TACTICAL COMMAND') }}</p>
+      <h1>{{ team()?.formation?.name ?? '—' }}</h1>
+      <span class="preset-state" [class.custom]="activePreset() === 'custom'">{{ presetLabel(activePreset()) }}</span>
     </div>
 
-    @switch (tab()) {
-      @case ('lineup') {
-        @if (selectedSlot(); as slot) {
-          <div class="slot-editor">
-            <div class="se-head">
-              <span class="chip">{{ slot.position }}</span>
-              @if (slotPlayer(slot); as p) {
-                <strong>{{ playerName(p) }}</strong>
-                <span class="fit" [style.color]="ratingColor(slotFit(slot))">Fit {{ slotFit(slot) }}</span>
-              } @else {
-                <strong class="muted">Empty slot</strong>
-              }
-            </div>
+    <div class="head-readouts">
+      <div class="readout">
+        <span>{{ text('TEAM-FIT', 'TEAM FIT') }}</span>
+        <strong [style.color]="ratingColor(teamFit())">{{ teamFit() }}</strong>
+      </div>
+      <div class="readout">
+        <span>{{ text('STARTELF', 'STARTING XI') }}</span>
+        <strong>{{ starters().length }}/11</strong>
+      </div>
+    </div>
 
-            <label class="field">
-              <span class="eyebrow">Role</span>
-              <select [value]="slot.roleId" (change)="setRole($any($event.target).value)">
-                @for (r of rolesFor(slot); track r.id) {
-                  <option [value]="r.id">{{ r.name }}</option>
-                }
-              </select>
-            </label>
-            <p class="role-desc muted">{{ getRole(slot.roleId).description }}</p>
-
-            <div class="instructions">
-              <p class="eyebrow">Player instructions</p>
-              <div class="seg-row">
-                <span>Duty</span>
-                <div class="mini-seg">
-                  @for (d of duties; track d) {
-                    <button [class.active]="slot.instruction.duty === d" (click)="setInstruction('duty', d)">{{ d }}</button>
-                  }
-                </div>
-              </div>
-              <div class="seg-row">
-                <span>Forward runs</span>
-                <div class="mini-seg">
-                  @for (r of runsOpts; track r) {
-                    <button [class.active]="slot.instruction.forwardRuns === r" (click)="setInstruction('forwardRuns', r)">{{ r }}</button>
-                  }
-                </div>
-              </div>
-              <div class="seg-row">
-                <span>Marking</span>
-                <div class="mini-seg">
-                  @for (m of markings; track m) {
-                    <button [class.active]="slot.instruction.marking === m" (click)="setInstruction('marking', m)">{{ m }}</button>
-                  }
-                </div>
-              </div>
-              <div class="seg-row">
-                <span>Pressing</span>
-                <div class="mini-seg">
-                  <button [class.active]="slot.instruction.pressingBias === -1" (click)="setInstruction('pressingBias', -1)">less</button>
-                  <button [class.active]="slot.instruction.pressingBias === 0" (click)="setInstruction('pressingBias', 0)">normal</button>
-                  <button [class.active]="slot.instruction.pressingBias === 1" (click)="setInstruction('pressingBias', 1)">more</button>
-                </div>
-              </div>
-              <label class="toggle">
-                <input type="checkbox" [checked]="slot.instruction.stayInPosition" (change)="setInstruction('stayInPosition', $any($event.target).checked)" />
-                <span>Hold position (don't roam)</span>
-              </label>
-            </div>
-
-            @if (slot.playerId) {
-              <button class="btn btn--danger btn--sm" (click)="clearSlot()">Remove from lineup</button>
-            }
-          </div>
-        } @else {
-          <p class="hint muted">Select a position on the pitch to assign a player, set their role and give instructions.</p>
+    <div class="head-actions">
+      <select [attr.aria-label]="text('Formation', 'Formation')" [value]="team()?.formation?.id" (change)="changeFormation($any($event.target).value)">
+        @for (formation of formations; track formation.id) {
+          <option [value]="formation.id">{{ formation.name }}</option>
         }
+      </select>
+      <button class="btn btn--ghost btn--sm" [disabled]="!undoSnapshot()" (click)="undo()">↶ {{ text('UNDO', 'UNDO') }}</button>
+      <button class="btn btn--primary btn--sm" (click)="autoFill()">✦ {{ text('AUTO-AUFSTELLUNG', 'AUTO LINEUP') }}</button>
+    </div>
+  </header>
 
-        <div class="bench">
-          <p class="eyebrow">
-            {{ selectedSlot() ? 'Tap a player to slot them in' : 'Bench' }}
-            ({{ bench().length }})
-          </p>
-          <div class="bench-list">
-            @for (p of bench(); track p.id) {
-              <button
-                class="bench-row"
-                [disabled]="!selectedSlot()"
-                [class.injured]="p.injuryWeeks > 0"
-                (click)="assignToSelected(p.id)"
-              >
-                <span class="rating" [style.background]="ratingColor(p.overall)">{{ p.overall }}</span>
-                <span class="bp-name">{{ playerName(p) }}</span>
-                <span class="bp-pos">{{ p.position }}</span>
-                @if (p.injuryWeeks > 0) { <span class="inj">INJ</span> }
-              </button>
-            } @empty {
-              <p class="muted">Everyone is in the starting XI.</p>
-            }
-          </div>
-        </div>
-      }
+  <nav class="mobile-view-switch" [attr.aria-label]="text('Taktikansicht', 'Tactics view')">
+    <button [class.active]="mobileView() === 'pitch'" (click)="mobileView.set('pitch')">▦ {{ text('FELD', 'PITCH') }}</button>
+    <button [class.active]="mobileView() === 'inspector'" (click)="mobileView.set('inspector')">☷ {{ text('INSPEKTOR', 'INSPECTOR') }}</button>
+  </nav>
 
-      @case ('team') {
-        <div class="team-tactics">
-          <div class="tac">
-            <span class="eyebrow">Mentality</span>
-            <div class="mini-seg wrap">
-              @for (m of mentalities; track m) {
-                <button [class.active]="tactics()?.mentality === m" (click)="setTactic('mentality', m)">{{ m }}</button>
-              }
-            </div>
-          </div>
-          <div class="tac">
-            <span class="eyebrow">Pressing</span>
-            <div class="mini-seg wrap">
-              @for (p of pressings; track p) {
-                <button [class.active]="tactics()?.pressing === p" (click)="setTactic('pressing', p)">{{ p }}</button>
-              }
-            </div>
-          </div>
-          <div class="tac">
-            <span class="eyebrow">Tempo</span>
-            <div class="mini-seg">
-              @for (t of tempos; track t) {
-                <button [class.active]="tactics()?.tempo === t" (click)="setTactic('tempo', t)">{{ t }}</button>
-              }
-            </div>
-          </div>
-          <div class="tac">
-            <span class="eyebrow">Width</span>
-            <div class="mini-seg">
-              @for (w of widths; track w) {
-                <button [class.active]="tactics()?.width === w" (click)="setTactic('width', w)">{{ w }}</button>
-              }
-            </div>
-          </div>
-          <div class="tac">
-            <span class="eyebrow">Defensive line</span>
-            <div class="mini-seg">
-              @for (l of lines; track l) {
-                <button [class.active]="tactics()?.defensiveLine === l" (click)="setTactic('defensiveLine', l)">{{ l }}</button>
-              }
-            </div>
-          </div>
-          <div class="tac">
-            <span class="eyebrow">Build-up</span>
-            <div class="mini-seg wrap">
-              @for (b of buildUps; track b) {
-                <button [class.active]="tactics()?.buildUp === b" (click)="setTactic('buildUp', b)">{{ b }}</button>
-              }
-            </div>
-          </div>
-          <div class="tac">
-            <span class="eyebrow">Passing</span>
-            <div class="mini-seg">
-              @for (p of passings; track p) {
-                <button [class.active]="tactics()?.passing === p" (click)="setTactic('passing', p)">{{ p }}</button>
-              }
-            </div>
-          </div>
-          <div class="toggles">
-            <label class="toggle">
-              <input type="checkbox" [checked]="tactics()?.offsideTrap" (change)="setTactic('offsideTrap', $any($event.target).checked)" />
-              <span>Offside trap</span>
-            </label>
-            <label class="toggle">
-              <input type="checkbox" [checked]="tactics()?.counterAttack" (change)="setTactic('counterAttack', $any($event.target).checked)" />
-              <span>Counter-attack</span>
-            </label>
-          </div>
+  <div class="tactics-workspace" [class.mobile-inspector]="mobileView() === 'inspector'">
+    <section class="pitch-panel">
+      <div class="pitch-tools">
+        <div>
+          <strong>{{ text('SPIELRICHTUNG', 'ATTACK DIRECTION') }} →</strong>
+          <small>{{ shapeEdit() ? text('Spieler ziehen oder mit Pfeiltasten bewegen', 'Drag players or use arrow keys') : text('Spieler ziehen, um Plätze zu tauschen', 'Drag players to swap slots') }}</small>
         </div>
-      }
+        <button class="mode-toggle" [class.active]="shapeEdit()" (click)="shapeEdit.set(!shapeEdit())">
+          {{ shapeEdit() ? text('✓ POSITIONEN BEARBEITEN', '✓ EDIT POSITIONS') : text('POSITIONEN BEARBEITEN', 'EDIT POSITIONS') }}
+        </button>
+        @if (shapeEdit()) {
+          <button class="btn btn--ghost btn--sm" (click)="resetFormation()">{{ text('FORMATION ZURÜCKSETZEN', 'RESET SHAPE') }}</button>
+        }
+      </div>
 
-      @case ('setpieces') {
-        <div class="setpieces">
-          <label class="field">
-            <span class="eyebrow">Captain CP</span>
-            <select [value]="tactics()?.captainId" (change)="setTactic('captainId', $any($event.target).value)">
-              @for (p of starters(); track p.id) { <option [value]="p.id">{{ playerName(p) }}</option> }
-            </select>
-          </label>
-          <label class="field">
-            <span class="eyebrow">Penalties</span>
-            <select [value]="tactics()?.penaltyTakerId" (change)="setTactic('penaltyTakerId', $any($event.target).value)">
-              @for (p of starters(); track p.id) { <option [value]="p.id">{{ playerName(p) }} ({{ p.attributes.shooting }} SHO)</option> }
-            </select>
-          </label>
-          <label class="field">
-            <span class="eyebrow">Free-kicks</span>
-            <select [value]="tactics()?.freeKickTakerId" (change)="setTactic('freeKickTakerId', $any($event.target).value)">
-              @for (p of starters(); track p.id) { <option [value]="p.id">{{ playerName(p) }} ({{ p.attributes.passing }} PAS)</option> }
-            </select>
-          </label>
-          <label class="field">
-            <span class="eyebrow">Corners</span>
-            <select [value]="tactics()?.cornerTakerId" (change)="setTactic('cornerTakerId', $any($event.target).value)">
-              @for (p of starters(); track p.id) { <option [value]="p.id">{{ playerName(p) }} ({{ p.attributes.passing }} PAS)</option> }
-            </select>
-          </label>
+      <div class="pitch-shell">
+        <div
+          class="tactic-pitch"
+          [class.editing]="shapeEdit()"
+          [class.width-wide]="tactics()?.width === 'wide'"
+          [class.width-narrow]="tactics()?.width === 'narrow'"
+          [class.press-high]="tactics()?.pressing === 'high' || tactics()?.pressing === 'gegenpress'"
+          (dragover)="allowDrop($event)"
+          (drop)="dropShape($event)"
+        >
+          <div class="pitch-stripes"></div>
+          <div class="halfway"></div><div class="centre-circle"></div><div class="centre-dot"></div>
+          <div class="penalty-box own"></div><div class="penalty-box away"></div>
+          <div class="goal-box own"></div><div class="goal-box away"></div>
+          <div class="goal own"></div><div class="goal away"></div>
+          <div class="width-overlay"></div>
+          <div class="press-overlay"></div>
+          <div
+            class="defensive-line"
+            [style.left.%]="tactics()?.defensiveLine === 'high' ? 48 : tactics()?.defensiveLine === 'deep' ? 24 : 36"
+          ><span>{{ text('LINIE', 'LINE') }}</span></div>
+          @if (tactics()?.counterAttack) {
+            <div class="run-line run-one">› › ›</div><div class="run-line run-two">› › ›</div>
+          }
+          @if (tactics()?.passing === 'short') {
+            <div class="pass-web one"></div><div class="pass-web two"></div>
+          }
+
+          @for (slot of slots(); track slot.id) {
+            <button
+              type="button"
+              class="formation-slot"
+              [class.selected]="slot.id === selectedSlotId()"
+              [class.empty]="!slot.playerId"
+              [class.shape-node]="shapeEdit()"
+              [style.left.%]="slot.x * 100"
+              [style.top.%]="slot.y * 100"
+              [draggable]="true"
+              [attr.aria-label]="slotPlayer(slot) ? playerName(slotPlayer(slot)!) + ', ' + slot.position : text('Leere Position ', 'Empty position ') + slot.position"
+              (click)="selectSlot(slot.id)"
+              (dblclick)="selectSlot(slot.id, true)"
+              (keydown)="onSlotKeydown(slot, $event)"
+              (dragstart)="beginSlotDrag(slot, $event)"
+              (dragover)="allowDrop($event)"
+              (drop)="dropOnSlot(slot.id, $event)"
+            >
+              @if (slotPlayer(slot); as player) {
+                <app-player-portrait [player]="player" [team]="team()!" [size]="34" />
+                <span class="slot-copy">
+                  <b>{{ player.lastName }}</b>
+                  <small><i>{{ slot.position }}</i> {{ getRole(slot.roleId).shortName }} · <em [style.color]="ratingColor(slotFit(slot))">{{ slotFit(slot) }}</em></small>
+                </span>
+              } @else {
+                <span class="empty-plus">+</span><span class="slot-copy"><b>{{ slot.position }}</b><small>{{ text('LEER', 'EMPTY') }}</small></span>
+              }
+            </button>
+          }
         </div>
-      }
-    }
+      </div>
+      <div class="pitch-legend">
+        <span><i class="legend-line"></i>{{ text('Abwehrlinie', 'Defensive line') }}</span>
+        <span><i class="legend-zone"></i>{{ text('Pressingzone', 'Pressing zone') }}</span>
+        <span><i class="legend-run"></i>{{ text('Tiefenläufe', 'Forward runs') }}</span>
+      </div>
+    </section>
+
+    <aside class="inspector card">
+      <nav class="inspector-tabs">
+        <button [class.active]="tab() === 'lineup'" (click)="tab.set('lineup')">{{ text('AUFSTELLUNG', 'LINEUP') }}</button>
+        <button [class.active]="tab() === 'idea'" (click)="tab.set('idea')">{{ text('SPIELIDEE', 'GAME PLAN') }}</button>
+        <button [class.active]="tab() === 'roles'" (click)="tab.set('roles')">{{ text('ROLLEN', 'ROLES') }}</button>
+        <button [class.active]="tab() === 'setpieces'" (click)="tab.set('setpieces')">{{ text('STANDARDS', 'SET PIECES') }}</button>
+      </nav>
+
+      <div class="inspector-content">
+        @switch (tab()) {
+          @case ('lineup') {
+            <section class="inspector-section">
+              @if (selectedSlot(); as slot) {
+                <div class="selected-player">
+                  @if (slotPlayer(slot); as player) {
+                    <app-player-portrait [player]="player" [team]="team()!" [size]="62" />
+                    <div><span class="position-chip">{{ slot.position }}</span><h2>{{ playerName(player) }}</h2><p>{{ text('Rollen-Fit', 'Role fit') }} <b [style.color]="ratingColor(slotFit(slot))">{{ slotFit(slot) }}</b></p></div>
+                    <button class="icon-button" [attr.aria-label]="text('Position leeren', 'Clear position')" (click)="clearSlot()">×</button>
+                  } @else {
+                    <div class="empty-portrait">+</div><div><span class="position-chip">{{ slot.position }}</span><h2>{{ text('Position offen', 'Open position') }}</h2><p>{{ text('Wähle einen Spieler aus dem Kader.', 'Choose a player from the squad.') }}</p></div>
+                  }
+                </div>
+              } @else {
+                <div class="select-prompt"><span>↖</span><h2>{{ text('Position auswählen', 'Select a position') }}</h2><p>{{ text('Wähle einen Spieler auf dem Feld, um ihn zu bearbeiten.', 'Choose a player on the pitch to edit the slot.') }}</p></div>
+              }
+
+              <div class="section-heading"><div><p class="eyebrow">{{ text('ERSATZBANK', 'BENCH') }}</p><strong>{{ bench().length }} {{ text('VERFÜGBAR', 'AVAILABLE') }}</strong></div><small>{{ text('Ziehen oder klicken', 'Drag or click') }}</small></div>
+              <div class="bench-list">
+                @for (player of bench(); track player.id) {
+                  <button class="bench-player" [disabled]="!selectedSlot()" [draggable]="true" (dragstart)="beginPlayerDrag(player, $event)" (click)="assignToSelected(player.id)">
+                    <app-player-portrait [player]="player" [team]="team()!" [size]="38" />
+                    <span><b>{{ playerName(player) }}</b><small>{{ player.position }} · {{ player.age }} {{ text('J.', 'yrs') }}</small></span>
+                    <em [style.color]="ratingColor(player.overall)">{{ player.overall }}</em>
+                  </button>
+                }
+              </div>
+            </section>
+          }
+
+          @case ('idea') {
+            <section class="inspector-section game-plan">
+              <div class="section-heading"><div><p class="eyebrow">{{ text('IDENTITÄT', 'IDENTITY') }}</p><strong>{{ presetLabel(activePreset()) }}</strong></div><small>{{ text('Ein Klick setzt alle Regler', 'One click sets every lever') }}</small></div>
+              <div class="preset-grid">
+                @for (preset of presetIds; track preset) {
+                  <button [class.active]="activePreset() === preset" (click)="applyPreset(preset)"><span>{{ presetLabel(preset) }}</span><i></i></button>
+                }
+              </div>
+
+              @if (analysis(); as data) {
+                <div class="analysis-grid">
+                  @for (metric of analysisKeys; track metric) {
+                    <div class="analysis-row" [class.hot]="metric === 'risk' || metric === 'fitnessLoad'">
+                      <span>{{ analysisLabel(metric) }}</span><b>{{ data[metric] }}</b>
+                      <div><i [style.width.%]="data[metric]"></i></div>
+                    </div>
+                  }
+                </div>
+                @if (data.warnings.length) {
+                  <div class="warning-stack">
+                    @for (warning of data.warnings; track warning.id) {
+                      <div class="tactic-warning" [class]="warning.severity"><b>!</b><span>{{ text(warning.de, warning.en) }}</span></div>
+                    }
+                  </div>
+                }
+              }
+
+              <div class="control-grid">
+                <label><span>{{ text('Mentalität', 'Mentality') }}</span><select [value]="tactics()?.mentality" (change)="setTactic('mentality', $any($event.target).value)">@for (value of mentalities; track value) { <option [value]="value">{{ tacticLabel(value) }}</option> }</select></label>
+                <label><span>{{ text('Pressing', 'Pressing') }}</span><select [value]="tactics()?.pressing" (change)="setTactic('pressing', $any($event.target).value)">@for (value of pressings; track value) { <option [value]="value">{{ tacticLabel(value) }}</option> }</select></label>
+                <label><span>{{ text('Tempo', 'Tempo') }}</span><select [value]="tactics()?.tempo" (change)="setTactic('tempo', $any($event.target).value)">@for (value of tempos; track value) { <option [value]="value">{{ tacticLabel(value) }}</option> }</select></label>
+                <label><span>{{ text('Breite', 'Width') }}</span><select [value]="tactics()?.width" (change)="setTactic('width', $any($event.target).value)">@for (value of widths; track value) { <option [value]="value">{{ tacticLabel(value) }}</option> }</select></label>
+                <label><span>{{ text('Defensivlinie', 'Defensive line') }}</span><select [value]="tactics()?.defensiveLine" (change)="setTactic('defensiveLine', $any($event.target).value)">@for (value of lines; track value) { <option [value]="value">{{ tacticLabel(value) }}</option> }</select></label>
+                <label><span>{{ text('Aufbau', 'Build-up') }}</span><select [value]="tactics()?.buildUp" (change)="setTactic('buildUp', $any($event.target).value)">@for (value of buildUps; track value) { <option [value]="value">{{ tacticLabel(value) }}</option> }</select></label>
+                <label><span>{{ text('Passstil', 'Passing') }}</span><select [value]="tactics()?.passing" (change)="setTactic('passing', $any($event.target).value)">@for (value of passings; track value) { <option [value]="value">{{ tacticLabel(value) }}</option> }</select></label>
+              </div>
+              <div class="toggle-row"><label><input type="checkbox" [checked]="tactics()?.counterAttack" (change)="setTactic('counterAttack', $any($event.target).checked)" /> {{ text('Konter aktiv', 'Counter attack') }}</label><label><input type="checkbox" [checked]="tactics()?.offsideTrap" (change)="setTactic('offsideTrap', $any($event.target).checked)" /> {{ text('Abseitsfalle', 'Offside trap') }}</label></div>
+            </section>
+          }
+
+          @case ('roles') {
+            <section class="inspector-section">
+              @if (selectedSlot(); as slot) {
+                <div class="role-hero"><span class="position-chip">{{ slot.position }}</span><div><p class="eyebrow">{{ text('INDIVIDUELLER AUFTRAG', 'INDIVIDUAL BRIEF') }}</p><h2>{{ slotPlayer(slot)?.lastName ?? text('Leere Position', 'Empty position') }}</h2></div></div>
+                <label class="large-field"><span>{{ text('Rolle', 'Role') }}</span><select [value]="slot.roleId" (change)="setRole($any($event.target).value)">@for (role of rolesFor(slot); track role.id) { <option [value]="role.id">{{ role.name }}</option> }</select><small>{{ getRole(slot.roleId).description }}</small></label>
+                <div class="control-grid role-controls">
+                  <label><span>{{ text('Aufgabe', 'Duty') }}</span><select [value]="slot.instruction.duty" (change)="setInstruction('duty', $any($event.target).value)">@for (value of duties; track value) { <option [value]="value">{{ tacticLabel(value) }}</option> }</select></label>
+                  <label><span>{{ text('Vorwärtsläufe', 'Forward runs') }}</span><select [value]="slot.instruction.forwardRuns" (change)="setInstruction('forwardRuns', $any($event.target).value)">@for (value of runsOpts; track value) { <option [value]="value">{{ tacticLabel(value) }}</option> }</select></label>
+                  <label><span>{{ text('Deckung', 'Marking') }}</span><select [value]="slot.instruction.marking" (change)="setInstruction('marking', $any($event.target).value)">@for (value of markings; track value) { <option [value]="value">{{ tacticLabel(value) }}</option> }</select></label>
+                  <label><span>{{ text('Pressing-Bias', 'Pressing bias') }} {{ slot.instruction.pressingBias > 0 ? '+' : '' }}{{ slot.instruction.pressingBias }}</span><input type="range" min="-1" max="1" step="1" [value]="slot.instruction.pressingBias" (input)="setInstruction('pressingBias', +$any($event.target).value)" /></label>
+                </div>
+                <label class="stay-toggle"><input type="checkbox" [checked]="slot.instruction.stayInPosition" (change)="setInstruction('stayInPosition', $any($event.target).checked)" /><span><b>{{ text('Position halten', 'Hold position') }}</b><small>{{ text('Reduziert freie Bewegungen und stabilisiert Abstände.', 'Limits roaming and stabilises spacing.') }}</small></span></label>
+              } @else {
+                <div class="select-prompt"><span>◎</span><h2>{{ text('Erst Spieler wählen', 'Choose a player first') }}</h2><p>{{ text('Rollen und Anweisungen gelten immer für eine konkrete Position.', 'Roles and instructions always belong to a specific slot.') }}</p></div>
+              }
+            </section>
+          }
+
+          @case ('setpieces') {
+            <section class="inspector-section set-pieces">
+              <div class="section-heading"><div><p class="eyebrow">{{ text('VERANTWORTUNG', 'RESPONSIBILITY') }}</p><strong>{{ text('STANDARDSCHÜTZEN', 'SET-PIECE TAKERS') }}</strong></div><small>{{ text('Vorschläge aus echten Attributen', 'Suggestions from real attributes') }}</small></div>
+              @for (type of setPieceTypes; track type) {
+                <article class="set-piece-card">
+                  <div class="set-piece-head"><span>{{ setPieceLabel(type) }}</span><small>{{ text('TOP-VORSCHLAG', 'TOP PICK') }}</small></div>
+                  @if (setPieceRanking(type)[0]; as suggested) {
+                    <div class="suggested-player"><app-player-portrait [player]="suggested" [team]="team()!" [size]="44" /><span><b>{{ playerName(suggested) }}</b><small>{{ type === 'captain' ? text('Führung', 'Leadership') : type === 'penalty' ? text('Schuss', 'Shooting') : text('Technik', 'Technique') }}</small></span><em>{{ setPieceScore(suggested, type) }}</em></div>
+                  }
+                  <select [value]="setPieceValue(type) ?? ''" (change)="setSetPiece(type, $any($event.target).value)">
+                    <option value="">{{ text('Nicht festgelegt', 'Not assigned') }}</option>
+                    @for (player of setPieceRanking(type); track player.id) { <option [value]="player.id">{{ playerName(player) }} · {{ setPieceScore(player, type) }}</option> }
+                  </select>
+                </article>
+              }
+            </section>
+          }
+        }
+      </div>
+    </aside>
   </div>
-</div>
+
+  <div class="mobile-sticky-actions">
+    <button class="btn btn--ghost" [disabled]="!undoSnapshot()" (click)="undo()">↶ {{ text('UNDO', 'UNDO') }}</button>
+    <button class="btn btn--primary" (click)="autoFill()">✦ {{ text('AUTO', 'AUTO') }}</button>
+  </div>
+</section>
