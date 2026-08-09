@@ -15,6 +15,7 @@ import { AttributeKey } from '../../models/enums';
 import { effectiveRating, groupForPosition, playerName } from '../ratings';
 import { getRole } from '../../data/roles';
 import { Rng, clamp, uid } from '../util';
+import { isPlayerAvailable } from '../injury-engine';
 
 export const MENTALITY_ATT: Record<Tactics['mentality'], number> = {
   'ultra-defensive': -8,
@@ -97,7 +98,7 @@ function avgRating(team: Team, players: Player[]): number {
 export function buildProfile(team: Team, isHome: boolean): TeamProfile {
   const starters = team.formation.slots
     .map((s) => team.players.find((p) => p.id === s.playerId))
-    .filter((p): p is Player => !!p && p.injuryWeeks === 0);
+    .filter((p): p is Player => !!p && isPlayerAvailable(p));
 
   const homeBonus = isHome ? 3 : 0;
   const t = team.tactics;
@@ -507,7 +508,7 @@ export class LiveMatch {
   bench(): Player[] {
     const onPitch = new Set(this.controlled.formation.slots.map((s) => s.playerId));
     return this.controlled.players.filter(
-      (p) => !onPitch.has(p.id) && !this.subbedOut.has(p.id) && p.injuryWeeks === 0,
+      (p) => !onPitch.has(p.id) && !this.subbedOut.has(p.id) && isPlayerAvailable(p),
     );
   }
 

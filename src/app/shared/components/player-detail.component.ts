@@ -7,10 +7,11 @@ import { attributeUpgradeCost } from '../../core/progression';
 import { RadarChartComponent } from './radar-chart.component';
 import { ratingColor, moraleIcon } from '../rating-color';
 import { TRAITS, getTrait } from '../../data/traits';
-import { DevelopmentPlan, Trait } from '../../models/player.model';
+import { DevelopmentPlan, RehabPlan, Trait } from '../../models/player.model';
 import { TalentNode } from '../../data/talents';
 import { PlayerPortraitComponent } from './player-portrait.component';
 import { PlayerPaperDollComponent } from './player-paper-doll.component';
+import { MedicalService } from '../../core/services/medical.service';
 
 @Component({
   selector: 'app-player-detail',
@@ -20,8 +21,9 @@ import { PlayerPaperDollComponent } from './player-paper-doll.component';
   styleUrl: './player-detail.component.scss',
 })
 export class PlayerDetailComponent {
-  private readonly gs = inject(GameStateService);
+  protected readonly gs = inject(GameStateService);
   private readonly rpg = inject(RpgService);
+  private readonly medical = inject(MedicalService);
 
   readonly playerId = input.required<string>();
   readonly close = output<void>();
@@ -114,5 +116,9 @@ export class PlayerDetailComponent {
     const player = this.player();
     if (!player) return false;
     return player.level >= talent.unlockLevel && player.skillPoints >= talent.cost && (player.talentRanks[talent.id] ?? 0) < talent.maxRank;
+  }
+
+  protected setRehab(plan: RehabPlan): void {
+    this.medical.setPlan(this.playerId(), plan);
   }
 }

@@ -5,7 +5,7 @@
 
       <div class="head">
         <div class="player-visuals">
-          <app-player-portrait [player]="p" [size]="86" />
+          <app-player-portrait [player]="p" [team]="$any(gs.playerTeam())" [size]="86" />
           @if (currentKit(); as kit) { <app-player-paper-doll [player]="p" [kit]="kit" [size]="84" /> }
         </div>
         <div class="rating big" [style.background]="ratingColor(p.overall)">{{ p.overall }}</div>
@@ -71,6 +71,22 @@
           }
         </div>
       </div>
+
+      @if (p.medical.activeInjury; as injury) {
+        <section class="medical-panel">
+          <div class="body-map" [attr.data-area]="injury.area"><i></i><span>{{ injury.area }}</span></div>
+          <div class="medical-copy">
+            <p class="eyebrow">MEDICAL REPORT · {{ injury.severity }}</p>
+            <h3>{{ injury.diagnosisId }}</h3>
+            <span>{{ injury.remainingWeeks }} WEEKS · {{ injury.cause }} · {{ (injury.recurrenceRisk * 100) | number:'1.0-0' }}% RECURRENCE</span>
+          </div>
+          <div class="rehab-actions">
+            <button [class.active]="injury.rehabPlan === 'conservative'" (click)="setRehab('conservative')">SCHONUNG</button>
+            <button [class.active]="injury.rehabPlan === 'standard'" (click)="setRehab('standard')">STANDARD</button>
+            <button [class.active]="injury.rehabPlan === 'accelerated'" (click)="setRehab('accelerated')">SCHNELL-REHA</button>
+          </div>
+        </section>
+      }
 
       <div class="development">
         <div>

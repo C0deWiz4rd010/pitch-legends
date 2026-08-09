@@ -183,6 +183,12 @@
 .traits {
   margin-top: 18px;
 }
+
+.medical-panel { display:grid; grid-template-columns:70px 1fr auto; align-items:center; gap:12px; padding:12px; margin:0 0 12px; border:2px solid #7d263c; background:linear-gradient(90deg,#25101b,#0b1020); }
+.body-map { height:72px; position:relative; display:grid; place-items:center; border:1px solid #5a2940; background:#080c18; color:#ff7896; font:6px var(--font-display); text-transform:uppercase; }.body-map i { position:absolute; width:18px; height:42px; border:3px solid #7d8baa; border-radius:8px 8px 5px 5px; }.body-map::after { content:''; position:absolute; top:8px; width:13px; height:13px; border:3px solid #7d8baa; border-radius:50%; }.body-map span { position:absolute; bottom:3px; z-index:2; }
+.medical-copy h3 { margin:5px 0; color:#ff7896; font-size:14px; text-transform:uppercase; }.medical-copy > span { color:var(--text-mute); font-size:8px; }
+.rehab-actions { display:grid; gap:4px; }.rehab-actions button { padding:7px 8px; border:1px solid var(--border); background:#11172a; color:var(--text-mute); font:6px var(--font-display); cursor:pointer; }.rehab-actions button.active { color:#07120b; background:#ffd34e; border-color:#ffd34e; }
+@media(max-width:620px){.medical-panel{grid-template-columns:58px 1fr}.rehab-actions{grid-column:1/-1;grid-template-columns:repeat(3,1fr)}}
 .player-visuals { display: flex; align-items: end; gap: 5px; padding: 5px; border: 2px solid var(--border); background: #0a1020; image-rendering: pixelated; }
 .player-visuals app-player-portrait { width: 86px; height: 86px; overflow: hidden; }
 .development,

@@ -28,6 +28,7 @@ import { Tactics } from '../../models/tactics.model';
 import { Difficulty } from '../../models/game.model';
 import { playerName } from '../ratings';
 import { clamp, Rng, round } from '../util';
+import { createInjury, isPlayerAvailable } from '../injury-engine';
 
 export const FIELD_LENGTH = 105;
 export const FIELD_WIDTH = 68;
@@ -41,6 +42,11 @@ export const ARCADE_MATCH_TUNING = {
   ballJogRatio: 0.95,
   ballSprintRatio: 0.91,
   maxCatchUpSteps: 8,
+  aiFirstTouchAssist: 55,
+  aiIntendedReceiverBonus: 8,
+  intendedReceiverControlBias: 0.75,
+  homeKeeperComposure: 0.06,
+  awayKeeperComposure: -0.035,
 } as const;
 
 export function arcadeSprintSpeed(pace: number): number {
@@ -279,13 +285,13 @@ export class ArcadeMatch {
   step(dt: number, rawInput: InputFrame | MatchCommand = EMPTY_MATCH_COMMAND): void {
     if (this.paused || this.finished || this.phase === 'halftime' || this.phase === 'goalReplay') return;
     const acceptsHumanInput = this.config.controllerMode === 'human' && this.tick - this.controllerChangedAtTick >= 15;
-    const input = normaliseCommand(acceptsHumanInput ? rawInput : EMPTY_MATCH_COMMAND);
+    const input = acceptsHumanInput ? normaliseCommand(rawInput) : EMPTY_MATCH_COMMAND;
     const safeDt = Math.min(dt, MATCH_TICK);
     this.tick++;
 
     if (this.rule.phase !== 'playing' && this.rule.phase !== 'advantage') {
       this.updateRestart(safeDt, input);
-      this.previousInput = { ...input };
+      this.previousInput = acceptsHumanInput ? { ...input } : EMPTY_MATCH_COMMAND;
       return;
     }
 
@@ -319,7 +325,7 @@ export class ArcadeMatch {
 
     if (!this.halftimeReached && this.elapsed >= this.totalSeconds / 2) this.enterHalftime();
     if (this.elapsed >= this.totalSeconds && !this.finished) this.finish();
-    this.previousInput = { ...input };
+    this.previousInput = acceptsHumanInput ? { ...input } : EMPTY_MATCH_COMMAND;
   }
 
   simulateToEnd(): void {
@@ -388,7 +394,7 @@ export class ArcadeMatch {
 
   bench(): Player[] {
     const onPitch = new Set(this.actors.filter((actor) => actor.side === this.controlledSide && actor.active).map((actor) => actor.player.id));
-    return this.controlledTeam.players.filter((player) => !onPitch.has(player.id) && player.injuryWeeks === 0);
+    return this.controlledTeam.players.filter((player) => !onPitch.has(player.id) && isPlayerAvailable(player));
   }
 
   makeSub(outId: string, inId: string): boolean {
@@ -591,10 +597,10 @@ export class ArcadeMatch {
   private buildActors(team: Team, side: Side): void {
     const used = new Set<string>();
     for (const slot of team.formation.slots.slice(0, 11)) {
-      let player = team.players.find((candidate) => candidate.id === slot.playerId && candidate.injuryWeeks === 0 && !used.has(candidate.id));
+      let player = team.players.find((candidate) => candidate.id === slot.playerId && isPlayerAvailable(candidate) && !used.has(candidate.id));
       if (!player) {
         player = team.players
-          .filter((candidate) => candidate.injuryWeeks === 0 && !used.has(candidate.id))
+          .filter((candidate) => isPlayerAvailable(candidate) && !used.has(candidate.id))
           .sort((a, b) => {
             const aFit = a.position === slot.position ? 20 : a.positionGroup === (slot.position === 'GK' ? 'GK' : a.positionGroup) ? 5 : 0;
             const bFit = b.position === slot.position ? 20 : b.positionGroup === (slot.position === 'GK' ? 'GK' : b.positionGroup) ? 5 : 0;
@@ -1008,7 +1014,8 @@ export class ArcadeMatch {
     this.events.push({ minute: this.footballMinute, type: eventType, side: defender.side, playerId: defender.player.id, messageKey: inBox ? 'match.penalty' : eventType === 'red' ? 'match.red' : eventType === 'yellow' ? 'match.yellow' : 'match.freeKick', params: { player: playerName(defender.player) } });
     if (this.rng.bool(clamp((severity - 8) / 220, 0.005, 0.06))) {
       this.setAction(victim, 'injured');
-      this.events.push({ minute: this.footballMinute, type: 'injury', side: victim.side, playerId: victim.player.id, messageKey: 'match.injury', params: { player: playerName(victim.player) } });
+      const injury = createInjury({ seed: this.config.seed ^ this.tick, player: victim.player, cause: 'contact', season: 0, week: 0, fixtureId: this.config.fixtureId, matchMinute: this.footballMinute, severityBias: severity / 20 });
+      this.events.push({ minute: this.footballMinute, type: 'injury', side: victim.side, playerId: victim.player.id, messageKey: 'match.injury', params: { player: playerName(victim.player), diagnosis: injury.diagnosisId }, injury });
     }
     const canPlayAdvantage = !inBox && victim.action !== 'injured' && Math.hypot(victim.vx, victim.vy) > 1;
     if (canPlayAdvantage) {
@@ -1091,7 +1098,9 @@ export class ArcadeMatch {
     const reaction = keeper.player.attributes.goalkeeping / 100;
     // A small, explicit venue-composure effect models the normal home edge
     // without changing player attributes, ball physics or difficulty values.
-    const venueComposure = defending === 'home' ? 0.06 : -0.02;
+    const venueComposure = defending === 'home'
+      ? ARCADE_MATCH_TUNING.homeKeeperComposure
+      : ARCADE_MATCH_TUNING.awayKeeperComposure;
     const saveChance = clamp(0.44 + reaction * 0.72 - shot.xG * 0.3 - keeperDistance * 0.045 + venueComposure, 0.15, 0.93);
     if (this.rng.bool(saveChance)) {
       const catchBall = this.rng.bool(clamp(reaction - Math.hypot(this.ball.vx, this.ball.vy) / 70, 0.15, 0.72));
@@ -1141,13 +1150,20 @@ export class ArcadeMatch {
   private tryBallControl(): void {
     if (this.ball.z > 2.4) return;
     const speed = Math.hypot(this.ball.vx, this.ball.vy);
-    const candidate = this.actors
-      .filter((actor) =>
-        actor.active &&
-        (this.ball.controlledTouch >= 0.14 || actor.player.id !== this.ball.lastTouchPlayerId) &&
-        distance(actor, this.ball) < (actor.player.positionGroup === 'GK' ? 1.65 : actor.player.id === this.intendedReceiverId ? 4.2 : 1.18)
-      )
-      .sort((a, b) => distance(a, this.ball) - distance(b, this.ball))[0];
+    let candidate: ArcadeActor | undefined;
+    let candidateScore = Number.POSITIVE_INFINITY;
+    for (const actor of this.actors) {
+      if (!actor.active || (this.ball.controlledTouch < 0.14 && actor.player.id === this.ball.lastTouchPlayerId)) continue;
+      const intended = actor.player.id === this.intendedReceiverId;
+      const controlRadius = actor.player.positionGroup === 'GK' ? 1.65 : intended ? 4.2 : 1.18;
+      const controlDistance = distance(actor, this.ball);
+      if (controlDistance >= controlRadius) continue;
+      const score = controlDistance - (intended ? ARCADE_MATCH_TUNING.intendedReceiverControlBias : 0);
+      if (score < candidateScore) {
+        candidate = actor;
+        candidateScore = score;
+      }
+    }
     if (!candidate) return;
     if (this.pendingOffsideTargetId === candidate.player.id) {
       this.stats(candidate.side).offsides++;
@@ -1159,9 +1175,12 @@ export class ArcadeMatch {
     const firstTouch = candidate.player.attributes.dribbling + candidate.stamina * 0.25 - speed * 1.4;
     const weatherPenalty = this.config.weather === 'rain' ? 8 : this.config.weather === 'storm' ? 11 : 0;
     const humanReceiver = this.config.controllerMode === 'human' && candidate.side === this.controlledSide;
+    const intendedAiReceiverBonus = !humanReceiver && candidate.player.id === this.intendedReceiverId
+      ? ARCADE_MATCH_TUNING.aiIntendedReceiverBonus
+      : 0;
     const assistBonus = humanReceiver
       ? this.config.assist === 'assisted' ? 14 : this.config.assist === 'balanced' ? 7 : 1
-      : 55;
+      : ARCADE_MATCH_TUNING.aiFirstTouchAssist + intendedAiReceiverBonus;
     if (this.rng.bool(clamp((firstTouch + assistBonus - weatherPenalty) / 100, 0.18, 0.96))) {
       this.ball.ownerId = candidate.player.id;
       this.ball.lastTouch = candidate.side;
@@ -1400,14 +1419,16 @@ export class ArcadeMatch {
     const rows = 12;
     for (const index of this.usedCollisionBuckets) this.collisionGrid[index].length = 0;
     this.usedCollisionBuckets.length = 0;
-    for (const actor of this.actors.filter((candidate) => candidate.active)) {
+    for (const actor of this.actors) {
+      if (!actor.active) continue;
       const gx = Math.min(columns - 1, Math.floor(actor.x / cellSize));
       const gy = Math.min(rows - 1, Math.floor(actor.y / cellSize));
       const index = gy * columns + gx;
       if (this.collisionGrid[index].length === 0) this.usedCollisionBuckets.push(index);
       this.collisionGrid[index].push(actor);
     }
-    for (const actor of this.actors.filter((candidate) => candidate.active)) {
+    for (const actor of this.actors) {
+      if (!actor.active) continue;
       const gx = Math.floor(actor.x / cellSize);
       const gy = Math.floor(actor.y / cellSize);
       for (let ox = -1; ox <= 1; ox++) for (let oy = -1; oy <= 1; oy++) {
@@ -1418,9 +1439,10 @@ export class ArcadeMatch {
           if (other === actor || other.player.id < actor.player.id) continue;
           const dx = other.x - actor.x;
           const dy = other.y - actor.y;
-          const length = Math.hypot(dx, dy) || 0.001;
           const minimum = 1.05;
-          if (length >= minimum) continue;
+          const lengthSquared = dx * dx + dy * dy;
+          if (lengthSquared >= minimum * minimum) continue;
+          const length = Math.sqrt(lengthSquared) || 0.001;
           const normalX = dx / length;
           const normalY = dy / length;
           const penetration = Math.max(0, minimum - length - 0.02);

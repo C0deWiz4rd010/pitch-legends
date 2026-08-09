@@ -111,6 +111,7 @@ export interface MatchEvent {
   params?: Record<string, string | number>;
   /** Fallback for legacy/internal commentary while every event is localised. */
   text?: string;
+  injury?: import('./player.model').InjuryRecord;
 }
 
 export interface InputFrame {

@@ -11,6 +11,9 @@ import { playerName, weeklySalaryFor } from '../ratings';
 import { autoFillLineup, generatePlayer } from '../../data/generators';
 import { Position } from '../../models/enums';
 import { processTransferWeek, returnSeasonLoans, weeklyWageBill } from '../transfer-engine';
+import { prepareTravelEvent } from '../travel-engine';
+import { advanceInjury, applyInjury, createInjury, isPlayerAvailable } from '../injury-engine';
+import { hash32 } from '../visual-identity';
 
 @Injectable({ providedIn: 'root' })
 export class SeasonService {
@@ -90,6 +93,7 @@ export class SeasonService {
         completedSessions: [],
       };
       processTransferWeek(draft);
+      prepareTravelEvent(draft);
       committed = true;
     });
     return committed;
@@ -100,8 +104,8 @@ export class SeasonService {
     const away = draft.teams.find((t) => t.id === result.awayTeamId);
     if (!home || !away) return;
 
-    const homeGrowth = this.applyToTeam(home, result, result.homeScore, result.awayScore);
-    const awayGrowth = this.applyToTeam(away, result, result.awayScore, result.homeScore);
+    const homeGrowth = this.applyToTeam(home, result, result.homeScore, result.awayScore, draft.league.season);
+    const awayGrowth = this.applyToTeam(away, result, result.awayScore, result.homeScore, draft.league.season);
 
     if (isPlayerMatch) {
       // Store the full result for the match report & history (cap history length).
@@ -112,7 +116,7 @@ export class SeasonService {
     }
   }
 
-  private applyToTeam(team: Team, result: MatchResult, goalsFor: number, goalsAgainst: number): number {
+  private applyToTeam(team: Team, result: MatchResult, goalsFor: number, goalsAgainst: number, season: number): number {
     const won = goalsFor > goalsAgainst;
     const drew = goalsFor === goalsAgainst;
     const cleanSheet = goalsAgainst === 0;
@@ -133,8 +137,12 @@ export class SeasonService {
         p.seasonStats.cleanSheets++;
       }
       if (p.id === result.manOfTheMatchId) p.seasonStats.motmAwards++;
-      if (result.events.some((event) => event.type === 'injury' && event.playerId === p.id)) {
-        p.injuryWeeks = Math.max(p.injuryWeeks, this.rng.int(1, 4));
+      const injuryEvent = result.events.find((event) => event.type === 'injury' && event.playerId === p.id);
+      if (injuryEvent) {
+        const injury = injuryEvent.injury ?? createInjury({ seed: hash32(`${result.id}|${p.id}|fallback-injury`), player: p, cause: 'contact', season, week: result.week, fixtureId: result.fixtureId, matchMinute: injuryEvent.minute });
+        injury.occurredSeason = season;
+        injury.occurredWeek = result.week;
+        applyInjury(p, injury);
       }
 
       p.fitness = result.endingFitness?.[p.id] ?? clamp(p.fitness - this.rng.int(18, 28), 0, 100);
@@ -226,21 +234,10 @@ export class SeasonService {
     for (const team of draft.teams) {
       const recovery = 12 + team.facilities.medicalCenter * 4;
       for (const p of team.players) {
-        if (p.injuryWeeks > 0) {
-          p.injuryWeeks = Math.max(0, p.injuryWeeks - 1);
+        if (!isPlayerAvailable(p)) {
+          advanceInjury(p, draft.league.season, draft.league.currentWeek, team.facilities.medicalCenter);
         } else {
           p.fitness = clamp(p.fitness + recovery, 0, 100);
-          // Small chance of a knock, reduced by a better medical centre.
-          const injuryChance = 0.02 - team.facilities.medicalCenter * 0.002;
-          if (this.rng.bool(Math.max(0.006, injuryChance)) && p.fitness < 70) {
-            p.injuryWeeks = this.rng.int(1, 4);
-            if (team.id === draft.clubId) {
-              this.pushNews(draft, 'medical', 'news.injury.title', 'news.injury.body', {
-                player: playerName(p),
-                weeks: p.injuryWeeks,
-              });
-            }
-          }
         }
         p.morale = clamp(p.morale + Math.sign(70 - p.morale) * 2, 15, 100);
         if (p.contractWeeks > 0) {

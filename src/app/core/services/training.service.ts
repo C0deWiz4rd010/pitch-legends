@@ -13,6 +13,7 @@ import { computeOverall, marketValueFor } from '../ratings';
 import { Rng, clamp } from '../util';
 import { hash32 } from '../visual-identity';
 import { RpgService } from './rpg.service';
+import { applyInjury, createInjury, isPlayerAvailable } from '../injury-engine';
 
 export interface TrainingDrill {
   id: string;
@@ -106,7 +107,7 @@ export class TrainingService {
         if (drill) {
           const recovery = drill.focus === 'recovery';
           for (const player of targets) {
-            if (player.injuryWeeks > 0 && !recovery) sessionErrors.push(`injured:${player.id}`);
+            if (!isPlayerAvailable(player) && !recovery) sessionErrors.push(`injured:${player.id}`);
             if (!recovery && developmentIds.has(player.id)) sessionErrors.push(`already-trained:${player.id}`);
             if (recovery && recoveryIds.has(player.id)) sessionErrors.push(`already-recovered:${player.id}`);
             if (!recovery && plan.intensity === 'intense' && player.fitness < 55) sessionErrors.push(`fitness:${player.id}`);
@@ -184,7 +185,13 @@ export class TrainingService {
       xpMin: Math.round(baseXp * 0.85),
       xpMax: Math.round(baseXp * 1.2),
       fitnessDelta: -Math.min(player.fitness, cost),
-      growthChance: Math.round(this.growthChance(player, drill.focus, team.facilities.trainingGround, scope) * 100),
+      growthChance: Math.round(this.growthChance(
+        player,
+        drill.focus,
+        team.facilities.trainingGround,
+        scope,
+        state.manager.attributes.youthDevelopment,
+      ) * 100),
       injuryRisk: Math.round(this.injuryChance(intensity, team.facilities.medicalCenter) * 1000) / 10,
     };
   }
@@ -214,7 +221,7 @@ export class TrainingService {
     let attributeGained: AttributeKey | null = null;
     const attribute = drill.focus;
     const canGrow = player.attributes[attribute] < 99 && player.overall < player.potential + 2;
-    if (canGrow && rng.bool(this.growthChance(player, attribute, team.facilities.trainingGround, scope))) {
+    if (canGrow && rng.bool(this.growthChance(player, attribute, team.facilities.trainingGround, scope, state.manager.attributes.youthDevelopment))) {
       player.attributes[attribute] = clamp(player.attributes[attribute] + 1, 1, 99);
       player.overall = computeOverall(player.attributes, player.positionGroup);
       player.potential = Math.max(player.potential, player.overall);
@@ -224,8 +231,9 @@ export class TrainingService {
 
     let injuredWeeks = 0;
     if (rng.bool(this.injuryChance(intensity, team.facilities.medicalCenter))) {
-      injuredWeeks = rng.int(1, intensity === 'intense' ? 3 : 2);
-      player.injuryWeeks = Math.max(player.injuryWeeks, injuredWeeks);
+      const injury = createInjury({ seed: sessionSeed, player, cause: 'training', season: state.league.season, week: state.league.currentWeek, severityBias: intensity === 'intense' ? .18 : 0 });
+      applyInjury(player, injury);
+      injuredWeeks = injury.remainingWeeks;
     }
     return { playerId: player.id, xpGained: xp, fitnessDelta: player.fitness - beforeFitness, attributeGained, injuredWeeks };
   }
@@ -233,15 +241,16 @@ export class TrainingService {
   private baseXp(state: GameState, player: Player, drill: TrainingDrill, scope: TrainingScope, intensity: TrainingIntensity): number {
     const team = state.teams.find((candidate) => candidate.id === state.clubId)!;
     const coachingRank = state.manager.perks.coaching ?? 0;
+    const coachingAbility = 1 + (state.manager.attributes.coaching - 55) / 500;
     if (drill.focus === 'recovery') return 0;
     const planMultiplier = this.planMultiplier(player, drill.focus);
     const personalityMultiplier = player.personality === 'professional' ? 1.08 : player.personality === 'volatile' ? 0.94 : 1;
-    return 30 * (1 + team.facilities.trainingGround * 0.18) * (1 + coachingRank * 0.04) * planMultiplier *
+    return 30 * (1 + team.facilities.trainingGround * 0.18) * coachingAbility * (1 + coachingRank * 0.04) * planMultiplier *
       personalityMultiplier * INTENSITY_XP[intensity] * (scope === 'unit' ? 0.55 : 1);
   }
 
-  private growthChance(player: Player, focus: AttributeKey, facility: number, scope: TrainingScope): number {
-    const chance = 0.18 + facility * 0.06 + (this.planMultiplier(player, focus) > 1 ? 0.08 : 0);
+  private growthChance(player: Player, focus: AttributeKey, facility: number, scope: TrainingScope, youthDevelopment: number): number {
+    const chance = 0.18 + facility * 0.06 + Math.max(-.03, Math.min(.08, (youthDevelopment - 55) / 400)) + (this.planMultiplier(player, focus) > 1 ? 0.08 : 0);
     return Math.min(0.72, chance * (scope === 'unit' ? 0.65 : 1));
   }
 
