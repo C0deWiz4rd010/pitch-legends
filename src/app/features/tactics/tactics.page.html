@@ -148,7 +148,7 @@
                 <span class="rating" [style.background]="ratingColor(p.overall)">{{ p.overall }}</span>
                 <span class="bp-name">{{ playerName(p) }}</span>
                 <span class="bp-pos">{{ p.position }}</span>
-                @if (p.injuryWeeks > 0) { <span class="inj">🚑</span> }
+                @if (p.injuryWeeks > 0) { <span class="inj">INJ</span> }
               </button>
             } @empty {
               <p class="muted">Everyone is in the starting XI.</p>
@@ -231,7 +231,7 @@
       @case ('setpieces') {
         <div class="setpieces">
           <label class="field">
-            <span class="eyebrow">Captain 🎖️</span>
+            <span class="eyebrow">Captain CP</span>
             <select [value]="tactics()?.captainId" (change)="setTactic('captainId', $any($event.target).value)">
               @for (p of starters(); track p.id) { <option [value]="p.id">{{ playerName(p) }}</option> }
             </select>

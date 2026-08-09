@@ -189,6 +189,7 @@ export class MatchPage implements OnDestroy {
         settings?.matchDuration ?? 3,
         Date.now() >>> 0,
         settings?.difficulty ?? 'normal',
+        this.gs.manager()?.perks.tactics ?? 0,
       );
       this.revealed.set([...this.arcade.events]);
       this.phase.set('play');
@@ -312,7 +313,7 @@ export class MatchPage implements OnDestroy {
   }
 
   protected onPitchPlayers(): Player[] {
-    if (this.arcade) return this.arcade.actors.filter((actor) => actor.side === this.arcade!.controlledSide).map((actor) => actor.player);
+    if (this.arcade) return this.arcade.actors.filter((actor) => actor.active && actor.side === this.arcade!.controlledSide).map((actor) => actor.player);
     if (!this.live) return [];
     return this.live.controlled.formation.slots
       .map((s) => this.live!.controlled.players.find((p) => p.id === s.playerId))

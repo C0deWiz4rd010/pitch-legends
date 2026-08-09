@@ -33,7 +33,7 @@ export class FacilitiesPage {
 
   protected upgrade(key: FacilityKey, name: string): void {
     if (this.facilitiesService.upgrade(key)) {
-      this.message.set(`🏗️ ${name} upgraded to level ${this.level(key)}!`);
+      this.message.set(`UPGRADE: ${name} reached level ${this.level(key)}.`);
     } else {
       const reason = this.facilitiesService.canUpgrade(key).reason;
       this.message.set(reason ?? 'Cannot upgrade.');

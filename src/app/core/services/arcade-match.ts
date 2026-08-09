@@ -29,6 +29,7 @@ export interface ArcadeActor {
   stamina: number;
   facingX: number;
   facingY: number;
+  active: boolean;
 }
 
 export interface ArcadeBall {
@@ -93,6 +94,9 @@ export class ArcadeMatch {
   private lastKeyframeMinute = -1;
   private finalResult: MatchResult | null = null;
   private halftimeSent = false;
+  private readonly passAttempts: Record<Side, number> = { home: 0, away: 0 };
+  private readonly passCompletions: Record<Side, number> = { home: 0, away: 0 };
+  private lastPasser: { id: string; side: Side; at: number } | null = null;
 
   constructor(
     home: Team,
@@ -101,6 +105,7 @@ export class ArcadeMatch {
     halfMinutes: 3 | 5 | 8,
     seed = Date.now() >>> 0,
     private readonly difficulty: Difficulty = 'normal',
+    private readonly managerTacticsRank = 0,
   ) {
     this.home = structuredClone(home);
     this.away = structuredClone(away);
@@ -135,6 +140,7 @@ export class ArcadeMatch {
 
     this.handleSelection(input);
     for (const actor of this.actors) {
+      if (!actor.active) continue;
       if (actor.player.id === this.selectedPlayerId) this.moveControlled(actor, input, safeDt);
       else this.moveAi(actor, safeDt);
     }
@@ -242,6 +248,7 @@ export class ArcadeMatch {
         stamina: player.fitness,
         facingX: side === 'home' ? 1 : -1,
         facingY: 0,
+        active: true,
       };
       this.actors.push(actor);
       this.ratings[player.id] = 6.5;
@@ -250,7 +257,7 @@ export class ArcadeMatch {
   }
 
   private bestControlledActor(): ArcadeActor {
-    const candidates = this.actors.filter((actor) => actor.side === this.controlledSide && actor.player.positionGroup !== 'GK');
+    const candidates = this.actors.filter((actor) => actor.active && actor.side === this.controlledSide && actor.player.positionGroup !== 'GK');
     return candidates.sort((a, b) => distance(a, this.ball) - distance(b, this.ball))[0] ?? this.actors[0];
   }
 
@@ -259,7 +266,7 @@ export class ArcadeMatch {
     if (owner?.side === this.controlledSide) this.selectedPlayerId = owner.player.id;
     if (input.switchPlayer && !this.previousInput.switchPlayer) {
       const candidates = this.actors
-        .filter((actor) => actor.side === this.controlledSide && actor.player.positionGroup !== 'GK')
+        .filter((actor) => actor.active && actor.side === this.controlledSide && actor.player.positionGroup !== 'GK')
         .sort((a, b) => distance(a, this.ball) - distance(b, this.ball));
       const index = candidates.findIndex((actor) => actor.player.id === this.selectedPlayerId);
       this.selectedPlayerId = candidates[(index + 1) % Math.min(candidates.length, 3)]?.player.id ?? this.selectedPlayerId;
@@ -323,7 +330,7 @@ export class ArcadeMatch {
     const dy = ty - actor.y;
     const length = Math.hypot(dx, dy) || 1;
     const opponentFactor = actor.side === this.controlledSide
-      ? 1
+      ? 1 + this.managerTacticsRank * 0.02
       : this.difficulty === 'easy' ? 0.88 : this.difficulty === 'hard' ? 1.12 : 1;
     const speed = this.actorSpeed(actor) * 0.82 * opponentFactor;
     actor.vx = (dx / length) * speed;
@@ -358,7 +365,7 @@ export class ArcadeMatch {
   }
 
   private pass(actor: ArcadeActor, through: boolean): void {
-    const teammates = this.actors.filter((candidate) => candidate.side === actor.side && candidate.player.id !== actor.player.id);
+    const teammates = this.actors.filter((candidate) => candidate.active && candidate.side === actor.side && candidate.player.id !== actor.player.id);
     const direction = actor.side === 'home' ? 1 : -1;
     const target = teammates
       .map((candidate) => ({
@@ -370,6 +377,7 @@ export class ArcadeMatch {
       }))
       .sort((a, b) => b.score - a.score)[0]?.candidate;
     if (!target) return;
+    this.passAttempts[actor.side]++;
 
     if (this.isOffside(target, actor)) {
       this.events.push({
@@ -388,6 +396,7 @@ export class ArcadeMatch {
     const dy = target.y - actor.y;
     const length = Math.hypot(dx, dy) || 1;
     const accuracy = actor.player.attributes.passing / 100;
+    this.lastPasser = { id: actor.player.id, side: actor.side, at: this.elapsed };
     this.releaseBall(actor, (dx / length) * (0.58 + accuracy * 0.2), (dy / length) * (0.58 + accuracy * 0.2));
   }
 
@@ -420,6 +429,7 @@ export class ArcadeMatch {
     const owner = this.owner();
     if (!owner) return;
     for (const defender of this.actors) {
+      if (!defender.active) continue;
       if (defender.side === owner.side || defender.player.positionGroup === 'GK') continue;
       if (distance(defender, owner) > 0.024) continue;
       const team = defender.side === 'home' ? this.home : this.away;
@@ -445,19 +455,62 @@ export class ArcadeMatch {
     } else if (this.rng.bool(aggressive ? 0.42 : 0.16)) {
       ownStats.fouls++;
       const yellow = this.rng.bool(aggressive ? 0.35 : 0.12);
-      if (yellow) {
+      const red = yellow && aggressive && this.rng.bool(0.16);
+      if (red) {
+        ownStats.reds++;
+        this.contributions[actor.player.id].reds++;
+        actor.active = false;
+        if (actor.player.id === this.selectedPlayerId) this.selectedPlayerId = this.bestControlledActor().player.id;
+      } else if (yellow) {
         ownStats.yellows++;
         this.contributions[actor.player.id].yellows++;
       }
+      const penalty = owner.side === 'home' ? owner.x > 0.86 : owner.x < 0.14;
       this.events.push({
         minute: this.footballMinute,
-        type: yellow ? 'yellow' : 'foul',
+        type: red ? 'red' : yellow ? 'yellow' : 'foul',
         side: actor.side,
         playerId: actor.player.id,
-        messageKey: yellow ? 'match.yellow' : 'match.foul',
+        messageKey: penalty ? 'match.penalty' : red ? 'match.red' : yellow ? 'match.yellow' : 'match.freeKick',
         params: { player: playerName(actor.player) },
       });
       this.ball.ownerId = owner.player.id;
+      this.ball.lastTouch = owner.side;
+      this.ball.lastTouchPlayerId = owner.player.id;
+      if (this.rng.bool(0.035)) {
+        this.events.push({
+          minute: this.footballMinute,
+          type: 'injury',
+          side: owner.side,
+          playerId: owner.player.id,
+          messageKey: 'match.injury',
+          params: { player: playerName(owner.player) },
+        });
+      }
+      if (penalty) this.takePenalty(owner);
+    }
+  }
+
+  private takePenalty(shooter: ArcadeActor): void {
+    const stats = shooter.side === 'home' ? this.homeStats : this.awayStats;
+    stats.shots++;
+    stats.shotsOnTarget++;
+    this.ball.lastTouch = shooter.side;
+    this.ball.lastTouchPlayerId = shooter.player.id;
+    const defending = shooter.side === 'home' ? this.away : this.home;
+    const keeper = defending.players.find((player) => player.positionGroup === 'GK');
+    const chance = clamp(0.68 + shooter.player.attributes.shooting / 300 - (keeper?.attributes.goalkeeping ?? 55) / 500, 0.52, 0.88);
+    if (this.rng.bool(chance)) this.scoreGoal(shooter.side);
+    else {
+      this.events.push({
+        minute: this.footballMinute,
+        type: 'save',
+        side: shooter.side === 'home' ? 'away' : 'home',
+        playerId: keeper?.id ?? null,
+        messageKey: 'match.penaltySaved',
+        params: { keeper: keeper ? playerName(keeper) : defending.shortName },
+      });
+      this.givePossession(shooter.side === 'home' ? 'away' : 'home');
     }
   }
 
@@ -469,6 +522,7 @@ export class ArcadeMatch {
       this.ball.vx = owner.vx;
       this.ball.vy = owner.vy;
       this.ball.lastTouch = owner.side;
+      this.ball.lastTouchPlayerId = owner.player.id;
       return;
     }
 
@@ -513,11 +567,19 @@ export class ArcadeMatch {
     }
 
     const candidate = this.actors
-      .filter((actor) => distance(actor, this.ball) < (actor.player.positionGroup === 'GK' ? 0.034 : 0.022))
+      .filter((actor) => actor.active && distance(actor, this.ball) < (actor.player.positionGroup === 'GK' ? 0.034 : 0.022))
       .sort((a, b) => distance(a, this.ball) - distance(b, this.ball))[0];
     if (candidate) {
       this.ball.ownerId = candidate.player.id;
       this.ball.lastTouch = candidate.side;
+      if (this.lastPasser && this.elapsed - this.lastPasser.at <= 3) {
+        if (candidate.side === this.lastPasser.side && candidate.player.id !== this.lastPasser.id) {
+          this.passCompletions[candidate.side]++;
+          this.ratings[this.lastPasser.id] = clamp((this.ratings[this.lastPasser.id] ?? 6.5) + 0.025, 1, 10);
+        } else if (candidate.side !== this.lastPasser.side) {
+          this.lastPasser = null;
+        }
+      }
       if (candidate.side === this.controlledSide) this.selectedPlayerId = candidate.player.id;
     }
   }
@@ -530,20 +592,33 @@ export class ArcadeMatch {
       this.contributions[scorer.player.id].goals++;
       this.ratings[scorer.player.id] = clamp(this.ratings[scorer.player.id] + 1.2, 1, 10);
     }
+    const assister = this.lastPasser && this.lastPasser.side === side && this.elapsed - this.lastPasser.at <= 8 && this.lastPasser.id !== scorer?.player.id
+      ? this.actors.find((actor) => actor.player.id === this.lastPasser!.id)
+      : undefined;
+    if (assister) {
+      this.contributions[assister.player.id].assists++;
+      this.ratings[assister.player.id] = clamp(this.ratings[assister.player.id] + 0.65, 1, 10);
+    }
     this.events.push({
       minute: this.footballMinute,
       type: 'goal',
       side,
       playerId: scorer?.player.id ?? null,
       playerName: scorer ? playerName(scorer.player) : undefined,
-      messageKey: 'match.goal.solo',
-      params: { player: scorer ? playerName(scorer.player) : (side === 'home' ? this.home.shortName : this.away.shortName) },
+      assistName: assister ? playerName(assister.player) : undefined,
+      messageKey: assister ? 'match.goal.assist' : 'match.goal.solo',
+      params: {
+        player: scorer ? playerName(scorer.player) : (side === 'home' ? this.home.shortName : this.away.shortName),
+        ...(assister ? { assist: playerName(assister.player) } : {}),
+      },
     });
+    this.lastPasser = null;
     this.resetKickoff(side === 'home' ? 'away' : 'home');
   }
 
   private resetKickoff(side: Side): void {
     for (const actor of this.actors) {
+      if (!actor.active) continue;
       actor.x = actor.homeX;
       actor.y = actor.homeY;
       actor.vx = 0;
@@ -554,7 +629,7 @@ export class ArcadeMatch {
     this.ball.vx = 0;
     this.ball.vy = 0;
     const kickoff = this.actors
-      .filter((actor) => actor.side === side && actor.player.positionGroup !== 'GK')
+      .filter((actor) => actor.active && actor.side === side && actor.player.positionGroup !== 'GK')
       .sort((a, b) => Math.abs(a.x - 0.5) - Math.abs(b.x - 0.5))[0];
     this.ball.ownerId = kickoff?.player.id ?? null;
     this.ball.lastTouch = side;
@@ -563,7 +638,7 @@ export class ArcadeMatch {
 
   private givePossession(side: Side): void {
     const actor = this.actors
-      .filter((candidate) => candidate.side === side)
+      .filter((candidate) => candidate.active && candidate.side === side)
       .sort((a, b) => distance(a, this.ball) - distance(b, this.ball))[0];
     if (!actor) return;
     this.ball.x = clamp(this.ball.x, 0.06, 0.94);
@@ -635,8 +710,8 @@ export class ArcadeMatch {
       homeScore: this.homeScore,
       awayScore: this.awayScore,
       events: [...this.events],
-      homeStats: this.finishStats(this.homeStats, this.home),
-      awayStats: this.finishStats(this.awayStats, this.away),
+      homeStats: this.finishStats(this.homeStats, this.home, 'home'),
+      awayStats: this.finishStats(this.awayStats, this.away, 'away'),
       keyframes: [...this.keyframes],
       manOfTheMatchId: motm,
       ratings: { ...this.ratings },
@@ -645,11 +720,14 @@ export class ArcadeMatch {
     };
   }
 
-  private finishStats(stats: TeamMatchStats, team: Team): TeamMatchStats {
+  private finishStats(stats: TeamMatchStats, team: Team, side: Side): TeamMatchStats {
     const midfield = team.formation.slots
       .map((slot) => team.players.find((player) => player.id === slot.playerId)?.attributes.passing ?? 55)
       .reduce((sum, value, _, values) => sum + value / values.length, 0);
-    stats.passAccuracy = clamp(Math.round(58 + midfield * 0.35), 58, 94);
+    const attempts = this.passAttempts[side];
+    stats.passAccuracy = attempts
+      ? clamp(Math.round(this.passCompletions[side] / attempts * 100), 20, 98)
+      : clamp(Math.round(58 + midfield * 0.35), 58, 94);
     return { ...stats };
   }
 }

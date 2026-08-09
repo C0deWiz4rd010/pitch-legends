@@ -96,7 +96,7 @@ export class ArcadePitchRenderer {
   }
 
   private drawActors(match: ArcadeMatch): void {
-    const sorted = [...match.actors].sort((a, b) => a.y - b.y);
+    const sorted = match.actors.filter((actor) => actor.active).sort((a, b) => a.y - b.y);
     for (const actor of sorted) this.drawActor(actor, match);
   }
 

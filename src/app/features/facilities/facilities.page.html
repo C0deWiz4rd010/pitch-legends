@@ -5,7 +5,7 @@
   </div>
   <div class="budget">
     <span class="muted">Budget</span>
-    <strong class="gold">🪙 {{ formatCoins(gs.coins()) }}</strong>
+    <strong class="gold">CR {{ formatCoins(gs.coins()) }}</strong>
   </div>
 </header>
 
@@ -42,7 +42,7 @@
         } @else {
           <span class="next muted">Next: {{ f.effect(level(f.key) + 1) }}</span>
           <button class="btn btn--primary btn--sm" [disabled]="!canUpgrade(f.key)" (click)="upgrade(f.key, f.name)">
-            Upgrade · 🪙 {{ formatCoins(cost(f.key)) }}
+            Upgrade · CR {{ formatCoins(cost(f.key)) }}
           </button>
         }
       </div>

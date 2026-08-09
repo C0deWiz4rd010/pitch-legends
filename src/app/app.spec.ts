@@ -6,6 +6,8 @@ import { buildProfile, LiveMatch } from './core/services/match-sim';
 import { RpgService } from './core/services/rpg.service';
 import { SAVE_VERSION } from './models/game.model';
 import { ArcadeMatch } from './core/services/arcade-match';
+import { TRANSLATIONS } from './data/translations';
+import { SaveService } from './core/services/save.service';
 
 describe('ratings', () => {
   it('computes a goalkeeper overall dominated by goalkeeping', () => {
@@ -108,6 +110,16 @@ describe('arcade match', () => {
     expect(match.controlledTeam.id).toBe(game.teams[0].id);
     expect(match.actors.find((actor) => actor.player.id === match.selectedPlayerId)?.side).toBe('away');
   });
+
+  it('finishes a full arcade fixture with consistent statistics', () => {
+    const game = createNewGame({ managerName: 'Pixel', clubName: 'Arcade FC', seed: 53 });
+    const result = new ArcadeMatch(game.teams[0], game.teams[1], game.clubId, 3, 10).result();
+
+    expect(result.played).toBe(true);
+    expect(result.events.at(-1)?.type).toBe('fulltime');
+    expect(result.homeStats.possession + result.awayStats.possession).toBe(100);
+    expect(result.keyframes.length).toBeGreaterThan(20);
+  });
 });
 
 describe('v2 progression', () => {
@@ -130,5 +142,24 @@ describe('v2 progression', () => {
     expect(service.unlockTalent(player, talent.id)).toBe(true);
     expect(player.talentRanks[talent.id]).toBe(1);
     expect(player.skillPoints).toBe(10 - talent.cost);
+  });
+
+  it('creates a squad inside its weekly wage budget', () => {
+    const game = createNewGame({ managerName: 'Pixel', clubName: 'Arcade FC', seed: 12 });
+    const club = game.teams[0];
+    const wages = club.players.reduce((sum, player) => sum + player.salary, 0);
+    expect(wages).toBeLessThanOrEqual(club.wageBudget);
+  });
+
+  it('keeps German and English translation key coverage in sync', () => {
+    expect(Object.keys(TRANSLATIONS.de).sort()).toEqual(Object.keys(TRANSLATIONS.en).sort());
+  });
+
+  it('accepts complete V2 saves and rejects version or schema mismatches', () => {
+    const service = new SaveService();
+    const game = createNewGame({ managerName: 'Save', clubName: 'Schema FC', seed: 14 });
+    expect(service.parseImport(JSON.stringify(game)).clubId).toBe(game.clubId);
+    expect(() => service.parseImport(JSON.stringify({ ...game, version: 1 }))).toThrow();
+    expect(() => service.parseImport(JSON.stringify({ ...game, manager: null }))).toThrow();
   });
 });

@@ -552,6 +552,7 @@ canvas {
 .touch-actions .through { right: 56px; top: 0; background: #9b7522; }
 .touch-actions .switch { left: 0; top: 0; width: 40px; height: 32px; border-radius: 0 !important; }
 .touch-actions .sprint { left: 0; bottom: 0; width: 48px; height: 36px; border-radius: 0 !important; }
+.touch-actions .pause { left: 52px; top: 38px; width: 34px; height: 30px; border-radius: 0 !important; }
 
 @media (pointer: coarse) {
   .touch-controls { display: flex; }
@@ -566,7 +567,30 @@ canvas {
   .momentum { margin-bottom: 6px; }
   .live { display: block; }
   .ticker { display: none; }
-  .canvas-wrap { aspect-ratio: 16 / 8.5; }
+  .canvas-wrap {
+    height: calc(100vh - 150px);
+    min-height: 220px;
+    aspect-ratio: auto;
+    display: flex;
+    justify-content: center;
+  }
+  .canvas-wrap canvas { width: auto; height: 100%; max-width: 100%; }
   .dugout { display: none; }
   .controls { padding: 5px 8px; }
+}
+
+@media (max-width: 900px) and (orientation: landscape) and (pointer: coarse) {
+  .pitch-panel { position: relative; }
+  .controls { display: none; }
+  .touch-controls {
+    position: absolute;
+    inset: auto 0 0;
+    z-index: 7;
+    min-height: 110px;
+    padding-inline: 18px;
+    border: 0;
+    background: linear-gradient(transparent, rgba(5, 7, 19, .72));
+    pointer-events: none;
+  }
+  .touch-controls button { pointer-events: auto; opacity: .82; }
 }

@@ -18,7 +18,7 @@
         </div>
         <div class="pv-vs">
           <span>VS</span>
-          <small class="muted">{{ isHome() ? '🏠 Home' : '✈️ Away' }}</small>
+          <small class="muted">{{ isHome() ? 'HOME' : 'AWAY' }}</small>
         </div>
         <div class="pv-team">
           <span class="crest" [style.background]="awayTeam()?.kit?.primary" [style.color]="awayTeam()?.kit?.secondary">
@@ -30,13 +30,13 @@
       </div>
 
       <div class="pv-actions">
-        <a routerLink="/tactics" class="btn btn--ghost">📋 Adjust tactics</a>
+        <a routerLink="/tactics" class="btn btn--ghost">ADJUST TACTICS</a>
         <div class="mode-picker" aria-label="Match mode">
           <button [class.active]="selectedMode() === 'play'" (click)="selectedMode.set('play')">PLAY</button>
           <button [class.active]="selectedMode() === 'coach'" (click)="selectedMode.set('coach')">COACH</button>
           <button [class.active]="selectedMode() === 'instant'" (click)="selectedMode.set('instant')">SIM</button>
         </div>
-        <button class="btn btn--primary big" (click)="kickOff()">KICK OFF ▶</button>
+        <button class="btn btn--primary big" (click)="kickOff()">KICK OFF &gt;</button>
       </div>
       <p class="pv-hint muted">
         PLAY: WASD/Arrows · J Pass/Tackle · K Through Ball · L Shoot · Shift Sprint · Space Switch
@@ -87,7 +87,7 @@
     </div>
   } @else {
     <div class="card fade-up empty">
-      <p>🏁 The season is complete! Head to the League page to review the final table, then start a new season from Settings.</p>
+      <p>FT · The season is complete! Head to the League page to review the final table, then start a new season from Settings.</p>
       <a routerLink="/league" class="btn btn--primary">View League</a>
     </div>
   }
@@ -135,13 +135,13 @@
       </div>
 
       <div class="controls">
-        <button class="btn btn--ghost btn--sm" (click)="togglePlay()">{{ playing() ? '⏸' : '▶' }}</button>
+        <button class="btn btn--ghost btn--sm" (click)="togglePlay()">{{ playing() ? 'PAUSE' : 'PLAY' }}</button>
         @if (phase() === 'coach') {
           <button class="btn btn--ghost btn--sm" (click)="cycleSpeed()">» {{ speed() }}×</button>
         }
-        <button class="btn btn--ghost btn--sm" (click)="skip()">⏭ Skip</button>
+        <button class="btn btn--ghost btn--sm" (click)="skip()">SKIP &gt;&gt;</button>
         <button class="btn btn--ghost btn--sm" [class.on]="showSubs()" (click)="showSubs.set(!showSubs())">
-          🔄 Subs ({{ subsRemaining() }})
+          SUBS ({{ subsRemaining() }})
         </button>
       </div>
 
@@ -154,6 +154,7 @@
             <button class="down" (pointerdown)="setTouchDirection(0,1,true)" (pointerup)="setTouchDirection(0,0,false)" (pointercancel)="setTouchDirection(0,0,false)">▼</button>
           </div>
           <div class="touch-actions">
+            <button class="pause" (click)="togglePlay()">{{ playing() ? 'II' : '>' }}</button>
             <button class="switch" (pointerdown)="setTouchAction('switch',true)" (pointerup)="setTouchAction('switch',false)">SW</button>
             <button class="through" (pointerdown)="setTouchAction('through',true)" (pointerup)="setTouchAction('through',false)">Y</button>
             <button class="pass" (pointerdown)="setTouchAction('pass',true)" (pointerup)="setTouchAction('pass',false)">A</button>
@@ -229,7 +230,7 @@
           <strong>{{ r.homeScore }} — {{ r.awayScore }}</strong>
           <span>{{ awayTeam()?.shortName }}</span>
         </div>
-        <div class="motm">🏅 Man of the Match: <strong>{{ motmName() }}</strong></div>
+        <div class="motm">MVP · Man of the Match: <strong>{{ motmName() }}</strong></div>
       </div>
 
       <div class="card stats">
@@ -259,14 +260,14 @@
         <div class="rlist">
           @for (pr of playerRatings(); track pr.player.id) {
             <div class="rrow">
-              <span class="rname">{{ playerName(pr.player) }} @if (pr.motm) { <span class="motm-tag">🏅</span> }</span>
+              <span class="rname">{{ playerName(pr.player) }} @if (pr.motm) { <span class="motm-tag">MVP</span> }</span>
               <span class="rval" [style.background]="ratingColor(pr.rating * 10)">{{ pr.rating | number: '1.1-1' }}</span>
             </div>
           }
         </div>
       </div>
 
-      <button class="btn btn--primary big continue" (click)="confirm()">Continue ▶</button>
+      <button class="btn btn--primary big continue" (click)="confirm()">Continue &gt;</button>
     </div>
   }
 }

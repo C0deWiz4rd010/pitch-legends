@@ -17,11 +17,11 @@ export function ratingTint(value: number): string {
 }
 
 export function moraleIcon(morale: number): string {
-  if (morale >= 80) return '😄';
-  if (morale >= 60) return '🙂';
-  if (morale >= 40) return '😐';
-  if (morale >= 25) return '😟';
-  return '😠';
+  if (morale >= 80) return '++';
+  if (morale >= 60) return '+';
+  if (morale >= 40) return '=';
+  if (morale >= 25) return '-';
+  return '--';
 }
 
 export function formatCoins(value: number): string {

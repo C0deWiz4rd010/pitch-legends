@@ -14,7 +14,7 @@
     </div>
     @if (totalSkillPoints() > 0) {
       <div class="sum sp">
-        <span class="sum-val accent">✨ {{ totalSkillPoints() }}</span>
+        <span class="sum-val accent">SP {{ totalSkillPoints() }}</span>
         <span class="muted">Skill points</span>
       </div>
     }
@@ -23,7 +23,7 @@
 
 <div class="toolbar fade-up">
   <div class="search">
-    <span class="s-ico">🔍</span>
+    <span class="s-ico">SR</span>
     <input type="text" placeholder="Search players…" [ngModel]="search()" (ngModelChange)="search.set($event)" />
     @if (search()) { <button class="s-clear" (click)="search.set('')" aria-label="Clear">✕</button> }
   </div>
@@ -58,9 +58,9 @@
         <div class="who-top">
           <strong>{{ p.firstName }} {{ p.lastName }}</strong>
           <span class="pos-chip">{{ p.position }}</span>
-          @if (p.skillPoints > 0) { <span class="badge sp" title="Skill points to spend">✨ {{ p.skillPoints }}</span> }
-          @if (p.injuryWeeks > 0) { <span class="badge inj" title="Injured">🚑 {{ p.injuryWeeks }}w</span> }
-          @if (p.traitIds.length) { <span class="badge trait" title="Traits">⭐ {{ p.traitIds.length }}</span> }
+          @if (p.skillPoints > 0) { <span class="badge sp" title="Skill points to spend">SP {{ p.skillPoints }}</span> }
+          @if (p.injuryWeeks > 0) { <span class="badge inj" title="Injured">INJ {{ p.injuryWeeks }}W</span> }
+          @if (p.traitIds.length) { <span class="badge trait" title="Traits">TR {{ p.traitIds.length }}</span> }
         </div>
         <div class="who-sub muted">
           Lv {{ p.level }} · {{ p.age }}y
