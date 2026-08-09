@@ -57,12 +57,17 @@ export class ArcadePitchRenderer {
     this.updateCamera(match, state, deltaSeconds, !!replay);
     this.drawBackdrop(match);
     this.drawPitch(match);
+    this.drawGoalBack(match, 0);
+    this.drawGoalBack(match, FIELD_LENGTH);
     this.recordBallTrail(match, state);
     this.drawBallTrail(match);
     this.spawnActionParticles(match);
     this.drawActors(match, state);
     this.drawBall(match, state);
+    this.drawGoalFront(match, 0);
+    this.drawGoalFront(match, FIELD_LENGTH);
     this.updateAndDrawParticles(match, deltaSeconds);
+    if (match.config.weather !== 'clear') this.drawWeather(match);
     this.drawEdgeIndicators(match, state);
     this.drawMinimap(match, state);
     this.drawHud(match, state);
@@ -203,6 +208,7 @@ export class ArcadePitchRenderer {
     const bottom = Math.max(topLeft.y, bottomRight.y);
     ctx.fillStyle = '#07120c';
     ctx.fillRect(Math.floor(left - 8), Math.floor(top - 8), Math.ceil(right - left + 16), Math.ceil(bottom - top + 16));
+    const seed = hash32(`${match.config.fixtureId ?? match.matchId}|mow`);
     const grassA = match.config.weather === 'clear' ? '#279f5b' : '#207b50';
     const grassB = match.config.weather === 'clear' ? '#218f50' : '#1b7048';
     for (let metre = 0; metre < FIELD_LENGTH; metre += 10.5) {
@@ -211,7 +217,16 @@ export class ArcadePitchRenderer {
       ctx.fillStyle = Math.floor(metre / 10.5) % 2 ? grassB : grassA;
       ctx.fillRect(Math.floor(Math.min(a.x, b.x)), Math.floor(top), Math.ceil(Math.abs(b.x - a.x)), Math.ceil(bottom - top));
     }
+    if (seed % 3 !== 0) {
+      for (let metre = 0; metre < FIELD_WIDTH; metre += 8.5) {
+        const a = this.worldToScreen(match, 0, metre);
+        const b = this.worldToScreen(match, FIELD_LENGTH, Math.min(FIELD_WIDTH, metre + 8.5));
+        ctx.fillStyle = Math.floor(metre / 8.5) % 2 ? 'rgba(4,45,25,.055)' : 'rgba(213,255,215,.035)';
+        ctx.fillRect(Math.floor(left), Math.floor(Math.min(a.y, b.y)), Math.ceil(right - left), Math.ceil(Math.abs(b.y - a.y)));
+      }
+    }
     this.drawPitchWear(match);
+    this.drawTechnicalAreas(match);
     ctx.strokeStyle = '#e8f5d2';
     ctx.lineWidth = 2;
     this.rectWorld(match, 0, 0, FIELD_LENGTH, FIELD_WIDTH);
@@ -224,10 +239,44 @@ export class ArcadePitchRenderer {
     this.rectWorld(match, FIELD_LENGTH - 5.5, FIELD_WIDTH / 2 - 9.16, 5.5, 18.32);
     this.dotWorld(match, 11, FIELD_WIDTH / 2, 0.24);
     this.dotWorld(match, FIELD_LENGTH - 11, FIELD_WIDTH / 2, 0.24);
-    this.drawGoal(match, 0);
-    this.drawGoal(match, FIELD_LENGTH);
+    this.arcWorld(match, 11, FIELD_WIDTH / 2, 9.15, -0.92, 0.92);
+    this.arcWorld(match, FIELD_LENGTH - 11, FIELD_WIDTH / 2, 9.15, Math.PI - 0.92, Math.PI + 0.92);
+    this.arcWorld(match, 0, 0, 1, 0, Math.PI / 2);
+    this.arcWorld(match, 0, FIELD_WIDTH, 1, -Math.PI / 2, 0);
+    this.arcWorld(match, FIELD_LENGTH, 0, 1, Math.PI / 2, Math.PI);
+    this.arcWorld(match, FIELD_LENGTH, FIELD_WIDTH, 1, Math.PI, Math.PI * 1.5);
+    this.drawCornerFlags(match);
     this.drawAdvertisingBoards(match);
-    if (match.config.weather !== 'clear') this.drawWeather(match);
+  }
+
+  private drawTechnicalAreas(match: ArcadeMatch): void {
+    const ctx = this.ctx;
+    const top = this.worldToScreen(match, FIELD_LENGTH / 2 - 13, 0);
+    const bottom = this.worldToScreen(match, FIELD_LENGTH / 2 + 13, -2.1);
+    ctx.fillStyle = '#111827';
+    ctx.fillRect(Math.min(top.x, bottom.x), Math.min(top.y, bottom.y), Math.abs(bottom.x - top.x), Math.max(3, Math.abs(bottom.y - top.y)));
+    ctx.strokeStyle = '#8b9ab4';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(Math.min(top.x, bottom.x), Math.min(top.y, bottom.y), Math.abs(bottom.x - top.x), Math.max(3, Math.abs(bottom.y - top.y)));
+    for (const offset of [-9, 9]) {
+      const bench = this.worldToScreen(match, FIELD_LENGTH / 2 + offset, -3.2);
+      ctx.fillStyle = '#26324f';
+      ctx.fillRect(bench.x - 16, bench.y - 4, 32, 5);
+      ctx.fillStyle = match.home.visuals.kits.home.shirt;
+      for (let seat = -12; seat <= 12; seat += 6) ctx.fillRect(bench.x + seat, bench.y - 7, 3, 3);
+    }
+  }
+
+  private drawCornerFlags(match: ArcadeMatch): void {
+    const ctx = this.ctx;
+    for (const [x, y, side] of [[0, 0, 1], [0, FIELD_WIDTH, -1], [FIELD_LENGTH, 0, 1], [FIELD_LENGTH, FIELD_WIDTH, -1]] as const) {
+      const p = this.worldToScreen(match, x, y);
+      const poleY = side > 0 ? p.y - 8 : p.y;
+      ctx.fillStyle = '#d7e1ff';
+      ctx.fillRect(p.x, poleY, 1, 9);
+      ctx.fillStyle = match.home.visuals.kits.home.shirt;
+      ctx.fillRect(p.x + 1, poleY, 5, 3);
+    }
   }
 
   private drawPitchWear(match: ArcadeMatch): void {
@@ -267,7 +316,7 @@ export class ArcadePitchRenderer {
     }
   }
 
-  private drawGoal(match: ArcadeMatch, x: number): void {
+  private drawGoalBack(match: ArcadeMatch, x: number): void {
     const ctx = this.ctx;
     const a = this.worldToScreen(match, x, FIELD_WIDTH / 2 - GOAL_WIDTH / 2);
     const b = this.worldToScreen(match, x, FIELD_WIDTH / 2 + GOAL_WIDTH / 2);
@@ -275,17 +324,45 @@ export class ArcadePitchRenderer {
     const nearGoal = Math.abs(this.visualBall.x - x) < 3 && Math.abs(this.visualBall.y - FIELD_WIDTH / 2) < GOAL_WIDTH / 2 + 1;
     const flex = nearGoal ? Math.round(this.goalBurst * 4) : 0;
     const depth = direction * (11 + flex);
-    ctx.strokeStyle = '#dfe8ff';
-    ctx.lineWidth = 2;
-    ctx.strokeRect(Math.round(a.x + (depth < 0 ? depth : 0)), Math.round(Math.min(a.y, b.y)), Math.abs(depth), Math.round(Math.abs(b.y - a.y)));
-    ctx.strokeStyle = '#49619a';
+    const backX = a.x + depth;
+    const top = Math.min(a.y, b.y);
+    const bottom = Math.max(a.y, b.y);
+    ctx.fillStyle = 'rgba(160,190,218,.08)';
+    ctx.fillRect(Math.min(a.x, backX), top, Math.abs(depth), bottom - top);
+    ctx.strokeStyle = '#496986';
     ctx.lineWidth = 1;
-    for (let y = Math.min(a.y, b.y) + 4; y < Math.max(a.y, b.y); y += 5) {
+    for (let y = top; y <= bottom; y += 4) {
       ctx.beginPath();
       ctx.moveTo(a.x, y);
-      ctx.lineTo(a.x + depth, y);
+      ctx.lineTo(backX, y + Math.sin((y - top) * .7 + this.time * 8) * this.goalBurst * 2);
       ctx.stroke();
     }
+    const netStep = Math.max(4, Math.round(Math.abs(depth) / 3));
+    for (let netX = Math.min(a.x, backX); netX <= Math.max(a.x, backX); netX += netStep) {
+      ctx.beginPath(); ctx.moveTo(netX, top); ctx.lineTo(netX, bottom); ctx.stroke();
+    }
+    ctx.strokeStyle = '#9fb3c9';
+    ctx.strokeRect(Math.min(a.x, backX), top, Math.abs(depth), bottom - top);
+    ctx.fillStyle = 'rgba(0,0,0,.22)';
+    ctx.fillRect(Math.min(a.x, backX), bottom + 2, Math.abs(depth) + 2, 2);
+  }
+
+  private drawGoalFront(match: ArcadeMatch, x: number): void {
+    const ctx = this.ctx;
+    const a = this.worldToScreen(match, x, FIELD_WIDTH / 2 - GOAL_WIDTH / 2);
+    const b = this.worldToScreen(match, x, FIELD_WIDTH / 2 + GOAL_WIDTH / 2);
+    ctx.strokeStyle = '#6e7d93';
+    ctx.lineWidth = 5;
+    ctx.beginPath(); ctx.moveTo(a.x + 1, a.y + 1); ctx.lineTo(b.x + 1, b.y + 1); ctx.stroke();
+    ctx.strokeStyle = '#f4f7ff';
+    ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(a.x - 2, a.y - 2, 5, 5);
+    ctx.fillRect(b.x - 2, b.y - 2, 5, 5);
+    ctx.fillStyle = '#aab8cf';
+    ctx.fillRect(a.x + 1, a.y + 1, 2, 2);
+    ctx.fillRect(b.x + 1, b.y + 1, 2, 2);
   }
 
   private drawWeather(match: ArcadeMatch): void {
@@ -613,6 +690,13 @@ export class ArcadePitchRenderer {
     const p = this.worldToScreen(match, x, y);
     this.ctx.beginPath();
     this.ctx.arc(p.x, p.y, radius * this.cameraScale, 0, Math.PI * 2);
+    this.ctx.stroke();
+  }
+
+  private arcWorld(match: ArcadeMatch, x: number, y: number, radius: number, start: number, end: number): void {
+    const p = this.worldToScreen(match, x, y);
+    this.ctx.beginPath();
+    this.ctx.arc(p.x, p.y, radius * this.cameraScale, start, end);
     this.ctx.stroke();
   }
 

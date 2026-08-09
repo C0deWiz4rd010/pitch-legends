@@ -41,6 +41,8 @@ import { ControlHelpService } from '../../core/services/control-help.service';
 import { CONTROL_INPUT_MAP, MOVEMENT_KEYS } from '../../data/control-bindings';
 import { ClubCrestComponent } from '../../shared/components/club-crest.component';
 import { MiniKitComponent } from '../../shared/components/mini-kit.component';
+import { ManagerPortraitComponent } from '../../shared/components/manager-portrait.component';
+import { TravelService } from '../../core/services/travel.service';
 
 type PagePhase = 'preview' | 'intro' | 'simulating' | 'match' | 'halftime' | 'result';
 type TouchAction = 'sprint' | 'pass' | 'through' | 'lob' | 'shoot' | 'skill' | 'switch';
@@ -60,7 +62,7 @@ const EMPTY_MATCH_VIEW: MatchViewState = {
 
 @Component({
   selector: 'app-match',
-  imports: [RouterLink, DecimalPipe, ClubCrestComponent, MiniKitComponent],
+  imports: [RouterLink, DecimalPipe, ClubCrestComponent, MiniKitComponent, ManagerPortraitComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './match.page.html',
   styleUrl: './match.page.scss',
@@ -74,9 +76,12 @@ export class MatchPage implements OnDestroy {
   private readonly route = inject(ActivatedRoute);
   protected readonly i18n = inject(I18nService);
   private readonly audio = inject(AudioService);
+  private readonly travel = inject(TravelService);
   protected readonly controlHelp = inject(ControlHelpService);
   protected readonly ratingColor = ratingColor;
   protected readonly playerName = playerName;
+  protected readonly homeManager = computed(() => this.homeTeam() ? this.gs.managerForTeam(this.homeTeam()!.id) ?? null : null);
+  protected readonly awayManager = computed(() => this.awayTeam() ? this.gs.managerForTeam(this.awayTeam()!.id) ?? null : null);
 
   private readonly canvasRef = viewChild<ElementRef<HTMLCanvasElement>>('pitch');
   protected readonly phase = signal<PagePhase>('preview');
@@ -287,6 +292,7 @@ export class MatchPage implements OnDestroy {
     const fixture = this.gs.nextFixture();
     const settings = this.gs.game()?.settings;
     if (!home || !away || !fixture || this.lineupErrors().length) return;
+    this.travel.resolveSafeForFixture(fixture.id);
     if (this.selectedMode() === 'instant') {
       this.phase.set('simulating');
       void this.engine.simulateAsync(home, away, fixture.week, this.stableSeed(fixture.id), fixture.id).then((result) => {

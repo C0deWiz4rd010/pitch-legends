@@ -42,6 +42,12 @@
         </div>
       </div>
 
+      <div class="coach-duel">
+        @if (homeManager(); as manager) { <div><app-manager-portrait [manager]="manager" [size]="48" /><span><small>{{ manager.tacticalPhilosophy }}</small><b>{{ manager.firstName }} {{ manager.lastName }}</b></span></div> }
+        <em>COACH DUEL</em>
+        @if (awayManager(); as manager) { <div class="right"><span><small>{{ manager.tacticalPhilosophy }}</small><b>{{ manager.firstName }} {{ manager.lastName }}</b></span><app-manager-portrait [manager]="manager" [size]="48" /></div> }
+      </div>
+
       <div class="match-options">
         <label>
           <span>MODUS</span>
