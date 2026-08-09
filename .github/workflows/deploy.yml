@@ -64,11 +64,8 @@ jobs:
       - name: SPA fallback (404.html)
         run: cp dist/pitch-legends/browser/index.html dist/pitch-legends/browser/404.html
 
-      - name: Add .nojekyll
-        run: touch dist/pitch-legends/browser/.nojekyll
-
       - name: Upload Pages artifact
-        uses: actions/upload-pages-artifact@v3
+        uses: actions/upload-pages-artifact@v4
         with:
           path: dist/pitch-legends/browser
 
@@ -81,4 +78,4 @@ jobs:
     steps:
       - name: Deploy to GitHub Pages
         id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5
