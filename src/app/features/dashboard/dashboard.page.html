@@ -1,179 +1,197 @@
-<!-- Hero banner -->
-<section class="hero fade-up" [style.--club]="gs.playerTeam()?.kit?.primary">
-  <div class="hero-glow"></div>
-  <div class="hero-main">
-    <span class="crest" [style.background]="gs.playerTeam()?.kit?.primary" [style.color]="gs.playerTeam()?.kit?.secondary">
-      {{ gs.playerTeam()?.shortName }}
-    </span>
-    <div class="hero-text">
-      <p class="eyebrow">Season {{ gs.season() }} · Matchweek {{ gs.currentWeek() }} of {{ gs.totalWeeks() }}</p>
-      <h1>{{ gs.playerTeam()?.name }}</h1>
-      <div class="hero-meta">
-        <span class="manager">MG {{ gs.game()?.managerName }} · LV {{ gs.manager()?.level }}</span>
-        @if (form().length) {
-          <span class="form">
-            @for (r of form(); track $index) {
-              <span class="form-pill" [class.w]="r === 'W'" [class.d]="r === 'D'" [class.l]="r === 'L'">{{ r }}</span>
-            }
-          </span>
-        }
+@if (gs.playerTeam(); as club) {
+  <header class="page-intro command-enter">
+    <div>
+      <p class="eyebrow">{{ text('MANAGER-ZENTRALE', 'MANAGER COMMAND CENTRE') }}</p>
+      <h1>{{ text('Guten Spieltag,', 'Matchday ready,') }} {{ gs.game()?.managerName }}</h1>
+    </div>
+    <button class="studio-link" (click)="studioOpen.set(true)">◆ {{ text('CLUB STUDIO', 'CLUB STUDIO') }}</button>
+  </header>
+
+  <div class="command-grid">
+    <section class="match-stage command-enter" [style.--club]="club.visuals.kits.home.shirt" [style.--club-dark]="club.visuals.kits.home.secondary">
+      <div class="stadium-scene" aria-hidden="true">
+        <div class="floodlights"></div>
+        <div class="crowd-band band-a"></div>
+        <div class="crowd-band band-b"></div>
+        <div class="pitch-lines"></div>
+        <span class="flag flag-a"></span><span class="flag flag-b"></span><span class="flag flag-c"></span>
       </div>
-    </div>
-  </div>
-  <div class="hero-side">
-    <div class="pos-badge">
-      <span class="pos-num">{{ rank() }}<small>{{ rankSuffix(rank()) }}</small></span>
-      <span class="pos-label">of {{ totalTeams() }}</span>
-    </div>
-    <div class="progress">
-      <div class="progress-bar"><i [style.width.%]="seasonProgress()"></i></div>
-      <span class="muted">Season {{ seasonProgress() }}% complete</span>
-    </div>
-  </div>
-</section>
 
-<!-- Key stats -->
-<section class="stat-grid fade-up">
-  <div class="stat">
-    <span class="ico">RT</span>
-    <div class="stat-body">
-      <strong [style.color]="ratingColor(squadRating())">{{ squadRating() }}</strong>
-      <span class="muted">Squad rating</span>
-    </div>
-  </div>
-  <div class="stat">
-    <span class="ico">CR</span>
-    <div class="stat-body">
-      <strong class="gold">{{ formatCoins(gs.coins()) }}</strong>
-      <span class="muted">Budget</span>
-    </div>
-  </div>
-  <div class="stat">
-    <span class="ico">MO</span>
-    <div class="stat-body">
-      <strong>{{ avgMorale() }}</strong>
-      <span class="muted">Team morale</span>
-    </div>
-  </div>
-  <a routerLink="/squad" class="stat action" [class.pulse]="skillPointsAvailable() > 0">
-    <span class="ico">SP</span>
-    <div class="stat-body">
-      <strong class="accent">{{ skillPointsAvailable() }}</strong>
-      <span class="muted">Skill points {{ skillPointsAvailable() > 0 ? 'to spend ›' : '' }}</span>
-    </div>
-  </a>
-</section>
-
-<div class="cols">
-  <div class="col">
-    <!-- Next match -->
-    <div class="card next-match fade-up">
-      <div class="card-head"><p class="eyebrow">Next fixture</p></div>
-      @if (nextOpponent(); as opp) {
-        <div class="matchup">
-          <div class="mt">
-            <span class="mt-crest" [style.background]="gs.playerTeam()?.kit?.primary" [style.color]="gs.playerTeam()?.kit?.secondary">{{ gs.playerTeam()?.shortName }}</span>
-            <span class="mt-name">{{ gs.playerTeam()?.name }}</span>
-            <span class="mt-rating" [style.color]="ratingColor(squadRating())">{{ squadRating() }}</span>
+      @if (nextOpponent(); as opponent) {
+        <div class="stage-top">
+          <div>
+            <p class="eyebrow">{{ text('NÄCHSTER SPIELTAG', 'NEXT MATCHDAY') }}</p>
+            <strong>{{ text('Woche', 'Week') }} {{ gs.currentWeek() }} / {{ gs.totalWeeks() }}</strong>
           </div>
-          <div class="mt-vs">
-            <span>{{ opp.home ? 'VS' : '@' }}</span>
-            <small class="muted">{{ opp.home ? 'Home' : 'Away' }}</small>
-          </div>
-          <div class="mt right">
-            <span class="mt-crest" [style.background]="opp.color" [style.color]="opp.secondary">{{ opp.short }}</span>
-            <span class="mt-name">{{ opp.name }}</span>
-            <span class="mt-rating" [style.color]="ratingColor(opp.rating)">{{ opp.rating }}</span>
+          <div class="fixture-meta">
+            <span>{{ opponent.home ? text('HEIMSPIEL', 'HOME') : text('AUSWÄRTS', 'AWAY') }}</span>
+            <span>{{ weatherLabel(opponent.weather) }}</span>
           </div>
         </div>
+
+        <div class="versus">
+          <div class="team team-home">
+            <app-club-crest [team]="club" [size]="92" />
+            <div class="team-copy">
+              <strong>{{ club.name }}</strong>
+              <span>#{{ rank() }} · {{ text('Stärke', 'Rating') }} {{ squadRating() }}</span>
+              <div class="form-row">
+                @for (result of form(); track $index) { <i [class]="result.toLowerCase()">{{ result }}</i> }
+                @empty { <small>{{ text('Noch keine Form', 'No form yet') }}</small> }
+              </div>
+            </div>
+            <app-mini-kit [kit]="club.visuals.kits.home" [size]="48" />
+          </div>
+
+          <div class="versus-mark"><span>{{ opponent.home ? 'VS' : '@' }}</span><small>20:00</small></div>
+
+          <div class="team team-away">
+            <app-club-crest [team]="opponent.team" [size]="92" />
+            <div class="team-copy">
+              <strong>{{ opponent.team.name }}</strong>
+              <span>#{{ opponent.rank }} · {{ text('Stärke', 'Rating') }} {{ opponent.rating }}</span>
+              <div class="form-row">
+                @for (result of opponent.form; track $index) { <i [class]="result.toLowerCase()">{{ result }}</i> }
+                @empty { <small>{{ text('Unbekannte Form', 'Unknown form') }}</small> }
+              </div>
+            </div>
+            <app-mini-kit [kit]="opponent.team.visuals.kits.away" [size]="48" />
+          </div>
+        </div>
+
         <div class="match-actions">
-          <a routerLink="/tactics" class="btn btn--ghost btn--sm">TACTICS</a>
-          <a routerLink="/match" class="btn btn--primary btn--sm">PLAY MATCH &gt;</a>
+          <a routerLink="/match" class="primary-action">▶ {{ text('SPIELEN', 'PLAY') }}</a>
+          <a routerLink="/match" [queryParams]="{ auto: 1 }" class="auto-action">◈ {{ text('AUTO-MATCH ANSEHEN', 'WATCH AUTO MATCH') }}</a>
+          <a routerLink="/match" [queryParams]="{ mode: 'instant' }" class="sim-action">» {{ text('SOFORT SIMULIEREN', 'INSTANT SIM') }}</a>
         </div>
       } @else {
-        <div class="season-done">
-          <span class="big-emoji">FT</span>
-          <p>Season complete — start the next one from Settings.</p>
-          <a routerLink="/league" class="btn btn--ghost btn--sm">View final table</a>
+        <div class="season-complete">
+          <app-club-crest [team]="club" [size]="112" />
+          <h2>{{ text('SAISON ABGESCHLOSSEN', 'SEASON COMPLETE') }}</h2>
+          <p>{{ text('Dein Abschlussbericht und die finale Tabelle warten.', 'Your final report and league table are ready.') }}</p>
+          <a routerLink="/league" class="primary-action">{{ text('FINALE TABELLE', 'FINAL TABLE') }}</a>
         </div>
       }
-    </div>
+    </section>
 
-    <!-- News -->
-    <div class="card fade-up">
-      <div class="card-head"><p class="eyebrow">Club news</p></div>
-      <div class="news scroll">
-        @for (item of gs.news(); track item.id) {
-          <div class="news-item">
-            <span class="news-ico">{{ item.icon }}</span>
-            <div class="news-body">
-              <strong>{{ i18n.t(item.titleKey, item.params) }}</strong>
-              <p class="muted">{{ i18n.t(item.bodyKey, item.params) }}</p>
-            </div>
-          </div>
+    <aside class="manager-rail command-enter">
+      <div class="manager-card">
+        <div class="manager-avatar" aria-hidden="true"><i></i><b></b></div>
+        <div>
+          <span class="eyebrow">{{ text('MANAGER', 'MANAGER') }}</span>
+          <strong>{{ gs.game()?.managerName }}</strong>
+          <small>LV {{ gs.manager()?.level }} · {{ gs.manager()?.skillPoints }} SP</small>
+        </div>
+      </div>
+      <div class="xp-track"><i [style.width.%]="(gs.manager()?.xp ?? 0) / (gs.manager()?.xpToNext ?? 1) * 100"></i></div>
+      <div class="rail-title"><span>{{ text('PRIORITÄTEN', 'PRIORITIES') }}</span><b>{{ alerts().length }}</b></div>
+      <div class="alerts">
+        @for (alert of alerts(); track alert.label) {
+          <a [routerLink]="alert.route" class="alert" [class]="alert.tone">
+            <span>{{ alert.icon }}</span><strong>{{ alert.label }}</strong><i>›</i>
+          </a>
         } @empty {
-          <p class="muted">No news yet — play your first match!</p>
+          <div class="all-clear">✓ {{ text('Alles bereit für den Spieltag', 'Everything is match-ready') }}</div>
         }
       </div>
-    </div>
+      <div class="manager-stats">
+        <div><span>{{ text('BUDGET', 'BUDGET') }}</span><strong>{{ formatCoins(gs.coins()) }}</strong></div>
+        <div><span>{{ text('LIGAPLATZ', 'LEAGUE') }}</span><strong>#{{ rank() }}</strong></div>
+      </div>
+    </aside>
   </div>
 
-  <div class="col">
-    <!-- Star player -->
+  <section class="club-pulse command-enter">
+    <div class="pulse-title"><span>●</span><strong>CLUB PULSE</strong></div>
+    <div class="pulse-stat"><span>{{ text('FITNESS', 'FITNESS') }}</span><b>{{ avgFitness() }}</b><i><em [style.width.%]="avgFitness()"></em></i></div>
+    <div class="pulse-stat"><span>{{ text('MORAL', 'MORALE') }}</span><b>{{ avgMorale() }}</b><i><em [style.width.%]="avgMorale()"></em></i></div>
+    <div class="pulse-stat"><span>{{ text('FORM', 'FORM') }}</span><b>{{ form().length ? form().at(-1) : '–' }}</b><i><em [style.width.%]="form().at(-1) === 'W' ? 90 : form().at(-1) === 'D' ? 55 : 25"></em></i></div>
+    <a routerLink="/squad" class="pulse-stat points"><span>SKILL POINTS</span><b>{{ skillPointsAvailable() }}</b><small>›</small></a>
+  </section>
+
+  <div class="lower-grid">
     @if (starPlayer(); as star) {
-      <a routerLink="/squad" class="card star fade-up">
-        <div class="card-head"><p class="eyebrow">Star player</p><span class="link">Squad ›</span></div>
-        <div class="star-body">
-          <span class="rating big" [style.background]="ratingColor(star.overall)">{{ star.overall }}</span>
-          <div class="star-info">
-            <strong>{{ playerName(star) }}</strong>
-            <span class="muted">{{ star.position }} · Lv {{ star.level }} · {{ moraleIcon(star.morale) }}</span>
-            <div class="star-stats">
-              <span>G {{ star.seasonStats.goals }}</span>
-              <span>A {{ star.seasonStats.assists }}</span>
-              <span>M {{ star.seasonStats.motmAwards }}</span>
+      <article class="locker card-rise">
+        <div class="section-head"><span>{{ text('UMKLEIDEKABINE', 'DRESSING ROOM') }}</span><a routerLink="/squad">{{ text('KADER', 'SQUAD') }} ›</a></div>
+        <div class="locker-scene">
+          <div class="portrait-frame"><app-player-portrait [player]="star" [size]="112" /></div>
+          <div class="locker-info">
+            <p class="eyebrow">{{ text('STAR-SPIELER', 'STAR PLAYER') }}</p>
+            <h2>{{ playerName(star) }}</h2>
+            <span>{{ star.position }} · OVR <b [style.color]="ratingColor(star.overall)">{{ star.overall }}</b> · {{ moraleIcon(star.morale) }}</span>
+            <div class="personal-goal">
+              <small>{{ text('PERSÖNLICHES ZIEL', 'PERSONAL TARGET') }}</small>
+              <strong>{{ star.personalGoal.progress }} / {{ star.personalGoal.target }} {{ star.personalGoal.type }}</strong>
+              <i><em [style.width.%]="star.personalGoal.progress / star.personalGoal.target * 100"></em></i>
             </div>
           </div>
+          <app-mini-kit [kit]="club.visuals.kits.home" [size]="82" />
         </div>
-      </a>
+      </article>
     }
 
-    <!-- Top scorers -->
-    <div class="card fade-up">
-      <div class="card-head"><p class="eyebrow">Top scorers</p><a routerLink="/league" class="link">League ›</a></div>
-      <ol class="scorers">
-        @for (entry of gs.topScorers().slice(0, 5); track entry.player.id) {
-          <li>
-            <span class="name">{{ playerName(entry.player) }}</span>
-            <span class="team-tag">{{ entry.teamName }}</span>
-            <span class="goals tabular">{{ entry.player.seasonStats.goals }}</span>
+    <article class="league-card card-rise">
+      <div class="section-head"><span>{{ text('TABELLENRADAR', 'TABLE RADAR') }}</span><a routerLink="/league">{{ text('LIGA', 'LEAGUE') }} ›</a></div>
+      <ol>
+        @for (row of tableWindow(); track row.teamId) {
+          <li [class.own]="row.teamId === club.id">
+            <b>{{ gs.standings().indexOf(row) + 1 }}</b>
+            @if (teamById(row.teamId); as rowTeam) { <app-club-crest [team]="rowTeam" [size]="28" /> }
+            <span>{{ row.teamName }}</span><small>{{ row.played }} SP</small><strong>{{ row.points }} P</strong>
           </li>
-        } @empty {
-          <li class="muted">No goals scored yet.</li>
         }
       </ol>
-    </div>
+    </article>
 
-    <div class="card objectives fade-up">
-      <div class="card-head"><p class="eyebrow">Career quests</p><span class="chip">{{ gs.manager()?.skillPoints }} SP</span></div>
+    <article class="agenda card-rise">
+      <div class="section-head"><span>{{ text('WOCHENAGENDA', 'WEEK AGENDA') }}</span><span>KW {{ gs.currentWeek() }}</span></div>
+      <div class="timeline">
+        <div class="done"><i>MO</i><b>✓</b><span>{{ text('Regeneration', 'Recovery') }}</span></div>
+        <div class="active"><i>DI</i><b>XP</b><span>{{ text('Training', 'Training') }}</span></div>
+        <div><i>DO</i><b>↔</b><span>{{ text('Transfers', 'Transfers') }}</span></div>
+        <div class="match"><i>SA</i><b>⚽</b><span>{{ text('Spieltag', 'Matchday') }}</span></div>
+      </div>
+    </article>
+
+    <article class="news-card card-rise">
+      <div class="section-head"><span>{{ text('VEREINSNACHRICHTEN', 'CLUB NEWS') }}</span><span>{{ newsIndex() + 1 }}/{{ gs.news().length || 1 }}</span></div>
+      @if (activeNews(); as item) {
+        <div class="news-content">
+          <app-club-crest [team]="club" [size]="58" />
+          <span class="news-icon">{{ item.icon }}</span>
+          <div><strong>{{ i18n.t(item.titleKey, item.params) }}</strong><p>{{ i18n.t(item.bodyKey, item.params) }}</p></div>
+        </div>
+        <div class="news-controls"><button (click)="nextNews(-1)" aria-label="Previous news">‹</button><button (click)="nextNews(1)" aria-label="Next news">›</button></div>
+      } @else {
+        <p class="empty-news">{{ text('Spiele dein erstes Match – hier entsteht deine Clubgeschichte.', 'Play your first match and your club story will appear here.') }}</p>
+      }
+    </article>
+
+    <article class="objectives card-rise">
+      <div class="section-head"><span>{{ text('KARRIERE-MISSIONEN', 'CAREER QUESTS') }}</span><span>{{ gs.manager()?.skillPoints }} SP</span></div>
       @for (objective of gs.game()?.objectives ?? []; track objective.id) {
         <div class="objective" [class.done]="objective.completed">
           <div><strong>{{ objectiveLabel(objective) }}</strong><span>{{ objective.rewardCoins }} CR · {{ objective.rewardXp }} XP</span></div>
-          <div class="objective-track"><i [style.width.%]="objectiveProgress(objective)"></i></div>
+          <i><em [style.width.%]="objectiveProgress(objective)"></em></i>
         </div>
       }
-    </div>
-
-    <!-- Alerts / quick actions -->
-    <div class="card quick fade-up">
-      <div class="card-head"><p class="eyebrow">Get things done</p></div>
-      @if (injuredCount() > 0) {
-        <div class="alert">INJ {{ injuredCount() }} player(s) injured — rotate your lineup.</div>
-      }
-      <a routerLink="/training" class="quick-link"><span>TR</span> Train players <em class="muted">develop stats</em></a>
-      <a routerLink="/tactics" class="quick-link"><span>TX</span> Set up tactics <em class="muted">roles & shape</em></a>
-      <a routerLink="/transfer" class="quick-link"><span>XF</span> Transfer market <em class="muted">buy & sell</em></a>
-      <a routerLink="/facilities" class="quick-link"><span>FC</span> Upgrade facilities <em class="muted">grow the club</em></a>
-    </div>
+    </article>
   </div>
-</div>
+
+  @if (studioOpen()) {
+    <div class="studio-backdrop" (click)="studioOpen.set(false)">
+      <section class="club-studio-modal" role="dialog" aria-modal="true" aria-labelledby="studio-title" (click)="$event.stopPropagation()">
+        <button class="modal-close" (click)="studioOpen.set(false)" aria-label="Close">×</button>
+        <p class="eyebrow">PIXEL WORKSHOP</p><h2 id="studio-title">{{ text('CLUB STUDIO', 'CLUB STUDIO') }}</h2>
+        <div class="studio-preview">
+          <app-club-crest [team]="club" [size]="128" />
+          <app-mini-kit [kit]="club.visuals.kits.home" [size]="86" />
+          <app-mini-kit [kit]="club.visuals.kits.away" [size]="86" />
+          <app-mini-kit [kit]="club.visuals.kits.goalkeeper" [size]="86" />
+        </div>
+        <p>{{ text('Kosmetisch, deterministisch und ohne Einfluss auf deine Werte.', 'Cosmetic, deterministic, and never changes your attributes.') }}</p>
+        <button class="primary-action" (click)="rollClubVisuals()">⚄ {{ text('DESIGN NEU WÜRFELN', 'REROLL DESIGN') }}</button>
+      </section>
+    </div>
+  }
+}

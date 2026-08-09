@@ -2,7 +2,7 @@
   <div class="layout" [class.menu-open]="menuOpen()">
     <aside class="sidebar">
       <div class="brand">
-        <span class="logo" aria-hidden="true">PL</span>
+        @if (gs.playerTeam(); as brandTeam) { <app-club-crest class="logo" [team]="brandTeam" [size]="42" /> }
         <div class="brand-text">
           <strong>{{ 'app.title' | t }}</strong>
           <small>{{ gs.playerTeam()?.name }}</small>
@@ -29,8 +29,11 @@
     <div class="main">
       <header class="topbar">
         <button class="burger" (click)="menuOpen.set(!menuOpen())" aria-label="Toggle menu">☰</button>
-        <div class="club" [style.--kit]="gs.playerTeam()?.kit?.primary">
-          <span class="kit-dot"></span>
+        <div class="club">
+          @if (gs.playerTeam(); as topTeam) {
+            <app-club-crest [team]="topTeam" [size]="28" />
+            <app-mini-kit [kit]="topTeam.visuals.kits.home" [size]="25" />
+          }
           <strong>{{ gs.playerTeam()?.shortName }}</strong>
         </div>
         <div class="spacer"></div>
