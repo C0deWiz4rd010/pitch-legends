@@ -140,7 +140,10 @@ export class DashboardPage {
   }
 
   protected objectiveProgress(objective: CareerObjective): number {
-    if (objective.type === 'league-position') return objective.completed ? 100 : Math.max(5, 100 - (this.rank() - objective.target) * 14);
+    if (objective.type === 'league-position') {
+      const progress = objective.completed ? 100 : 100 - (this.rank() - objective.target) * 14;
+      return Math.min(100, Math.max(5, progress));
+    }
     return Math.min(100, Math.round(objective.progress / objective.target * 100));
   }
 
