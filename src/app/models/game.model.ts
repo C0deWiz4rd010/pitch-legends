@@ -6,6 +6,14 @@ export type Difficulty = 'easy' | 'normal' | 'hard';
 export type Locale = 'de' | 'en';
 export type MatchDuration = 3 | 5 | 8;
 export type ManagerPerkPath = 'coaching' | 'tactics' | 'scouting' | 'leadership';
+export type InputAction = 'move' | 'pass' | 'through' | 'lob' | 'shoot' | 'sprint' | 'skill' | 'switch' | 'tactics' | 'keeper';
+
+export interface ControlLearningState {
+  introSeen: boolean;
+  completedActions: InputAction[];
+  dismissedHints: InputAction[];
+  preferredDevice: import('./match.model').InputDevice;
+}
 
 export type MessageParams = Record<string, string | number>;
 
@@ -54,6 +62,7 @@ export interface GameSettings {
   assistPreset: AssistPreset;
   cameraShake: boolean;
   reducedMotion: boolean;
+  controlLearning: ControlLearningState;
 }
 
 export function defaultSettings(): GameSettings {
@@ -68,10 +77,16 @@ export function defaultSettings(): GameSettings {
     assistPreset: 'balanced',
     cameraShake: true,
     reducedMotion: false,
+    controlLearning: {
+      introSeen: false,
+      completedActions: [],
+      dismissedHints: [],
+      preferredDevice: 'keyboard',
+    },
   };
 }
 
-export const SAVE_VERSION = 2;
+export const SAVE_VERSION = 3;
 
 export interface GameState {
   version: number;

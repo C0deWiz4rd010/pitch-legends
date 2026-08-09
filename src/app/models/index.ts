@@ -5,3 +5,4 @@ export * from './team.model';
 export * from './match.model';
 export * from './league.model';
 export * from './game.model';
+export * from './visual.model';

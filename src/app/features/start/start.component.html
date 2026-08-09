@@ -42,10 +42,52 @@
         <div class="presets">
           @for (p of presets; track p.primary) {
             <button class="preset" [class.active]="primary() === p.primary" [style.--preset]="p.primary"
-              (click)="primary.set(p.primary); secondary.set(p.secondary)" aria-label="Choose kit colour"></button>
+              (click)="selectPalette(p.primary, p.secondary)" aria-label="Choose kit colour"></button>
           }
         </div>
       </div>
+
+      <section class="club-studio" aria-label="Pixel Club Studio">
+        <div class="studio-head">
+          <span class="eyebrow">PIXEL CLUB STUDIO</span>
+          <button type="button" class="dice" (click)="rollAll()">↻ ALLES WÜRFELN</button>
+        </div>
+        <div class="studio-stage" [style.--club]="primary()">
+          <app-club-crest
+            [visuals]="visuals()"
+            [clubName]="clubName() || 'Harbour City'"
+            [clubShort]="clubShort() || 'HBC'"
+            [size]="92"
+          />
+          <div class="kit-line">
+            <span><app-mini-kit [kit]="visuals().kits.home" [size]="58" label="Heimtrikot" /><small>HEIM</small></span>
+            <span><app-mini-kit [kit]="visuals().kits.away" [size]="58" label="Auswärtstrikot" /><small>AUSWÄRTS</small></span>
+            <span><app-mini-kit [kit]="visuals().kits.goalkeeper" [size]="58" label="Torwarttrikot" /><small>TOR</small></span>
+          </div>
+        </div>
+        <div class="studio-actions">
+          <button type="button" (click)="rollCrest()">WAPPEN WÜRFELN</button>
+          <button type="button" (click)="rollKits()">MUSTER WÜRFELN</button>
+          <button type="button" (click)="swapColors()">FARBEN TAUSCHEN</button>
+        </div>
+        <div class="studio-selects">
+          <label>FORM
+            <select [ngModel]="visuals().crest.shape" (ngModelChange)="setCrestShape($event)">
+              @for (shape of crestShapes; track shape) { <option [value]="shape">{{ shape }}</option> }
+            </select>
+          </label>
+          <label>MUSTER
+            <select [ngModel]="visuals().crest.pattern" (ngModelChange)="setCrestPattern($event)">
+              @for (pattern of crestPatterns; track pattern) { <option [value]="pattern">{{ pattern }}</option> }
+            </select>
+          </label>
+          <label>SYMBOL
+            <select [ngModel]="visuals().crest.emblem" (ngModelChange)="setCrestEmblem($event)">
+              @for (emblem of crestEmblems; track emblem) { <option [value]="emblem">{{ emblem }}</option> }
+            </select>
+          </label>
+        </div>
+      </section>
 
       <div>
         <span class="eyebrow">{{ 'start.difficulty' | t }}</span>

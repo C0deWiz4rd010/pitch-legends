@@ -19,6 +19,8 @@ import { createFormation } from './formations';
 import { CLUB_IDENTITIES, FIRST_NAMES, LAST_NAMES, NATIONALITIES, ClubIdentity } from './names';
 import { TRAITS } from './traits';
 import { ARCHETYPES_BY_GROUP } from './talents';
+import { createClubVisualIdentity, createPlayerVisualIdentity } from '../core/visual-identity';
+import { ClubVisualIdentity } from '../models/visual.model';
 
 /** Squad template: which positions to fill and their alternates. */
 const SQUAD_TEMPLATE: { position: Position; alts: Position[] }[] = [
@@ -82,6 +84,7 @@ export function generatePlayer(
   targetOverall: number,
   kitNumber: number,
 ): Player {
+  const id = uid('ply');
   const group = groupForPosition(position);
   const age = rng.int(17, 34);
   const attributes = generateAttributes(rng, group, targetOverall);
@@ -107,13 +110,14 @@ export function generatePlayer(
         : [{ type: 'assists', target: rng.int(4, 10), progress: 0, rewardXp: 220, completed: false }];
 
   return {
-    id: uid('ply'),
+    id,
     firstName: rng.pick(FIRST_NAMES),
     lastName: rng.pick(LAST_NAMES),
     nationality: rng.pick(NATIONALITIES),
     age,
     foot: rng.bool(0.72) ? 'Right' : rng.bool(0.6) ? 'Left' : 'Both',
     kitNumber,
+    visuals: createPlayerVisualIdentity(id),
     position,
     positionGroup: group,
     altPositions: alts,
@@ -160,6 +164,7 @@ export function generateTeam(
   identity: ClubIdentity,
   strength: number,
   isPlayerControlled: boolean,
+  visuals?: ClubVisualIdentity,
 ): Team {
   const players = generateSquad(rng, strength);
   const formation = createFormation('4-3-3');
@@ -168,6 +173,7 @@ export function generateTeam(
     name: identity.name,
     shortName: identity.short,
     kit: { primary: identity.primary, secondary: identity.secondary },
+    visuals: visuals ?? createClubVisualIdentity(identity.name, identity.short, identity.primary, identity.secondary, rng.int(1, 0x7fffffff)),
     players,
     formation,
     tactics: defaultTactics(),
@@ -262,6 +268,7 @@ export interface NewGameOptions {
   difficulty?: 'easy' | 'normal' | 'hard';
   locale?: 'de' | 'en';
   seed?: number;
+  visuals?: ClubVisualIdentity;
 }
 
 /** Build a full, ready-to-play GameState. */
@@ -281,7 +288,7 @@ export function createNewGame(opts: NewGameOptions): GameState {
   const teams: Team[] = [];
 
   // Player team is mid-table strength so there's room to grow.
-  teams.push(generateTeam(rng, playerIdentity, 66, true));
+  teams.push(generateTeam(rng, playerIdentity, 66, true, opts.visuals));
   aiIdentities.forEach((id, i) => {
     const strength = clamp(Math.round(58 + rng.gaussian(8, 9) + (i % 4) * 2), 50, 84);
     teams.push(generateTeam(rng, id, strength, false));

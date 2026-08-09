@@ -1,5 +1,6 @@
 import { Formation, Tactics } from './tactics.model';
 import { Player } from './player.model';
+import { ClubVisualIdentity } from './visual.model';
 
 export type FacilityKey = 'trainingGround' | 'medicalCenter' | 'stadium' | 'youthAcademy';
 
@@ -24,6 +25,7 @@ export interface Team {
   name: string;
   shortName: string;
   kit: KitColors;
+  visuals: ClubVisualIdentity;
   players: Player[];
   formation: Formation;
   tactics: Tactics;

@@ -17,6 +17,8 @@
     "@angular/forms": "^22.1.0",
     "@angular/platform-browser": "^22.1.0",
     "@angular/router": "^22.1.0",
+    "@dicebear/core": "^10.4.0",
+    "@dicebear/styles": "^10.4.0",
     "@fontsource/ibm-plex-mono": "^5.3.0",
     "@fontsource/silkscreen": "^5.3.0",
     "rxjs": "~7.8.0",

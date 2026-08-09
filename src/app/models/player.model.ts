@@ -1,4 +1,5 @@
 import { AttributeKey, Foot, Position, PositionGroup } from './enums';
+import { PlayerVisualIdentity } from './visual.model';
 
 /** A trait/perk that modifies a player's match behaviour. */
 export interface Trait {
@@ -48,6 +49,7 @@ export interface Player {
   age: number;
   foot: Foot;
   kitNumber: number;
+  visuals: PlayerVisualIdentity;
 
   position: Position;
   positionGroup: PositionGroup;
