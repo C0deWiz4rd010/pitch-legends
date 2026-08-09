@@ -41,6 +41,39 @@ export interface PersonalGoal {
   completed: boolean;
 }
 
+export type InjuryArea = 'head' | 'shoulder' | 'back' | 'groin' | 'hamstring' | 'knee' | 'calf' | 'ankle' | 'foot';
+export type InjurySeverity = 'minor' | 'moderate' | 'serious';
+export type InjuryCause = 'contact' | 'non-contact' | 'training' | 'travel' | 'legacy';
+export type RehabPlan = 'conservative' | 'standard' | 'accelerated';
+
+export interface InjuryRecord {
+  id: string;
+  diagnosisId: string;
+  area: InjuryArea;
+  severity: InjurySeverity;
+  cause: InjuryCause;
+  fixtureId: string | null;
+  matchMinute: number | null;
+  initialWeeks: number;
+  remainingWeeks: number;
+  rehabPlan: RehabPlan;
+  recurrenceRisk: number;
+  returnFitness: number;
+  occurredSeason: number;
+  occurredWeek: number;
+}
+
+export interface InjuryHistoryEntry extends InjuryRecord {
+  recoveredSeason: number;
+  recoveredWeek: number;
+}
+
+export interface PlayerMedicalState {
+  activeInjury: InjuryRecord | null;
+  history: InjuryHistoryEntry[];
+  recurrenceUntilWeek: number | null;
+}
+
 export interface Player {
   id: string;
   firstName: string;
@@ -81,6 +114,7 @@ export interface Player {
   form: number;
   /** Weeks remaining until injury heals; 0 = fit. */
   injuryWeeks: number;
+  medical: PlayerMedicalState;
 
   // Career / economy
   marketValue: number;

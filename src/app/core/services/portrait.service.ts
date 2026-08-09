@@ -1,52 +1,57 @@
 import { Injectable } from '@angular/core';
 import { Player } from '../../models/player.model';
 import { Team } from '../../models/team.model';
-
-const SKIN_COLORS = ['ffdbac', 'f5cfa0', 'eac393', 'e0b687', 'cb9e6e', 'b68655', 'a26d3d', '8d5524'];
-const HAIR_COLORS = ['cab188', '603a14', '83623b', '611c17', '28150a', '009bbd', 'bd1700', '91cb15'];
+import { KitDesign } from '../../models/visual.model';
+import { PlayerSpriteFactory, PLAYER_SPRITE_HEIGHT, PLAYER_SPRITE_WIDTH } from '../../features/match/player-sprite.factory';
 
 @Injectable({ providedIn: 'root' })
 export class PortraitService {
   private readonly cache = new Map<string, string>();
-  private stylePromise?: Promise<unknown>;
+  private readonly sprites = new PlayerSpriteFactory();
 
   async portrait(player: Player, team?: Team): Promise<string> {
     const key = `${player.id}|${team?.visuals.seed ?? 'free'}|${player.visuals.seed}`;
     const cached = this.cache.get(key);
     if (cached) return cached;
-    const [{ Avatar }, style] = await Promise.all([import('@dicebear/core'), this.loadStyle()]);
-    const visual = player.visuals;
-    const home = team?.visuals.kits.home;
-    const options = {
-      seed: visual.portraitSeed,
-      backgroundColor: stripHash(home?.secondary ?? '#172144'),
-      clothingColor: stripHash(home?.shirt ?? '#37d8ff'),
-      skinColor: SKIN_COLORS[visual.skinTone % SKIN_COLORS.length],
-      hairColor: HAIR_COLORS[visual.hairColor % HAIR_COLORS.length],
-      hairVariant: `short${String(visual.hairStyle % 18 + 1).padStart(2, '0')}`,
-      beardProbability: visual.facialHair === 0 ? 0 : 100,
-      beardVariant: `variant${String(Math.max(1, visual.facialHair)).padStart(2, '0')}`,
-      glassesProbability: 0,
-      hatProbability: 0,
-      size: 96,
-    } as never;
-    const avatar = new Avatar(style as never, options);
-    const uri = avatar.toDataUri();
+    const kit = team?.visuals.kits.home ?? neutralKit();
+    const sprite = this.sprites.getStandalone(player, kit, 'idle', 1, 2);
+    const uri = renderDataUri(sprite, 48, 48, { sx: 6, sy: 0, sw: 28, sh: 29 });
+    this.cache.set(key, uri);
+    return uri;
+  }
+
+  async figure(player: Player, kit: KitDesign): Promise<string> {
+    const key = `figure|${player.id}|${player.visuals.seed}|${kit.shirt}|${kit.pattern}`;
+    const cached = this.cache.get(key);
+    if (cached) return cached;
+    const sprite = this.sprites.getStandalone(player, kit, 'idle', 1, 2);
+    const uri = renderDataUri(sprite, PLAYER_SPRITE_WIDTH, PLAYER_SPRITE_HEIGHT);
     this.cache.set(key, uri);
     return uri;
   }
 
   clear(): void {
     this.cache.clear();
-  }
-
-  private loadStyle(): Promise<unknown> {
-    this.stylePromise ??= Promise.all([import('@dicebear/core'), import('@dicebear/styles/pixel-art.json')])
-      .then(([{ Style }, definition]) => new Style(definition.default as never));
-    return this.stylePromise;
+    this.sprites.destroy();
   }
 }
 
-function stripHash(color: string): string {
-  return color.replace('#', '');
+function renderDataUri(source: CanvasImageSource, width: number, height: number, crop?: { sx: number; sy: number; sw: number; sh: number }): string {
+  if (typeof document === 'undefined') return '';
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return '';
+  ctx.imageSmoothingEnabled = false;
+  if (crop) ctx.drawImage(source, crop.sx, crop.sy, crop.sw, crop.sh, 0, 0, width, height);
+  else ctx.drawImage(source, 0, 0, width, height);
+  return canvas.toDataURL('image/png');
+}
+
+function neutralKit(): KitDesign {
+  return {
+    pattern: 'chest-band', shirt: '#37415f', secondary: '#151a2c', trim: '#d7e1ff',
+    shorts: '#151a2c', socks: '#37415f', number: '#f4f4df', collar: 'crew', sleeve: 'cuff',
+  };
 }

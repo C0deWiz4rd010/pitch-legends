@@ -9,10 +9,11 @@ import { I18nService } from '../../core/services/i18n.service';
 import { RpgService } from '../../core/services/rpg.service';
 import { AudioService } from '../../core/services/audio.service';
 import { APP_VERSION } from '../../core/version';
+import { ManagerPortraitComponent } from '../../shared/components/manager-portrait.component';
 
 @Component({
   selector: 'app-settings',
-  imports: [I18nPipe],
+  imports: [I18nPipe, ManagerPortraitComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './settings.page.html',
   styleUrl: './settings.page.scss',
@@ -33,7 +34,7 @@ export class SettingsPage {
   protected readonly difficulties: GameSettings['difficulty'][] = ['easy', 'normal', 'hard'];
   protected readonly durations: GameSettings['matchDuration'][] = [3, 5, 8];
   protected readonly assistPresets: GameSettings['assistPreset'][] = ['assisted', 'balanced', 'manual'];
-  protected readonly perkPaths = ['coaching', 'tactics', 'scouting', 'leadership'] as const;
+  protected readonly perkPaths = ['coaching', 'tactics', 'scouting', 'leadership', 'negotiation', 'youthDevelopment'] as const;
 
   protected setDifficulty(d: GameSettings['difficulty']): void {
     this.gs.mutate((draft) => (draft.settings.difficulty = d));

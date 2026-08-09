@@ -36,4 +36,7 @@ export interface Team {
   isPlayerControlled: boolean;
   /** AI strength baseline, used to generate squads of varying quality. */
   strength: number;
+  managerId: string;
+  cityId: string;
+  rivalTeamIds: string[];
 }

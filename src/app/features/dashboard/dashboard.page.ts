@@ -10,6 +10,7 @@ import { I18nService } from '../../core/services/i18n.service';
 import { ClubCrestComponent } from '../../shared/components/club-crest.component';
 import { MiniKitComponent } from '../../shared/components/mini-kit.component';
 import { PlayerPortraitComponent } from '../../shared/components/player-portrait.component';
+import { ManagerPortraitComponent } from '../../shared/components/manager-portrait.component';
 import { formatCoins, moraleIcon, ratingColor } from '../../shared/rating-color';
 
 interface ManagerAlert {
@@ -21,7 +22,7 @@ interface ManagerAlert {
 
 @Component({
   selector: 'app-dashboard',
-  imports: [RouterLink, ClubCrestComponent, MiniKitComponent, PlayerPortraitComponent],
+  imports: [RouterLink, ClubCrestComponent, MiniKitComponent, PlayerPortraitComponent, ManagerPortraitComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './dashboard.page.html',
   styleUrl: './dashboard.page.scss',

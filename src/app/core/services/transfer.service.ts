@@ -139,19 +139,20 @@ export class TransferService {
         return;
       }
       const scoutingRank = draft.manager.perks.scouting ?? 0;
-      const cost = Math.max(500, SCOUT_COST - scoutingRank * 400);
+      const scoutingAbility = Math.max(0, draft.manager.attributes.scouting - 55);
+      const cost = Math.max(500, SCOUT_COST - scoutingRank * 400 - scoutingAbility * 35);
       if (club.coins < cost) {
         result = { ok: false, reason: 'Nicht genug Budget für den Scoutbericht.' };
         return;
       }
       club.coins -= cost;
-      const variance = Math.max(0, 4 - scoutingRank);
+      const variance = Math.max(0, 4 - scoutingRank - Math.floor(scoutingAbility / 15));
       const seedNoise = (hash32(`${draft.league.id}|${draft.league.season}|${playerId}|scout`) % 3) - 1;
       draft.transfers.reports.unshift({
         playerId,
         season: draft.league.season,
         createdWeek: draft.league.currentWeek,
-        confidence: clamp(60 + scoutingRank * 10, 60, 100),
+        confidence: clamp(60 + scoutingRank * 10 + Math.floor(scoutingAbility / 3), 60, 100),
         overallMin: clamp(located.player.overall - variance + Math.min(0, seedNoise), 1, 99),
         overallMax: clamp(located.player.overall + variance + Math.max(0, seedNoise), 1, 99),
         potentialMin: clamp(located.player.potential - variance, 1, 99),

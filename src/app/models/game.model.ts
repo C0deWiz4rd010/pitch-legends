@@ -3,11 +3,24 @@ import { AssistPreset, MatchResult } from './match.model';
 import { Team } from './team.model';
 import { TransferState } from './transfer.model';
 import { AttributeKey } from './enums';
+import { ManagerVisualIdentity } from './visual.model';
+import { WorldState } from './world.model';
 
 export type Difficulty = 'easy' | 'normal' | 'hard';
 export type Locale = 'de' | 'en';
 export type MatchDuration = 3 | 5 | 8;
-export type ManagerPerkPath = 'coaching' | 'tactics' | 'scouting' | 'leadership';
+export type ManagerPerkPath = 'coaching' | 'tactics' | 'scouting' | 'leadership' | 'negotiation' | 'youthDevelopment';
+export type TacticalPhilosophy = 'balanced' | 'possession' | 'gegenpress' | 'counter' | 'low-block';
+export type RecruitmentPhilosophy = 'academy' | 'stars' | 'value' | 'athletic' | 'loyalty';
+
+export interface ManagerAttributes {
+  coaching: number;
+  tactics: number;
+  scouting: number;
+  leadership: number;
+  negotiation: number;
+  youthDevelopment: number;
+}
 export type InputAction = 'move' | 'pass' | 'through' | 'lob' | 'shoot' | 'sprint' | 'skill' | 'switch' | 'tactics' | 'keeper';
 
 export interface ControlLearningState {
@@ -29,6 +42,18 @@ export interface NewsItem {
 }
 
 export interface ManagerProfile {
+  id: string;
+  clubId: string;
+  firstName: string;
+  lastName: string;
+  age: number;
+  nationality: string;
+  visuals: ManagerVisualIdentity;
+  attributes: ManagerAttributes;
+  tacticalPhilosophy: TacticalPhilosophy;
+  recruitmentPhilosophy: RecruitmentPhilosophy;
+  preferredFormation: string;
+  traits: string[];
   level: number;
   xp: number;
   xpToNext: number;
@@ -115,7 +140,7 @@ export function defaultSettings(): GameSettings {
   };
 }
 
-export const SAVE_VERSION = 4;
+export const SAVE_VERSION = 5;
 
 export interface GameState {
   version: number;
@@ -129,7 +154,9 @@ export interface GameState {
   news: NewsItem[];
   settings: GameSettings;
   manager: ManagerProfile;
+  managers: ManagerProfile[];
   trainingWeek: TrainingWeekState;
   objectives: CareerObjective[];
   transfers: TransferState;
+  world: WorldState;
 }

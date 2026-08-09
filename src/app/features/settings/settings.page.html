@@ -9,11 +9,12 @@
 
 <div class="manager-card card fade-up">
   <div class="manager-level">
+    @if (gs.manager(); as manager) { <app-manager-portrait [manager]="manager" [size]="72" /> }
     <span class="level-badge">LV {{ gs.manager()?.level }}</span>
     <div>
       <p class="eyebrow">{{ 'settings.manager' | t }}</p>
       <h2>{{ gs.game()?.managerName }}</h2>
-      <span class="muted">{{ gs.manager()?.xp }} / {{ gs.manager()?.xpToNext }} XP · {{ gs.manager()?.skillPoints }} SP</span>
+      <span class="muted">{{ gs.manager()?.tacticalPhilosophy }} · {{ gs.manager()?.recruitmentPhilosophy }} · {{ gs.manager()?.xp }} / {{ gs.manager()?.xpToNext }} XP · {{ gs.manager()?.skillPoints }} SP</span>
     </div>
   </div>
   <div class="perk-grid">

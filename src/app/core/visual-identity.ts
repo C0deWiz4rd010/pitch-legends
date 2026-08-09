@@ -10,6 +10,7 @@ import {
   CrestShape,
   KitDesign,
   KitPattern,
+  ManagerVisualIdentity,
   PlayerVisualIdentity,
 } from '../models/visual.model';
 import { Rng } from './util';
@@ -101,6 +102,23 @@ export function createPlayerVisualIdentity(playerId: string, salt = 0): PlayerVi
     headAccessory: accessoryRoll < 7 ? 'headband' : accessoryRoll < 9 ? 'protective-cap' : 'none',
     goalkeeperGloves: rng.int(0, 5),
     portraitSeed: `pitch-legends-${playerId}-${seed.toString(36)}`,
+  };
+}
+
+export function createManagerVisualIdentity(managerId: string, clubPrimary = '#37d8ff', salt = 0): ManagerVisualIdentity {
+  const seed = hash32(`${managerId}|manager-appearance|${salt}`);
+  const rng = new Rng(seed);
+  return {
+    seed,
+    skinTone: rng.int(0, 7),
+    headShape: rng.int(0, 7),
+    hairStyle: rng.int(0, 17),
+    hairColor: rng.int(0, 7),
+    facialHair: rng.int(0, 5),
+    glasses: rng.pick(['none', 'none', 'none', 'round', 'square'] as const),
+    outfit: rng.pick(['suit', 'tracksuit', 'tracksuit', 'coat'] as const),
+    outfitColor: rng.bool(0.58) ? normalizeHex(clubPrimary, '#37d8ff') : rng.pick(['#172144', '#2e3a58', '#3b244f', '#153f35']),
+    accentColor: rng.pick(['#f4f4df', '#ffd34e', '#37d8ff', '#54f28b', '#ff4f78']),
   };
 }
 

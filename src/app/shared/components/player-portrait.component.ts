@@ -2,6 +2,7 @@ import { ChangeDetectionStrategy, Component, effect, inject, input, signal } fro
 import { Player } from '../../models/player.model';
 import { Team } from '../../models/team.model';
 import { PortraitService } from '../../core/services/portrait.service';
+import { GameStateService } from '../../core/services/game-state.service';
 
 @Component({
   selector: 'app-player-portrait',
@@ -24,6 +25,7 @@ import { PortraitService } from '../../core/services/portrait.service';
 })
 export class PlayerPortraitComponent {
   private readonly portraits = inject(PortraitService);
+  private readonly gameState = inject(GameStateService);
   readonly player = input.required<Player>();
   readonly team = input<Team>();
   readonly size = input(64);
@@ -32,7 +34,7 @@ export class PlayerPortraitComponent {
   constructor() {
     effect(() => {
       const player = this.player();
-      const team = this.team();
+      const team = this.team() ?? this.gameState.game()?.teams.find((candidate) => candidate.players.some((member) => member.id === player.id));
       this.src.set('');
       void this.portraits.portrait(player, team).then((src) => {
         if (this.player().id === player.id) this.src.set(src);

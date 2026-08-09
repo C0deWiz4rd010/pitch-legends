@@ -1,7 +1,7 @@
 import { ArcadeActor } from '../../core/services/arcade-match';
 import { contrastText, mixHex } from '../../core/visual-identity';
 import { PlayerActionState, PlayerRuntimeSnapshot } from '../../models/match.model';
-import { PlayerPersonality } from '../../models/player.model';
+import { Player, PlayerPersonality } from '../../models/player.model';
 import { KitDesign, PlayerVisualIdentity } from '../../models/visual.model';
 
 export const PLAYER_SPRITE_WIDTH = 40;
@@ -70,6 +70,22 @@ export class PlayerSpriteFactory {
     if (!ctx) return surface;
     ctx.imageSmoothingEnabled = false;
     this.draw(ctx, visual, kit, actor.player.kitNumber, goalkeeper, actor.player.personality, runtime.action, direction, frame);
+    const source: CanvasImageSource = 'transferToImageBitmap' in surface ? surface.transferToImageBitmap() : surface;
+    this.cache.set(key, source);
+    this.trim();
+    return source;
+  }
+
+  /** Render a UI figure from the exact same layers used by live match sprites. */
+  getStandalone(player: Player, kit: KitDesign, action: PlayerActionState = 'idle', frame = 1, direction = 2): CanvasImageSource {
+    const key = ['standalone', player.id, kitSignature(kit), action, direction, frame].join('|');
+    const cached = this.cache.get(key);
+    if (cached) return cached;
+    const surface = createSurface();
+    const ctx = surface.getContext('2d') as SpriteContext | null;
+    if (!ctx) return surface;
+    ctx.imageSmoothingEnabled = false;
+    this.draw(ctx, player.visuals, kit, player.kitNumber, player.positionGroup === 'GK', player.personality, action, direction, frame);
     const source: CanvasImageSource = 'transferToImageBitmap' in surface ? surface.transferToImageBitmap() : surface;
     this.cache.set(key, source);
     this.trim();

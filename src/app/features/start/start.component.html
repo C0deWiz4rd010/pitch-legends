@@ -98,6 +98,13 @@
         </div>
       </div>
 
+      <section class="world-studio">
+        <div class="world-head"><span class="eyebrow">LIVING WORLD GENERATOR</span><button type="button" (click)="rollEverything()">⚄ ALLES WÜRFELN</button></div>
+        <div class="seed-row"><label>WORLD SEED<input type="number" [ngModel]="worldSeed()" (ngModelChange)="worldSeed.set(+$event)" /></label><button type="button" (click)="copySeed()">COPY</button><button type="button" (click)="rollWorld()">WELT ↻</button></div>
+        <div class="manager-preview"><app-manager-portrait [manager]="managerPreview()" [size]="72" /><div><small>MANAGER IDENTITY</small><b>{{ managerPreview().firstName }} {{ managerPreview().lastName }}</b><button type="button" (click)="rollManager()">MANAGER WÜRFELN</button></div></div>
+        <div class="philosophies">@for (philosophy of philosophies; track philosophy) { <button type="button" [class.active]="managerPhilosophy() === philosophy" (click)="managerPhilosophy.set(philosophy)">{{ philosophy }}</button> }</div>
+      </section>
+
       @if (error()) { <p class="error">{{ error() }}</p> }
 
       <button class="btn btn--primary btn--block big" (click)="start()">{{ 'start.begin' | t }} ▶</button>

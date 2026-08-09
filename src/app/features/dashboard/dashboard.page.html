@@ -76,11 +76,11 @@
 
     <aside class="manager-rail command-enter">
       <div class="manager-card">
-        <div class="manager-avatar" aria-hidden="true"><i></i><b></b></div>
+        @if (gs.manager(); as manager) { <app-manager-portrait [manager]="manager" [size]="58" /> }
         <div>
           <span class="eyebrow">{{ text('MANAGER', 'MANAGER') }}</span>
           <strong>{{ gs.game()?.managerName }}</strong>
-          <small>LV {{ gs.manager()?.level }} · {{ gs.manager()?.skillPoints }} SP</small>
+          <small>{{ gs.manager()?.tacticalPhilosophy }} · LV {{ gs.manager()?.level }} · {{ gs.manager()?.skillPoints }} SP</small>
         </div>
       </div>
       <div class="xp-track"><i [style.width.%]="(gs.manager()?.xp ?? 0) / (gs.manager()?.xpToNext ?? 1) * 100"></i></div>

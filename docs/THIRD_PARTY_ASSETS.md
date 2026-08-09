@@ -2,15 +2,23 @@
 
 Pitch Legends remains offline-capable. Runtime graphics are generated locally and no avatar or asset API is contacted.
 
-## DiceBear
+## Faker
 
-- Packages: `@dicebear/core` and `@dicebear/styles`
-- Version: `10.4.0`
-- Usage: the `pixel-art` style is lazy-loaded to generate deterministic player portraits.
-- Source: <https://www.dicebear.com/styles/pixel-art/>
-- License: MIT for the packages; CC0 1.0 for the Pixel Art style assets.
-- Core license SHA-256: `E337900E7AD5E9D1DD79D57897FA5C21043C10D8C9CBFE40E652A3269740F5CF`
-- Styles license SHA-256: `640B2147AB2A594FE4BA429ECD61AF2F5CC8BE01C751004EEF80C2F1C92DFA0F`
+- Package: `@faker-js/faker`
+- Version: `10.5.0`
+- Usage: deterministic, locale-aware fictional player and manager names. All calls use the persisted world seed; no live API is contacted.
+- Source: <https://fakerjs.dev/>
+- License: MIT.
+- Bundled license SHA-256: `8C0814C525426E67C04CA562F28364BE477003697903D257160C081D14B271BF`
+
+## d3-delaunay
+
+- Package: `d3-delaunay`
+- Version: `6.0.4`
+- Usage: deterministic neighbouring-city routes and Voronoi regions for the fictional league atlas.
+- Source: <https://github.com/d3/d3-delaunay>
+- License: ISC.
+- Bundled license SHA-256: `582C3022BD01942336095F92B58A90B1BE624DC547D987555C6C956512DD24C1`
 
 ## Kenney Input Prompts Pixel
 

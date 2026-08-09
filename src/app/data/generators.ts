@@ -9,7 +9,7 @@ import {
 } from '../models/player.model';
 import { Team } from '../models/team.model';
 import { League, Fixture } from '../models/league.model';
-import { GameState, SAVE_VERSION, defaultSettings } from '../models/game.model';
+import { GameState, ManagerProfile, SAVE_VERSION, TacticalPhilosophy, defaultSettings } from '../models/game.model';
 import { emptyTransferState } from '../models/transfer.model';
 import { defaultFacilities } from '../models/team.model';
 import { defaultTactics } from '../models/tactics.model';
@@ -17,11 +17,12 @@ import { Rng, uid, clamp } from '../core/util';
 import { computeOverall, groupForPosition, marketValueFor, weeklySalaryFor } from '../core/ratings';
 import { xpToNextForLevel } from '../core/progression';
 import { createFormation } from './formations';
-import { CLUB_IDENTITIES, FIRST_NAMES, LAST_NAMES, NATIONALITIES, ClubIdentity } from './names';
+import { ClubIdentity } from './names';
 import { TRAITS } from './traits';
 import { ARCHETYPES_BY_GROUP } from './talents';
-import { createClubVisualIdentity, createPlayerVisualIdentity } from '../core/visual-identity';
+import { createClubVisualIdentity, createManagerVisualIdentity, createPlayerVisualIdentity, hash32 } from '../core/visual-identity';
 import { ClubVisualIdentity } from '../models/visual.model';
+import { generatePersonName, generateWorld } from './world-generator';
 
 /** Squad template: which positions to fill and their alternates. */
 const SQUAD_TEMPLATE: { position: Position; alts: Position[] }[] = [
@@ -84,8 +85,12 @@ export function generatePlayer(
   alts: Position[],
   targetOverall: number,
   kitNumber: number,
+  identityKey?: string | number,
+  worldSeed?: number,
 ): Player {
-  const id = uid('ply');
+  const identitySeed = rng.int(1, 0x7fffffff);
+  const id = `ply-${identitySeed.toString(36)}`;
+  const identity = generatePersonName(worldSeed ?? identitySeed, identityKey ?? identitySeed);
   const group = groupForPosition(position);
   const age = rng.int(17, 34);
   const attributes = generateAttributes(rng, group, targetOverall);
@@ -113,9 +118,9 @@ export function generatePlayer(
 
   return {
     id,
-    firstName: rng.pick(FIRST_NAMES),
-    lastName: rng.pick(LAST_NAMES),
-    nationality: rng.pick(NATIONALITIES),
+    firstName: identity.firstName,
+    lastName: identity.lastName,
+    nationality: identity.nationality,
     age,
     foot: rng.bool(0.72) ? 'Right' : rng.bool(0.6) ? 'Left' : 'Both',
     kitNumber,
@@ -140,6 +145,7 @@ export function generatePlayer(
     fitness: rng.int(88, 100),
     form: rng.int(-1, 2),
     injuryWeeks: 0,
+    medical: { activeInjury: null, history: [], recurrenceUntilWeek: null },
     marketValue,
     salary: weeklySalaryFor({ marketValue, age, overall }),
     contractWeeks: rng.int(40, 160),
@@ -147,7 +153,7 @@ export function generatePlayer(
   };
 }
 
-export function generateSquad(rng: Rng, teamStrength: number): Player[] {
+export function generateSquad(rng: Rng, teamStrength: number, teamKey = 'team', worldSeed?: number): Player[] {
   const players: Player[] = [];
   const usedNumbers = new Set<number>();
   SQUAD_TEMPLATE.forEach((slot, i) => {
@@ -155,7 +161,7 @@ export function generateSquad(rng: Rng, teamStrength: number): Player[] {
     let kit = clamp(i + 1 + rng.int(0, 3), 1, 99);
     while (usedNumbers.has(kit)) kit = clamp(kit + 1, 1, 99);
     usedNumbers.add(kit);
-    players.push(generatePlayer(rng, slot.position, slot.alts, target, kit));
+    players.push(generatePlayer(rng, slot.position, slot.alts, target, kit, `${teamKey}|${i}`, worldSeed));
   });
   return players;
 }
@@ -166,12 +172,14 @@ export function generateTeam(
   strength: number,
   isPlayerControlled: boolean,
   visuals?: ClubVisualIdentity,
+  meta?: { id: string; cityId: string; managerId: string; worldSeed: number },
 ): Team {
-  const players = generateSquad(rng, strength);
+  const teamId = meta?.id ?? `team-${rng.int(1, 0x7fffffff).toString(36)}`;
+  const players = generateSquad(rng, strength, teamId, meta?.worldSeed);
   const formation = createFormation('4-3-3');
   const wageBill = players.reduce((sum, player) => sum + player.salary, 0);
   const team: Team = {
-    id: uid('team'),
+    id: teamId,
     name: identity.name,
     shortName: identity.short,
     kit: { primary: identity.primary, secondary: identity.secondary },
@@ -185,6 +193,9 @@ export function generateTeam(
     wageBudget: Math.ceil((wageBill * 1.25) / 500) * 500,
     isPlayerControlled,
     strength,
+    managerId: meta?.managerId ?? `manager-${teamId}`,
+    cityId: meta?.cityId ?? `city-${teamId}`,
+    rivalTeamIds: [],
   };
   autoFillLineup(team);
   return team;
@@ -258,7 +269,7 @@ export function generateFixtures(teamIds: string[], rng: Rng): Fixture[] {
 }
 
 function makeFixture(week: number, homeTeamId: string, awayTeamId: string): Fixture {
-  return { id: uid('fx'), week, homeTeamId, awayTeamId, homeScore: null, awayScore: null, played: false };
+  return { id: `fx-${week}-${homeTeamId}-${awayTeamId}`, week, homeTeamId, awayTeamId, homeScore: null, awayScore: null, played: false };
 }
 
 export interface NewGameOptions {
@@ -271,12 +282,16 @@ export interface NewGameOptions {
   locale?: 'de' | 'en';
   seed?: number;
   visuals?: ClubVisualIdentity;
+  managerPhilosophy?: TacticalPhilosophy;
 }
 
 /** Build a full, ready-to-play GameState. */
 export function createNewGame(opts: NewGameOptions): GameState {
-  const rng = new Rng(opts.seed ?? (Date.now() >>> 0));
+  const seed = opts.seed ?? (Date.now() >>> 0);
+  const rng = new Rng(seed);
   const totalTeams = 12;
+  const teamIds = Array.from({ length: totalTeams }, (_, index) => `team-${hash32(`${seed}|team|${index}`).toString(36)}`);
+  const worldBlueprint = generateWorld(seed, teamIds, opts.clubName);
 
   // Player's club identity.
   const playerIdentity: ClubIdentity = {
@@ -286,23 +301,38 @@ export function createNewGame(opts: NewGameOptions): GameState {
     secondary: opts.secondary || '#04240f',
   };
 
-  const aiIdentities = rng.shuffle(CLUB_IDENTITIES).slice(0, totalTeams - 1);
   const teams: Team[] = [];
+  const ownManager = generateManager(seed, 0, teamIds[0], opts.managerName || 'Manager', opts.primary || '#38e07b', true, opts.managerPhilosophy);
+  const aiManagers = Array.from({ length: totalTeams - 1 }, (_, index) =>
+    generateManager(seed, index + 1, teamIds[index + 1], undefined, worldBlueprint.clubIdentities[index + 1].primary, false),
+  );
 
   // Player team is mid-table strength so there's room to grow.
-  teams.push(generateTeam(rng, playerIdentity, 66, true, opts.visuals));
-  aiIdentities.forEach((id, i) => {
+  teams.push(generateTeam(rng, playerIdentity, 66, true, opts.visuals, {
+    id: teamIds[0], cityId: worldBlueprint.world.cities[0].id, managerId: ownManager.id, worldSeed: seed,
+  }));
+  worldBlueprint.clubIdentities.slice(1).forEach((identity, i) => {
     const strength = clamp(Math.round(58 + rng.gaussian(8, 9) + (i % 4) * 2), 50, 84);
-    teams.push(generateTeam(rng, id, strength, false));
+    const manager = aiManagers[i];
+    const team = generateTeam(rng, identity, strength, false, undefined, {
+      id: teamIds[i + 1], cityId: worldBlueprint.world.cities[i + 1].id, managerId: manager.id, worldSeed: seed,
+    });
+    applyManagerPhilosophy(team, manager.tacticalPhilosophy);
+    teams.push(team);
   });
 
-  const teamIds = teams.map((t) => t.id);
+  for (const rivalry of worldBlueprint.world.rivalries) {
+    const a = teams.find((team) => team.id === rivalry.teamAId);
+    const b = teams.find((team) => team.id === rivalry.teamBId);
+    if (a && !a.rivalTeamIds.includes(rivalry.teamBId)) a.rivalTeamIds.push(rivalry.teamBId);
+    if (b && !b.rivalTeamIds.includes(rivalry.teamAId)) b.rivalTeamIds.push(rivalry.teamAId);
+  }
   const fixtures = generateFixtures(teamIds, rng);
   const totalWeeks = Math.max(...fixtures.map((f) => f.week));
 
   const league: League = {
-    id: uid('lg'),
-    name: 'Legends League',
+    id: `league-${seed.toString(36)}`,
+    name: worldBlueprint.world.country.leagueName,
     season: 1,
     currentWeek: 1,
     totalWeeks,
@@ -315,14 +345,14 @@ export function createNewGame(opts: NewGameOptions): GameState {
     version: SAVE_VERSION,
     createdAt: now,
     updatedAt: now,
-    managerName: opts.managerName || 'Manager',
+    managerName: `${ownManager.firstName} ${ownManager.lastName}`.trim(),
     clubId: teams[0].id,
     teams,
     league,
     results: [],
     news: [
       {
-        id: uid('news'),
+        id: `news-${seed.toString(36)}-welcome`,
         week: 1,
         icon: 'star',
         titleKey: 'news.welcome.title',
@@ -335,17 +365,12 @@ export function createNewGame(opts: NewGameOptions): GameState {
       difficulty: opts.difficulty ?? 'normal',
       locale: opts.locale ?? 'de',
     },
-    manager: {
-      level: 1,
-      xp: 0,
-      xpToNext: 250,
-      skillPoints: 0,
-      perks: {},
-    },
+    manager: ownManager,
+    managers: aiManagers,
     trainingWeek: { season: 1, week: 1, slotsUsed: 0, maxSlots: 3, completedSessions: [] },
     objectives: [
       {
-        id: uid('objective'),
+        id: `objective-${seed.toString(36)}-league`,
         type: 'league-position',
         target: 6,
         progress: 12,
@@ -354,7 +379,7 @@ export function createNewGame(opts: NewGameOptions): GameState {
         completed: false,
       },
       {
-        id: uid('objective'),
+        id: `objective-${seed.toString(36)}-growth`,
         type: 'player-growth',
         target: 3,
         progress: 0,
@@ -364,5 +389,48 @@ export function createNewGame(opts: NewGameOptions): GameState {
       },
     ],
     transfers: emptyTransferState(1, 1),
+    world: worldBlueprint.world,
   };
+}
+
+function generateManager(seed: number, index: number, clubId: string, explicitName: string | undefined, clubPrimary: string, playerControlled: boolean, preferredPhilosophy?: TacticalPhilosophy): ManagerProfile {
+  const generated = generatePersonName(seed, `manager-${index}`);
+  const parts = explicitName?.trim().split(/\s+/).filter(Boolean) ?? [];
+  const firstName = parts.length ? parts[0] : generated.firstName;
+  const lastName = parts.length > 1 ? parts.slice(1).join(' ') : parts.length ? '' : generated.lastName;
+  const rng = new Rng(hash32(`${seed}|manager-profile|${index}`));
+  const tacticalPhilosophy = rng.pick(['balanced', 'possession', 'gegenpress', 'counter', 'low-block'] as const);
+  return {
+    id: `manager-${hash32(`${seed}|${index}`).toString(36)}`,
+    clubId,
+    firstName,
+    lastName,
+    age: rng.int(35, 66),
+    nationality: generated.nationality,
+    visuals: createManagerVisualIdentity(`manager-${seed}-${index}`, clubPrimary),
+    attributes: {
+      coaching: playerControlled ? 55 : rng.int(45, 88),
+      tactics: playerControlled ? 55 : rng.int(45, 88),
+      scouting: playerControlled ? 55 : rng.int(45, 88),
+      leadership: playerControlled ? 55 : rng.int(45, 88),
+      negotiation: playerControlled ? 55 : rng.int(45, 88),
+      youthDevelopment: playerControlled ? 55 : rng.int(45, 88),
+    },
+    tacticalPhilosophy: playerControlled ? preferredPhilosophy ?? 'balanced' : tacticalPhilosophy,
+    recruitmentPhilosophy: rng.pick(['academy', 'stars', 'value', 'athletic', 'loyalty'] as const),
+    preferredFormation: rng.pick(['4-3-3', '4-4-2', '4-2-3-1', '3-5-2'] as const),
+    traits: rng.shuffle(['calm', 'motivator', 'analyst', 'developer', 'risk-taker', 'negotiator']).slice(0, 2),
+    level: 1,
+    xp: 0,
+    xpToNext: 250,
+    skillPoints: 0,
+    perks: {},
+  };
+}
+
+function applyManagerPhilosophy(team: Team, philosophy: TacticalPhilosophy): void {
+  if (philosophy === 'possession') Object.assign(team.tactics, { mentality: 'balanced', pressing: 'medium', tempo: 'slow', buildUp: 'play-out-of-defence', passing: 'short', counterAttack: false });
+  if (philosophy === 'gegenpress') Object.assign(team.tactics, { mentality: 'attacking', pressing: 'gegenpress', tempo: 'fast', defensiveLine: 'high', counterAttack: true });
+  if (philosophy === 'counter') Object.assign(team.tactics, { mentality: 'defensive', pressing: 'medium', tempo: 'fast', defensiveLine: 'deep', buildUp: 'long-ball', passing: 'direct', counterAttack: true });
+  if (philosophy === 'low-block') Object.assign(team.tactics, { mentality: 'ultra-defensive', pressing: 'low', tempo: 'slow', defensiveLine: 'deep', width: 'narrow', counterAttack: false });
 }

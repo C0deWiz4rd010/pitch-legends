@@ -95,3 +95,16 @@ export interface PlayerVisualIdentity {
   goalkeeperGloves: number;
   portraitSeed: string;
 }
+
+export interface ManagerVisualIdentity {
+  seed: number;
+  skinTone: number;
+  headShape: number;
+  hairStyle: number;
+  hairColor: number;
+  facialHair: number;
+  glasses: 'none' | 'round' | 'square';
+  outfit: 'suit' | 'tracksuit' | 'coat';
+  outfitColor: string;
+  accentColor: string;
+}

@@ -242,7 +242,8 @@ export function submitPlayerContract(game: GameState, negotiationId: string, pro
   const roleWeight = { prospect: 0.86, rotation: 0.94, starter: 1, star: 1.1 }[proposal.squadRole];
   const expectedRoleWeight = { prospect: 0.86, rotation: 0.94, starter: 1, star: 1.1 }[expected.squadRole];
   const effective = proposal.salary * roleWeight + proposal.signingBonus / Math.max(52, proposal.weeks);
-  const required = expected.salary * expectedRoleWeight + expected.signingBonus / expected.weeks;
+  const managerEdge = Math.max(0, (game.manager.attributes.negotiation - 55) / 1000) + (game.manager.perks.negotiation ?? 0) * .01;
+  const required = (expected.salary * expectedRoleWeight + expected.signingBonus / expected.weeks) * Math.max(.9, 1 - managerEdge);
   negotiation.contract = { ...proposal, salary: Math.max(0, Math.round(proposal.salary / 50) * 50), signingBonus: Math.max(0, Math.round(proposal.signingBonus / 500) * 500) };
   if (effective >= required) return executeNegotiation(game, negotiation);
   if (effective >= required * 0.85 && !negotiation.agentCounterUsed) {
@@ -358,7 +359,7 @@ export function processTransferWeek(game: GameState): void {
     const located = locateTransferPlayer(game, listing.playerId);
     if (!located?.team || !canReleasePlayer(located.team, located.player.id)) continue;
     const buyers = rng.shuffle(game.teams.filter((team) => team.id !== game.clubId && team.id !== located.team!.id && team.players.length < MAX_SQUAD_SIZE));
-    const buyer = buyers.find((team) => teamNeedsPlayer(team, located.player) && team.coins - listing.askingPrice >= fourWeekReserve(game, team.id));
+    const buyer = buyers.find((team) => teamNeedsPlayer(game, team, located.player) && team.coins - listing.askingPrice >= fourWeekReserve(game, team.id));
     if (!buyer) continue;
     buyer.coins -= listing.askingPrice;
     located.team.coins += listing.askingPrice;
@@ -486,10 +487,16 @@ function canReleasePlayer(team: Team, playerId: string): boolean {
   return player.position !== 'GK' || team.players.filter((candidate) => candidate.position === 'GK').length > 1;
 }
 
-function teamNeedsPlayer(team: Team, player: Player): boolean {
+function teamNeedsPlayer(game: GameState, team: Team, player: Player): boolean {
   const group = team.players.filter((candidate) => candidate.positionGroup === player.positionGroup);
   if (!group.length) return true;
-  return player.overall >= group.reduce((sum, candidate) => sum + candidate.overall, 0) / group.length - 3;
+  const average = group.reduce((sum, candidate) => sum + candidate.overall, 0) / group.length;
+  const manager = game.managers.find((candidate) => candidate.clubId === team.id);
+  if (manager?.recruitmentPhilosophy === 'academy' && player.age > 23) return false;
+  if (manager?.recruitmentPhilosophy === 'stars' && player.overall < average + 2) return false;
+  if (manager?.recruitmentPhilosophy === 'athletic' && (player.attributes.pace + player.attributes.physical) / 2 < 64) return false;
+  if (manager?.recruitmentPhilosophy === 'value' && player.marketValue > team.coins * .7) return false;
+  return player.overall >= average - 3;
 }
 
 function nextKitNumber(team: Team, preferred: number): number {
