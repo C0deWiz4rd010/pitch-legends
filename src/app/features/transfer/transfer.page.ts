@@ -65,6 +65,8 @@ export class TransferPage {
   protected readonly listedOnly = signal(UI_MEMORY.listed);
   protected readonly positions = ['ALL', 'GK', 'DEF', 'MID', 'ATT'];
   protected readonly selectedId = signal<string | null>(null);
+  protected readonly dossierOpen = signal(false);
+  protected readonly filtersOpen = signal(false);
   protected readonly compareIds = signal<string[]>([]);
   protected readonly message = signal('');
 
@@ -162,7 +164,10 @@ export class TransferPage {
 
   protected choose(target: TransferTargetView): void {
     this.selectedId.set(target.player.id);
+    this.dossierOpen.set(true);
   }
+
+  protected closeDossier(): void { this.dossierOpen.set(false); }
 
   protected toggleCompare(playerId: string): void {
     this.compareIds.update((ids) => ids.includes(playerId) ? ids.filter((id) => id !== playerId) : [...ids.slice(-2), playerId]);

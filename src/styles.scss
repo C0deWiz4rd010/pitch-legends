@@ -182,6 +182,7 @@ textarea {
 }
 
 .scroll { @include scrollbar; overflow: auto; }
+.filter-toggle, .dossier-close { display: none; }
 .row { display: flex; align-items: center; }
 .gap-4 { gap: 4px; } .gap-8 { gap: 8px; } .gap-12 { gap: 12px; } .gap-16 { gap: 16px; }
 .grow { flex: 1; } .wrap { flex-wrap: wrap; }
@@ -212,4 +213,60 @@ textarea {
 @media (max-width: 520px) {
   .btn { white-space: normal; }
   .card { padding: 14px; }
+}
+
+@media (max-width: 900px) {
+  app-transfer .player-dossier {
+    display: none;
+    position: fixed;
+    inset: var(--topbar-h) 0 0;
+    z-index: 30;
+    overflow: auto;
+    padding: 18px;
+    background: #0d1323;
+  }
+  app-transfer .player-dossier.mobile-open { display: block; }
+  app-transfer .dossier-close {
+    position: sticky;
+    top: 0;
+    z-index: 5;
+    margin: 0 0 6px auto;
+    width: 38px;
+    height: 38px;
+    display: grid;
+    place-items: center;
+    border: 2px solid var(--border);
+    background: var(--bg-900);
+    color: var(--text);
+    font-size: 22px;
+  }
+}
+
+@media (max-width: 620px) {
+  app-transfer .filter-toggle {
+    width: 100%;
+    min-height: 38px;
+    display: block;
+    border: 1px solid var(--border);
+    border-top: 0;
+    background: var(--surface-2);
+    color: var(--accent-2);
+    font: 7px var(--font-display);
+  }
+  app-transfer .filter-deck { display: none; }
+  app-transfer .filter-deck.mobile-open { display: grid; }
+}
+
+@media (min-width: 1100px) and (min-height: 680px) {
+  app-transfer { height: 100%; padding-bottom: 0; display: flex; flex-direction: column; overflow: hidden; }
+  app-transfer .transfer-head { flex: 0 0 auto; margin-bottom: 9px; }
+  app-transfer .transfer-head h1 { font-size: clamp(21px, 2.4vw, 28px); }
+  app-transfer .transfer-head p:not(.eyebrow) { margin-top: 4px; font-size: 10px; }
+  app-transfer .finance-strip { flex: 0 0 auto; margin-bottom: 8px; }
+  app-transfer .finance-strip > div { padding-block: 7px; }
+  app-transfer .market-tabs { flex: 0 0 auto; }
+  app-transfer .market-tabs button { min-height: 38px; }
+  app-transfer .filter-deck { flex: 0 0 auto; padding-block: 7px; }
+  app-transfer .market-shell { flex: 1 1 0; height: auto; min-height: 0; max-height: none; }
+  app-transfer .offers-board, app-transfer .contracts-board { flex: 1 1 0; min-height: 0; overflow: auto; }
 }

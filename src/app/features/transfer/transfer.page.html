@@ -27,7 +27,10 @@
 }
 
 @if (tab() === 'market' || tab() === 'shortlist') {
-  <section class="filter-deck fade-up" aria-label="Marktfilter">
+  <button class="filter-toggle" (click)="filtersOpen.set(!filtersOpen())" [attr.aria-expanded]="filtersOpen()">
+    {{ (filtersOpen() ? 'transfer.filter.hide' : 'transfer.filter.show') | t }}
+  </button>
+  <section class="filter-deck fade-up" [class.mobile-open]="filtersOpen()" aria-label="Marktfilter">
     <label class="search-box"><span>⌕</span><input type="search" [placeholder]="'transfer.search' | t" [value]="search()" (input)="search.set($any($event.target).value)" /></label>
     <select aria-label="Position" [value]="positionFilter()" (change)="positionFilter.set($any($event.target).value)">
       @for (position of positions; track position) { <option [value]="position">{{ position }}</option> }
@@ -82,7 +85,8 @@
     </section>
 
     @if (selectedTarget(); as target) {
-      <aside class="player-dossier">
+      <aside class="player-dossier" [class.mobile-open]="dossierOpen()">
+        <button class="dossier-close" (click)="closeDossier()" [attr.aria-label]="'common.close' | t">×</button>
         <div class="dossier-hero">
           <div class="portrait-stack">
             <app-player-portrait [player]="target.player" [team]="$any(target.team)" [size]="100" />

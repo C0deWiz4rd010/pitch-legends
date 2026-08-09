@@ -51,7 +51,14 @@ nav a.active { background: var(--accent); border-color: #c8ffd2 #197a46 #197a46 
 nav a.active .icon { color: var(--accent-3); border-color: #07190e; }
 .sidebar-foot { padding: 12px 4px 0; border-top: 2px solid var(--border-soft); }
 
-.main { min-width: 0; display: flex; flex-direction: column; }
+.main {
+  min-width: 0;
+  min-height: 0;
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
 .topbar {
   min-height: var(--topbar-h);
   display: flex;
@@ -75,7 +82,19 @@ nav a.active .icon { color: var(--accent-3); border-color: #07190e; }
 .stat-pill .v { font-family: var(--font-display); font-size: 10px; }
 .stat-pill .v small { color: var(--text-mute); }
 .stat-pill.coins .v, .pixel-coin { color: var(--accent-3); }
-.content { flex: 1; min-width: 0; padding: 24px; max-width: var(--maxw); width: 100%; margin: 0 auto; }
+.content {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 0;
+  height: calc(100dvh - var(--topbar-h));
+  padding: 24px;
+  max-width: var(--maxw);
+  width: 100%;
+  margin: 0 auto;
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
 .scrim { display: none; }
 
 @media (max-width: 860px) {
