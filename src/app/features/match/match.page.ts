@@ -23,7 +23,9 @@ import {
   MatchCommand,
   MatchEvent,
   MatchMode,
+  MatchRenderState,
   MatchResult,
+  MatchViewState,
   MatchWeather,
 } from '../../models/match.model';
 import { Team } from '../../models/team.model';
@@ -42,6 +44,19 @@ import { MiniKitComponent } from '../../shared/components/mini-kit.component';
 
 type PagePhase = 'preview' | 'intro' | 'simulating' | 'match' | 'halftime' | 'result';
 type TouchAction = 'sprint' | 'pass' | 'through' | 'lob' | 'shoot' | 'skill' | 'switch';
+
+const EMPTY_MATCH_VIEW: MatchViewState = {
+  footballMinute: 0,
+  homeScore: 0,
+  awayScore: 0,
+  phase: 'preMatch',
+  rulePhase: 'kickoff',
+  momentumHome: 50,
+  controlledPlayerId: '',
+  controlledFitness: 100,
+  controllerMode: 'human',
+  eventRevision: 0,
+};
 
 @Component({
   selector: 'app-match',
@@ -78,6 +93,7 @@ export class MatchPage implements OnDestroy {
   protected readonly performanceMessage = signal('');
   protected readonly inputDevice = signal<InputDevice>('keyboard');
   protected readonly autoEnabled = signal(false);
+  protected readonly matchView = signal<MatchViewState>(EMPTY_MATCH_VIEW);
   protected readonly committing = signal(false);
   protected readonly showSubs = signal(false);
   protected readonly showTactics = signal(false);
@@ -100,6 +116,9 @@ export class MatchPage implements OnDestroy {
   private raf = 0;
   private lastTs = 0;
   private fixedAccumulator = 0;
+  private previousRenderState: MatchRenderState | null = null;
+  private currentRenderState: MatchRenderState | null = null;
+  private lastViewSync = 0;
   private replayElapsed = 0;
   private prevHome = 0;
   private prevAway = 0;
@@ -110,6 +129,8 @@ export class MatchPage implements OnDestroy {
   private touchPointer: number | null = null;
   private touchOrigin = { x: 0, y: 0 };
   private readonly keys = new Set<string>();
+  private readonly edgeKeys = new Set<string>();
+  private readonly touchEdges = new Set<TouchAction>();
   private pausedForHelp = false;
   private previousLearningPass = false;
   private pendingPassAttempt = -1;
@@ -137,12 +158,12 @@ export class MatchPage implements OnDestroy {
     return this.homeTeam()?.id === club?.id ? this.awayTeam() : this.homeTeam();
   });
   protected readonly isHome = computed(() => this.homeTeam()?.id === this.controlledTeam()?.id);
-  protected readonly minute = computed(() => this.result() ? 90 : this.arcade?.footballMinute ?? 0);
-  protected readonly homeScore = computed(() => this.result()?.homeScore ?? this.arcade?.homeScore ?? 0);
-  protected readonly awayScore = computed(() => this.result()?.awayScore ?? this.arcade?.awayScore ?? 0);
-  protected readonly matchPhase = computed(() => this.arcade?.phase ?? 'preMatch');
+  protected readonly minute = computed(() => this.result() ? 90 : this.matchView().footballMinute);
+  protected readonly homeScore = computed(() => this.result()?.homeScore ?? this.matchView().homeScore);
+  protected readonly awayScore = computed(() => this.result()?.awayScore ?? this.matchView().awayScore);
+  protected readonly matchPhase = computed(() => this.matchView().phase);
   protected readonly tickerEvents = computed(() => [...this.revealed()].reverse());
-  protected readonly momentumHome = computed(() => this.arcade ? Math.round(this.arcade.ball.x / 105 * 100) : 50);
+  protected readonly momentumHome = computed(() => this.matchView().momentumHome);
   protected readonly expectedWeather = computed<MatchWeather>(() => {
     const fixture = this.gs.nextFixture();
     if (!fixture) return 'clear';
@@ -171,6 +192,7 @@ export class MatchPage implements OnDestroy {
       return;
     }
     if (event.code === 'KeyQ' && this.phase() === 'match' && !event.repeat) this.showTactics.update((value) => !value);
+    if (!event.repeat) this.edgeKeys.add(event.code);
     this.keys.add(event.code);
   };
   private readonly keyUp = (event: KeyboardEvent) => this.keys.delete(event.code);
@@ -294,6 +316,7 @@ export class MatchPage implements OnDestroy {
     this.prevAway = this.arcade.awayScore;
     this.revealed.set([...this.arcade.events]);
     this.lastAudioEvent = this.arcade.events.length;
+    this.initializeMatchProjection();
     this.checkpoints.save(this.arcade.checkpoint());
     this.phase.set('intro');
     this.audio.startMusic();
@@ -317,6 +340,7 @@ export class MatchPage implements OnDestroy {
     this.prevAway = this.arcade.awayScore;
     this.revealed.set([...this.arcade.events]);
     this.lastAudioEvent = this.arcade.events.length;
+    this.initializeMatchProjection();
     if (this.arcade.phase === 'halftime') {
       this.phase.set('halftime');
     } else {
@@ -351,39 +375,50 @@ export class MatchPage implements OnDestroy {
     this.renderer = new ArcadePitchRenderer(canvas);
     this.lastTs = 0;
     this.fixedAccumulator = 0;
+    if (!this.currentRenderState) this.initializeMatchProjection();
     this.raf = requestAnimationFrame((time) => this.loop(time));
   }
 
   private loop(timestamp: number): void {
     if (!this.arcade || this.phase() !== 'match') return;
     if (!this.lastTs) this.lastTs = timestamp;
-    const dt = Math.min((timestamp - this.lastTs) / 1000, 0.1);
+    const rawDelta = Math.max(0, (timestamp - this.lastTs) / 1000);
+    const renderDelta = Math.min(rawDelta, 0.05);
     this.lastTs = timestamp;
     if (this.arcade.phase === 'goalReplay') {
-      this.replayElapsed += dt;
+      this.replayElapsed += renderDelta;
       const frames = this.arcade.replaySnapshots();
       const index = Math.min(frames.length - 1, Math.floor(this.replayElapsed / 3.4 * frames.length));
-      this.renderer?.render(this.arcade, frames[Math.max(0, index)]);
+      const current = this.currentRenderState ?? this.arcade.renderState();
+      this.renderer?.render(this.arcade, { previous: current, current, alpha: 1, deltaSeconds: renderDelta }, frames[Math.max(0, index)]);
       if (this.replayElapsed >= 3.4) this.skipReplay();
       this.raf = requestAnimationFrame((time) => this.loop(time));
       return;
     }
     if (this.playing()) {
       const tacticalTimeScale = this.showTactics() ? 0.15 : 1;
-      this.fixedAccumulator += dt * (this.selectedMode() === 'coach' && this.autoEnabled() ? this.speed() : 1) * tacticalTimeScale;
-      if (this.fixedAccumulator > 0.25) {
-        this.fixedAccumulator = 0;
-        this.pauseFor('Performance-Schutz: Die Simulation lag mehr als 250 ms zurück.');
-      } else {
-        const input = this.arcade.controllerMode === 'human' ? this.readInput() : EMPTY_MATCH_COMMAND;
-        while (this.fixedAccumulator >= MATCH_TICK) {
-          this.arcade.step(MATCH_TICK, input);
-          this.fixedAccumulator -= MATCH_TICK;
-        }
+      const simulationSpeed = this.selectedMode() === 'coach' && this.autoEnabled() ? this.speed() : 1;
+      this.fixedAccumulator += Math.min(rawDelta, 0.5) * simulationSpeed * tacticalTimeScale;
+      const input = this.arcade.controllerMode === 'human' ? this.readInput() : EMPTY_MATCH_COMMAND;
+      let steps = 0;
+      while (this.fixedAccumulator >= MATCH_TICK && steps < 8) {
+        this.previousRenderState = this.currentRenderState ?? this.arcade.renderState();
+        this.arcade.step(MATCH_TICK, input);
+        this.currentRenderState = this.arcade.renderState();
+        this.fixedAccumulator -= MATCH_TICK;
+        steps++;
       }
-      this.syncMatch();
+      if (this.fixedAccumulator > 0.25) this.pauseFor('Performance-Schutz: Die Simulation liegt mehr als 250 ms zurück.');
+      this.syncMatch(timestamp);
     }
-    this.renderer?.render(this.arcade);
+    const current = this.currentRenderState ?? this.arcade.renderState();
+    const previous = this.previousRenderState ?? current;
+    this.renderer?.render(this.arcade, {
+      previous,
+      current,
+      alpha: Math.max(0, Math.min(1, this.fixedAccumulator / MATCH_TICK)),
+      deltaSeconds: renderDelta,
+    });
     if (this.arcade.phase === 'halftime') {
       this.enterHalftime();
       return;
@@ -395,9 +430,10 @@ export class MatchPage implements OnDestroy {
     this.raf = requestAnimationFrame((time) => this.loop(time));
   }
 
-  private syncMatch(): void {
+  private syncMatch(timestamp: number, forceView = false): void {
     if (!this.arcade) return;
-    this.revealed.set([...this.arcade.events]);
+    const eventChanged = this.arcade.events.length !== this.matchView().eventRevision;
+    if (eventChanged) this.revealed.set([...this.arcade.events]);
     for (const event of this.arcade.events.slice(this.lastAudioEvent)) this.audio.matchEvent(event);
     this.lastAudioEvent = this.arcade.events.length;
     const controlledStats = this.arcade.controlledSide === 'home' ? this.arcade.homeStats : this.arcade.awayStats;
@@ -420,6 +456,38 @@ export class MatchPage implements OnDestroy {
     } else if (this.arcade.rule.phase === 'playing') {
       this.previousRule = 'playing';
     }
+    const currentView = this.matchView();
+    const immediate = eventChanged || this.arcade.homeScore !== currentView.homeScore || this.arcade.awayScore !== currentView.awayScore || this.arcade.phase !== currentView.phase || this.arcade.rule.phase !== currentView.rulePhase || this.arcade.controllerMode !== currentView.controllerMode;
+    if (forceView || immediate || timestamp - this.lastViewSync >= 100) {
+      this.matchView.set(this.projectMatchView());
+      this.lastViewSync = timestamp;
+    }
+  }
+
+  private initializeMatchProjection(): void {
+    if (!this.arcade) return;
+    const state = this.arcade.renderState();
+    this.previousRenderState = state;
+    this.currentRenderState = state;
+    this.lastViewSync = 0;
+    this.matchView.set(this.projectMatchView());
+  }
+
+  private projectMatchView(): MatchViewState {
+    if (!this.arcade) return EMPTY_MATCH_VIEW;
+    const selected = this.arcade.actors.find((actor) => actor.player.id === this.arcade!.selectedPlayerId);
+    return {
+      footballMinute: this.arcade.footballMinute,
+      homeScore: this.arcade.homeScore,
+      awayScore: this.arcade.awayScore,
+      phase: this.arcade.phase,
+      rulePhase: this.arcade.rule.phase,
+      momentumHome: Math.round(this.arcade.ball.x / 105 * 100),
+      controlledPlayerId: this.arcade.selectedPlayerId,
+      controlledFitness: selected?.stamina ?? 100,
+      controllerMode: this.arcade.controllerMode,
+      eventRevision: this.arcade.events.length,
+    };
   }
 
   private celebrate(side: 'home' | 'away'): void {
@@ -434,6 +502,7 @@ export class MatchPage implements OnDestroy {
     if (!this.arcade || this.arcade.phase !== 'goalReplay') return;
     this.arcade.endReplay();
     this.replayElapsed = 0;
+    this.initializeMatchProjection();
   }
 
   private enterHalftime(): void {
@@ -454,6 +523,7 @@ export class MatchPage implements OnDestroy {
       this.arcade.selectedPlayerId = this.playerLockId();
     }
     this.arcade.resumeSecondHalf();
+    this.initializeMatchProjection();
     this.phase.set('match');
     this.playing.set(true);
   }
@@ -462,6 +532,7 @@ export class MatchPage implements OnDestroy {
     if (!this.arcade || this.arcade.phase === 'goalReplay') return;
     this.playing.update((value) => !value);
     this.arcade.setPaused(!this.playing());
+    this.matchView.set(this.projectMatchView());
     if (!this.playing()) this.checkpoints.save(this.arcade.checkpoint());
     else this.performanceMessage.set('');
   }
@@ -471,6 +542,7 @@ export class MatchPage implements OnDestroy {
     if (!this.arcade) return;
     this.playing.set(false);
     this.arcade.setPaused(true);
+    this.matchView.set(this.projectMatchView());
     this.performanceMessage.set(message);
     this.checkpoints.save(this.arcade.checkpoint());
   }
@@ -486,6 +558,7 @@ export class MatchPage implements OnDestroy {
     this.resetInputs();
     this.arcade.setControllerMode(mode);
     this.autoEnabled.set(mode === 'auto');
+    this.matchView.set(this.projectMatchView());
     if (mode === 'human') this.speed.set(1);
     this.checkpoints.save(this.arcade.checkpoint());
   }
@@ -573,6 +646,7 @@ export class MatchPage implements OnDestroy {
   }
 
   protected setTouchAction(action: TouchAction, active: boolean): void {
+    if (active) this.touchEdges.add(action);
     this.touchActions.update((current) => ({ ...current, [action]: active }));
   }
 
@@ -602,8 +676,7 @@ export class MatchPage implements OnDestroy {
 
   private readInput(): MatchCommand {
     const gamepad = typeof navigator !== 'undefined' ? navigator.getGamepads?.()[0] : null;
-    const axisX = Math.abs(gamepad?.axes[0] ?? 0) > 0.18 ? gamepad!.axes[0] : 0;
-    const axisY = Math.abs(gamepad?.axes[1] ?? 0) > 0.18 ? gamepad!.axes[1] : 0;
+    const [axisX, axisY] = radialAxes(gamepad?.axes[0] ?? 0, gamepad?.axes[1] ?? 0);
     const keyboardX = (MOVEMENT_KEYS.right.some((key) => this.keys.has(key)) ? 1 : 0) - (MOVEMENT_KEYS.left.some((key) => this.keys.has(key)) ? 1 : 0);
     const keyboardY = (MOVEMENT_KEYS.down.some((key) => this.keys.has(key)) ? 1 : 0) - (MOVEMENT_KEYS.up.some((key) => this.keys.has(key)) ? 1 : 0);
     const touches = this.touchActions();
@@ -617,7 +690,7 @@ export class MatchPage implements OnDestroy {
     const moveY = clampInput(keyboardY + axisY + this.touchY());
     const pressed = (action: keyof typeof CONTROL_INPUT_MAP): boolean => {
       const binding = CONTROL_INPUT_MAP[action];
-      return binding.keyboard.some((key) => this.keys.has(key)) || !!gamepad?.buttons[binding.gamepadButton]?.pressed || touches[action];
+      return binding.keyboard.some((key) => this.keys.has(key) || this.edgeKeys.has(key)) || !!gamepad?.buttons[binding.gamepadButton]?.pressed || touches[action] || this.touchEdges.has(action as TouchAction);
     };
     const pass = pressed('pass');
     const arcade = this.arcade;
@@ -626,7 +699,7 @@ export class MatchPage implements OnDestroy {
       this.pendingPassAttempt = stats.passesAttempted;
     }
     this.previousLearningPass = pass;
-    return {
+    const command: MatchCommand = {
       moveX,
       moveY,
       aimX: moveX,
@@ -644,6 +717,9 @@ export class MatchPage implements OnDestroy {
       pause: false,
       device: this.inputDevice(),
     };
+    this.edgeKeys.clear();
+    this.touchEdges.clear();
+    return command;
   }
 
   private updateInputDevice(device: Exclude<InputDevice, 'ai'>): void {
@@ -666,6 +742,8 @@ export class MatchPage implements OnDestroy {
 
   private resetInputs(): void {
     this.keys.clear();
+    this.edgeKeys.clear();
+    this.touchEdges.clear();
     this.previousLearningPass = false;
     this.pendingPassAttempt = -1;
     this.touchX.set(0);
@@ -678,6 +756,9 @@ export class MatchPage implements OnDestroy {
     cancelAnimationFrame(this.raf);
     this.destroyRenderer();
     this.arcade = null;
+    this.previousRenderState = null;
+    this.currentRenderState = null;
+    this.matchView.set(EMPTY_MATCH_VIEW);
     this.autoEnabled.set(false);
     this.result.set(null);
     this.revealed.set([]);
@@ -723,4 +804,13 @@ export class MatchPage implements OnDestroy {
 
 function clampInput(value: number): number {
   return Math.max(-1, Math.min(1, value));
+}
+
+function radialAxes(x: number, y: number): [number, number] {
+  const deadzone = 0.18;
+  const magnitude = Math.hypot(x, y);
+  if (magnitude <= deadzone) return [0, 0];
+  const normalized = Math.min(1, (magnitude - deadzone) / (1 - deadzone));
+  const curved = Math.pow(normalized, 1.12);
+  return [x / magnitude * curved, y / magnitude * curved];
 }

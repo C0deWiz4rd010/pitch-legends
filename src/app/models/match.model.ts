@@ -252,6 +252,37 @@ export interface MatchSnapshot {
   players: PlayerRuntimeSnapshot[];
 }
 
+/** Small immutable state consumed by the renderer between fixed simulation ticks. */
+export interface MatchRenderState {
+  tick: number;
+  controlledPlayerId: string;
+  attackDirection: 1 | -1;
+  discontinuityKey: string;
+  ball: BallSnapshot;
+  players: PlayerRuntimeSnapshot[];
+}
+
+export interface MatchRenderFrame {
+  previous: MatchRenderState;
+  current: MatchRenderState;
+  alpha: number;
+  deltaSeconds: number;
+}
+
+/** Throttled reactive projection for Angular HUD elements. */
+export interface MatchViewState {
+  footballMinute: number;
+  homeScore: number;
+  awayScore: number;
+  phase: MatchPhase;
+  rulePhase: RulePhase;
+  momentumHome: number;
+  controlledPlayerId: string;
+  controlledFitness: number;
+  controllerMode: MatchControllerMode;
+  eventRevision: number;
+}
+
 export interface MatchCheckpoint {
   version: 2;
   controllerMode: MatchControllerMode;

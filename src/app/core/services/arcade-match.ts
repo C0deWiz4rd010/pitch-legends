@@ -13,6 +13,7 @@ import {
   MatchKeyframe,
   MatchPhase,
   MatchResult,
+  MatchRenderState,
   MatchSnapshot,
   PlayerActionState,
   PlayerRuntimeSnapshot,
@@ -438,6 +439,21 @@ export class ArcadeMatch {
       controlledPlayerId: this.selectedPlayerId,
       attackDirection: this.currentAttackDirection,
       rule: { ...this.rule },
+      ball: this.ballSnapshot(),
+      players: this.actors.map((actor) => this.actorSnapshot(actor)),
+    };
+  }
+
+  renderState(): MatchRenderState {
+    const activeSignature = this.actors
+      .filter((actor) => actor.active)
+      .map((actor) => actor.player.id)
+      .join(',');
+    return {
+      tick: this.tick,
+      controlledPlayerId: this.selectedPlayerId,
+      attackDirection: this.currentAttackDirection,
+      discontinuityKey: `${this.half}|${this.phase}|${this.rule.phase}|${this.homeScore}:${this.awayScore}|${activeSignature}`,
       ball: this.ballSnapshot(),
       players: this.actors.map((actor) => this.actorSnapshot(actor)),
     };

@@ -1,12 +1,13 @@
 import { ArcadeActor, ArcadeMatch, FIELD_LENGTH, FIELD_WIDTH, GOAL_WIDTH } from '../../core/services/arcade-match';
 import { hash32, mixHex } from '../../core/visual-identity';
-import { MatchSnapshot, PlayerRuntimeSnapshot } from '../../models/match.model';
+import { MatchRenderFrame, MatchRenderState, MatchSnapshot, PlayerRuntimeSnapshot } from '../../models/match.model';
 import { KitDesign } from '../../models/visual.model';
 import { PlayerSpriteFactory } from './player-sprite.factory';
 
 interface Point { x: number; y: number }
 interface VisualParticle { x: number; y: number; vx: number; vy: number; life: number; color: string; size: number }
 interface BallTrailPoint { x: number; y: number; z: number; tick: number }
+type VisualMatchState = MatchRenderState | MatchSnapshot;
 
 export class ArcadePitchRenderer {
   private readonly ctx: CanvasRenderingContext2D;
@@ -24,6 +25,8 @@ export class ArcadePitchRenderer {
   private readonly emittedActions = new Map<string, number>();
   private pendingGoalBurst = false;
   private goalBurst = 0;
+  private renderAttackDirection: 1 | -1 = 1;
+  private visualBall = { x: FIELD_LENGTH / 2, y: FIELD_WIDTH / 2 };
 
   constructor(private readonly canvas: HTMLCanvasElement) {
     const ctx = canvas.getContext('2d', { alpha: false });
@@ -41,32 +44,36 @@ export class ArcadePitchRenderer {
     this.goalBurst = 1;
   }
 
-  render(match: ArcadeMatch, replay?: MatchSnapshot): void {
-    this.time += 1 / 60;
+  render(match: ArcadeMatch, frame?: MatchRenderFrame, replay?: MatchSnapshot): void {
+    const deltaSeconds = Math.max(0, Math.min(0.05, frame?.deltaSeconds ?? 1 / 60));
+    const state = replay ?? (frame ? interpolateMatchRenderFrame(frame) : match.renderState());
+    this.time += deltaSeconds;
+    this.renderAttackDirection = state.attackDirection;
+    this.visualBall = state.ball;
     if (this.prewarmedMatchId !== match.matchId) {
       this.prewarmedMatchId = match.matchId;
       this.sprites.prewarm(match.actors, (actor) => this.kitFor(actor, match));
     }
-    this.updateCamera(match, replay);
+    this.updateCamera(match, state, deltaSeconds, !!replay);
     this.drawBackdrop(match);
     this.drawPitch(match);
-    this.recordBallTrail(match, replay);
+    this.recordBallTrail(match, state);
     this.drawBallTrail(match);
     this.spawnActionParticles(match);
-    this.drawActors(match, replay);
-    this.drawBall(match, replay);
-    this.updateAndDrawParticles(match);
-    this.drawEdgeIndicators(match, replay);
-    this.drawMinimap(match, replay);
-    this.drawHud(match, replay);
+    this.drawActors(match, state);
+    this.drawBall(match, state);
+    this.updateAndDrawParticles(match, deltaSeconds);
+    this.drawEdgeIndicators(match, state);
+    this.drawMinimap(match, state);
+    this.drawHud(match, state);
     if (replay) this.drawReplayLabel();
     if (this.goalBurst > 0) this.drawGoalPresentation(match);
     if (this.flash > 0) {
       this.ctx.fillStyle = `rgba(255,211,78,${this.flash * 0.2})`;
       this.ctx.fillRect(0, 0, this.w, this.h);
-      this.flash = Math.max(0, this.flash - 0.025);
+      this.flash = Math.max(0, this.flash - 1.5 * deltaSeconds);
     }
-    this.goalBurst = Math.max(0, this.goalBurst - (match.config.camera.reducedMotion ? 0.08 : 0.018));
+    this.goalBurst = Math.max(0, this.goalBurst - (match.config.camera.reducedMotion ? 4.8 : 1.08) * deltaSeconds);
   }
 
   destroy(): void {
@@ -76,11 +83,11 @@ export class ArcadePitchRenderer {
     this.emittedActions.clear();
   }
 
-  private updateCamera(match: ArcadeMatch, replay?: MatchSnapshot): void {
-    const ball = replay?.ball ?? match.ball;
-    const selectedId = replay?.controlledPlayerId ?? match.selectedPlayerId;
-    const selected = replay?.players.find((player) => player.id === selectedId) ?? match.actors.find((actor) => actor.player.id === selectedId);
-    const mirror = (replay?.attackDirection ?? match.currentAttackDirection) < 0;
+  private updateCamera(match: ArcadeMatch, state: VisualMatchState, deltaSeconds: number, replay: boolean): void {
+    const ball = state.ball;
+    const selectedId = state.controlledPlayerId;
+    const selected = state.players.find((player) => player.id === selectedId);
+    const mirror = state.attackDirection < 0;
     const bx = mirror ? FIELD_LENGTH - ball.x : ball.x;
     const sx = selected ? (mirror ? FIELD_LENGTH - selected.x : selected.x) : bx;
     const goalX = FIELD_LENGTH;
@@ -92,10 +99,12 @@ export class ArcadePitchRenderer {
     const counter = speed > 15;
     const viewLength = replay ? 57 : penaltyScene ? 59 : counter ? 78 : 70;
     const targetScale = this.w / viewLength;
-    const smooth = replay || match.config.camera.reducedMotion ? 0.16 : 0.085;
-    this.cameraX += (targetX - this.cameraX) * smooth;
-    this.cameraY += (targetY - this.cameraY) * smooth;
-    this.cameraScale += (targetScale - this.cameraScale) * 0.055;
+    const cameraLambda = replay || match.config.camera.reducedMotion ? 10.5 : 5.3;
+    const positionSmooth = 1 - Math.exp(-cameraLambda * deltaSeconds);
+    const scaleSmooth = 1 - Math.exp(-3.4 * deltaSeconds);
+    this.cameraX += (targetX - this.cameraX) * positionSmooth;
+    this.cameraY += (targetY - this.cameraY) * positionSmooth;
+    this.cameraScale += (targetScale - this.cameraScale) * scaleSmooth;
     const halfW = this.w / this.cameraScale / 2;
     const halfH = this.h / this.cameraScale / 2;
     this.cameraX = Math.round(clampCamera(this.cameraX, halfW, FIELD_LENGTH - halfW) * this.cameraScale) / this.cameraScale;
@@ -263,7 +272,7 @@ export class ArcadePitchRenderer {
     const a = this.worldToScreen(match, x, FIELD_WIDTH / 2 - GOAL_WIDTH / 2);
     const b = this.worldToScreen(match, x, FIELD_WIDTH / 2 + GOAL_WIDTH / 2);
     const direction = x === 0 ? -1 : 1;
-    const nearGoal = Math.abs(match.ball.x - x) < 3 && Math.abs(match.ball.y - FIELD_WIDTH / 2) < GOAL_WIDTH / 2 + 1;
+    const nearGoal = Math.abs(this.visualBall.x - x) < 3 && Math.abs(this.visualBall.y - FIELD_WIDTH / 2) < GOAL_WIDTH / 2 + 1;
     const flex = nearGoal ? Math.round(this.goalBurst * 4) : 0;
     const depth = direction * (11 + flex);
     ctx.strokeStyle = '#dfe8ff';
@@ -297,12 +306,12 @@ export class ArcadePitchRenderer {
     }
   }
 
-  private drawActors(match: ArcadeMatch, replay?: MatchSnapshot): void {
-    const players = replay?.players ?? match.actors;
+  private drawActors(match: ArcadeMatch, state: VisualMatchState): void {
+    const players = state.players;
     const sorted = players.filter((actor) => actor.active).sort((a, b) => a.y - b.y);
     for (const position of sorted) {
-      const actor = match.actors.find((candidate) => candidate.player.id === ('id' in position ? position.id : position.player.id));
-      if (actor) this.drawActor(actor, position, match, replay?.controlledPlayerId ?? match.selectedPlayerId, replay?.tick ?? match.tick);
+      const actor = match.actors.find((candidate) => candidate.player.id === position.id);
+      if (actor) this.drawActor(actor, position, match, state.controlledPlayerId, state.tick);
     }
   }
 
@@ -355,8 +364,8 @@ export class ArcadePitchRenderer {
     ctx.fillText(String(number), x, y - 2);
   }
 
-  private drawBall(match: ArcadeMatch, replay?: MatchSnapshot): void {
-    const ball = replay?.ball ?? match.ball;
+  private drawBall(match: ArcadeMatch, state: VisualMatchState): void {
+    const ball = state.ball;
     const ground = this.worldToScreen(match, ball.x, ball.y);
     const x = Math.round(ground.x);
     const y = Math.round(ground.y - ball.z * this.cameraScale * 0.6);
@@ -372,9 +381,9 @@ export class ArcadePitchRenderer {
     this.ctx.fillRect(x - 1 + (rotation === 1 ? 2 : rotation === 3 ? -2 : 0), y - 1 + (rotation === 2 ? 2 : 0), 3, 3);
   }
 
-  private recordBallTrail(match: ArcadeMatch, replay?: MatchSnapshot): void {
-    const ball = replay?.ball ?? match.ball;
-    const tick = replay?.tick ?? match.tick;
+  private recordBallTrail(match: ArcadeMatch, state: VisualMatchState): void {
+    const ball = state.ball;
+    const tick = state.tick;
     if (this.ballTrail.at(-1)?.tick === tick) return;
     const speed = Math.hypot(ball.vx, ball.vy, ball.vz);
     if (speed > 8 || ball.z > 0.6) this.ballTrail.push({ x: ball.x, y: ball.y, z: ball.z, tick });
@@ -432,14 +441,15 @@ export class ArcadePitchRenderer {
     }
   }
 
-  private updateAndDrawParticles(match: ArcadeMatch): void {
+  private updateAndDrawParticles(match: ArcadeMatch, deltaSeconds: number): void {
     const ctx = this.ctx;
+    const frameScale = deltaSeconds * 60;
     for (let index = this.particles.length - 1; index >= 0; index--) {
       const particle = this.particles[index];
-      particle.x += particle.vx;
-      particle.y += particle.vy;
-      particle.vy += 0.025;
-      particle.life -= match.config.camera.reducedMotion ? 0.12 : 0.035;
+      particle.x += particle.vx * frameScale;
+      particle.y += particle.vy * frameScale;
+      particle.vy += 0.025 * frameScale;
+      particle.life -= (match.config.camera.reducedMotion ? 0.12 : 0.035) * frameScale;
       if (particle.life <= 0) {
         this.particles.splice(index, 1);
         continue;
@@ -474,21 +484,21 @@ export class ArcadePitchRenderer {
     }
   }
 
-  private drawEdgeIndicators(match: ArcadeMatch, replay?: MatchSnapshot): void {
-    const players = replay?.players ?? match.actors;
+  private drawEdgeIndicators(match: ArcadeMatch, state: VisualMatchState): void {
+    const players = state.players;
     const selectedSide = match.controlledSide;
     for (const player of players.filter((candidate) => candidate.active && candidate.side === selectedSide)) {
-      const playerId = 'id' in player ? player.id : player.player.id;
+      const playerId = player.id;
       const point = this.worldToScreen(match, player.x, player.y);
       if (point.x >= 10 && point.x <= this.w - 10 && point.y >= 12 && point.y <= this.h - 12) continue;
       const x = clampCamera(point.x, 9, this.w - 9);
       const y = clampCamera(point.y, 12, this.h - 12);
-      this.ctx.fillStyle = playerId === (replay?.controlledPlayerId ?? match.selectedPlayerId) ? '#ffd34e' : '#54f28b';
+      this.ctx.fillStyle = playerId === state.controlledPlayerId ? '#ffd34e' : '#54f28b';
       this.ctx.fillRect(Math.round(x - 3), Math.round(y - 3), 7, 7);
     }
   }
 
-  private drawMinimap(match: ArcadeMatch, replay?: MatchSnapshot): void {
+  private drawMinimap(match: ArcadeMatch, state: VisualMatchState): void {
     const ctx = this.ctx;
     const map = { x: this.w - 140, y: this.h - 68, w: 126, h: 52 };
     ctx.fillStyle = 'rgba(5,7,19,.84)';
@@ -501,42 +511,43 @@ export class ArcadePitchRenderer {
     ctx.moveTo(map.x + map.w / 2, map.y);
     ctx.lineTo(map.x + map.w / 2, map.y + map.h);
     ctx.stroke();
-    const players = replay?.players ?? match.actors;
+    const players = state.players;
     for (const player of players.filter((candidate) => candidate.active)) {
-      const playerId = 'id' in player ? player.id : player.player.id;
-      const x = map.x + (match.currentAttackDirection < 0 ? 1 - player.x / FIELD_LENGTH : player.x / FIELD_LENGTH) * map.w;
+      const playerId = player.id;
+      const x = map.x + (state.attackDirection < 0 ? 1 - player.x / FIELD_LENGTH : player.x / FIELD_LENGTH) * map.w;
       const y = map.y + player.y / FIELD_WIDTH * map.h;
       ctx.fillStyle = player.side === match.controlledSide ? '#54f28b' : '#ff5d7d';
       ctx.fillRect(Math.round(x - 1), Math.round(y - 1), 3, 3);
-      if (playerId === (replay?.controlledPlayerId ?? match.selectedPlayerId)) {
+      if (playerId === state.controlledPlayerId) {
         ctx.strokeStyle = '#ffd34e';
         ctx.strokeRect(Math.round(x - 3), Math.round(y - 3), 7, 7);
       }
     }
-    const ball = replay?.ball ?? match.ball;
-    const bx = map.x + (match.currentAttackDirection < 0 ? 1 - ball.x / FIELD_LENGTH : ball.x / FIELD_LENGTH) * map.w;
+    const ball = state.ball;
+    const bx = map.x + (state.attackDirection < 0 ? 1 - ball.x / FIELD_LENGTH : ball.x / FIELD_LENGTH) * map.w;
     const by = map.y + ball.y / FIELD_WIDTH * map.h;
     ctx.fillStyle = '#fff';
     ctx.fillRect(Math.round(bx - 1), Math.round(by - 1), 3, 3);
   }
 
-  private drawHud(match: ArcadeMatch, replay?: MatchSnapshot): void {
+  private drawHud(match: ArcadeMatch, state: VisualMatchState): void {
     const ctx = this.ctx;
-    const selected = match.actors.find((actor) => actor.player.id === (replay?.controlledPlayerId ?? match.selectedPlayerId));
+    const selectedActor = match.actors.find((actor) => actor.player.id === state.controlledPlayerId);
+    const selectedRuntime = state.players.find((actor) => actor.id === state.controlledPlayerId);
     ctx.fillStyle = 'rgba(5,7,19,.92)';
     ctx.fillRect(12, 12, 172, 31);
     ctx.strokeStyle = '#49619a';
     ctx.strokeRect(12, 12, 172, 31);
-    if (selected) {
+    if (selectedActor && selectedRuntime) {
       ctx.fillStyle = '#f4f4df';
       ctx.font = '8px Silkscreen, monospace';
       ctx.textAlign = 'left';
-      ctx.fillText(`${selected.player.kitNumber} ${selected.player.lastName.toUpperCase()}`, 19, 23);
+      ctx.fillText(`${selectedActor.player.kitNumber} ${selectedActor.player.lastName.toUpperCase()}`, 19, 23);
       ctx.fillStyle = '#172144';
       ctx.fillRect(19, 30, 116, 4);
-      ctx.fillStyle = selected.stamina > 40 ? '#54f28b' : selected.stamina > 25 ? '#ffd34e' : '#ff5d7d';
-      ctx.fillRect(19, 30, Math.round(116 * selected.stamina / 100), 4);
-      if (selected.card === 'yellow') {
+      ctx.fillStyle = selectedRuntime.fitness > 40 ? '#54f28b' : selectedRuntime.fitness > 25 ? '#ffd34e' : '#ff5d7d';
+      ctx.fillRect(19, 30, Math.round(116 * selectedRuntime.fitness / 100), 4);
+      if (selectedRuntime.card === 'yellow') {
         ctx.fillStyle = '#ffd34e';
         ctx.fillRect(143, 19, 6, 9);
       }
@@ -573,7 +584,7 @@ export class ArcadePitchRenderer {
   }
 
   private worldToScreen(match: ArcadeMatch, x: number, y: number): Point {
-    const transformedX = match.currentAttackDirection < 0 ? FIELD_LENGTH - x : x;
+    const transformedX = this.renderAttackDirection < 0 ? FIELD_LENGTH - x : x;
     const shake = match.config.camera.shake && !match.config.camera.reducedMotion && this.goalBurst > 0
       ? Math.round(Math.sin(this.time * 91) * this.goalBurst * 2)
       : 0;
@@ -624,4 +635,46 @@ export class ArcadePitchRenderer {
 function clampCamera(value: number, min: number, max: number): number {
   if (min > max) return (min + max) / 2;
   return Math.max(min, Math.min(max, value));
+}
+
+export function interpolateMatchRenderFrame(frame: MatchRenderFrame): MatchRenderState {
+  const alpha = Math.max(0, Math.min(1, frame.alpha));
+  if (frame.previous.discontinuityKey !== frame.current.discontinuityKey) return frame.current;
+  const previousPlayers = new Map(frame.previous.players.map((player) => [player.id, player]));
+  const players = frame.current.players.map((current) => {
+    const previous = previousPlayers.get(current.id);
+    if (!previous) return current;
+    const facingX = lerp(previous.facingX, current.facingX, alpha);
+    const facingY = lerp(previous.facingY, current.facingY, alpha);
+    const facingLength = Math.hypot(facingX, facingY) || 1;
+    return {
+      ...current,
+      x: lerp(previous.x, current.x, alpha),
+      y: lerp(previous.y, current.y, alpha),
+      vx: lerp(previous.vx, current.vx, alpha),
+      vy: lerp(previous.vy, current.vy, alpha),
+      facingX: facingX / facingLength,
+      facingY: facingY / facingLength,
+      fitness: lerp(previous.fitness, current.fitness, alpha),
+    };
+  });
+  return {
+    ...frame.current,
+    tick: Math.round(lerp(frame.previous.tick, frame.current.tick, alpha)),
+    ball: {
+      ...frame.current.ball,
+      x: lerp(frame.previous.ball.x, frame.current.ball.x, alpha),
+      y: lerp(frame.previous.ball.y, frame.current.ball.y, alpha),
+      z: lerp(frame.previous.ball.z, frame.current.ball.z, alpha),
+      vx: lerp(frame.previous.ball.vx, frame.current.ball.vx, alpha),
+      vy: lerp(frame.previous.ball.vy, frame.current.ball.vy, alpha),
+      vz: lerp(frame.previous.ball.vz, frame.current.ball.vz, alpha),
+      spin: lerp(frame.previous.ball.spin, frame.current.ball.spin, alpha),
+    },
+    players,
+  };
+}
+
+function lerp(from: number, to: number, amount: number): number {
+  return from + (to - from) * amount;
 }
