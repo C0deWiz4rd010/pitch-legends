@@ -8,6 +8,7 @@ import { I18nPipe } from '../../shared/i18n.pipe';
 import { I18nService } from '../../core/services/i18n.service';
 import { RpgService } from '../../core/services/rpg.service';
 import { AudioService } from '../../core/services/audio.service';
+import { APP_VERSION } from '../../core/version';
 
 @Component({
   selector: 'app-settings',
@@ -27,6 +28,7 @@ export class SettingsPage {
 
   protected readonly message = signal('');
   protected readonly confirmNew = signal(false);
+  protected readonly version = APP_VERSION;
 
   protected readonly difficulties: GameSettings['difficulty'][] = ['easy', 'normal', 'hard'];
   protected readonly durations: GameSettings['matchDuration'][] = [3, 5, 8];

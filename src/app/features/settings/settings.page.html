@@ -74,6 +74,7 @@
     <div class="info-row"><span class="muted">{{ 'settings.club' | t }}</span><strong>{{ gs.playerTeam()?.name }}</strong></div>
     <div class="info-row"><span class="muted">{{ 'common.season' | t }}</span><strong>{{ gs.season() }}</strong></div>
     <div class="info-row"><span class="muted">{{ 'common.week' | t }}</span><strong>{{ gs.currentWeek() }} / {{ gs.totalWeeks() }}</strong></div>
+    <div class="info-row"><span class="muted">VERSION</span><strong>v{{ version }}</strong></div>
     @if (gs.seasonOver()) { <button class="btn btn--primary btn--block" (click)="startNextSeason()">{{ 'settings.nextSeason' | t }}</button> }
   </div>
 

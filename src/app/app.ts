@@ -8,6 +8,7 @@ import { ClubCrestComponent } from './shared/components/club-crest.component';
 import { MiniKitComponent } from './shared/components/mini-kit.component';
 import { ControlHandbookComponent } from './shared/components/control-handbook.component';
 import { ControlHelpService } from './core/services/control-help.service';
+import { APP_VERSION } from './core/version';
 
 interface NavItem {
   path: string;
@@ -25,6 +26,7 @@ export class App {
   protected readonly gs = inject(GameStateService);
   protected readonly controlHelp = inject(ControlHelpService);
   protected readonly menuOpen = signal(false);
+  protected readonly version = APP_VERSION;
 
   protected readonly nav: NavItem[] = [
     { path: '', labelKey: 'nav.dashboard', icon: '⌂' },
