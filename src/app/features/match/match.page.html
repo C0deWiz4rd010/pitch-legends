@@ -114,13 +114,12 @@
       </article>
     </section>
 
-    <section class="card control-guide fade-up">
-      <p class="eyebrow">SECHS-TASTEN-STEUERUNG</p>
+    <section class="card control-guide fade-up pass-guide">
+      <p class="eyebrow">PASSEN · SOFORT LOSLEGEN</p>
       <div class="control-grid">
-        <span><kbd>WASD</kbd> Bewegung/Ziel</span><span><kbd>J / A</kbd> Pass/Tackle</span><span><kbd>K / Y</kbd> Steilpass/GK</span>
-        <span><kbd>U / X</kbd> Lob/Grätsche</span><span><kbd>L / B</kbd> Schuss/Clearance</span><span><kbd>SHIFT / RT</kbd> Sprint</span>
-        <span><kbd>I / RB</kbd> Skill/Pressing</span><span><kbd>SPACE / LB</kbd> Wechsel</span><span><kbd>Q</kbd> Quick-Taktik</span>
+        <span><kbd>J</kbd> drücken = Kurzpass</span><span><kbd>J</kbd> halten = Passkraft</span><span><kbd>K</kbd> Steilpass in den Lauf</span>
       </div>
+      <button class="btn btn--ghost" (click)="openControls()">? VISUELLES SPIELHANDBUCH</button>
     </section>
   } @else {
     <section class="card empty"><p>Die Saison ist beendet.</p><a routerLink="/league" class="btn btn--primary">TABELLE ÖFFNEN</a></section>
@@ -171,9 +170,10 @@
             <p class="eyebrow">MATCH PAUSIERT</p>
             @if (performanceMessage()) { <span>{{ performanceMessage() }}</span> }
             <button class="btn btn--primary" (click)="togglePlay()">WEITERSPIELEN</button>
+            <button class="btn btn--ghost" (click)="openControls()">? STEUERUNG</button>
           </div>
         }
-        <div class="device-chip">{{ inputDevice().toUpperCase() }} · {{ assist().toUpperCase() }}</div>
+        <button class="device-chip" (click)="openControls()">? {{ inputDevice().toUpperCase() }} · {{ assist().toUpperCase() }}</button>
       </div>
 
       @if (selectedMode() === 'play') {
@@ -195,6 +195,7 @@
 
       <div class="match-toolbar">
         <button class="btn btn--ghost btn--sm" (click)="togglePlay()">{{ playing() ? 'PAUSE' : 'PLAY' }}</button>
+        <button class="btn btn--ghost btn--sm" (click)="openControls()">? STEUERUNG</button>
         @if (selectedMode() === 'coach') { <button class="btn btn--ghost btn--sm" (click)="cycleSpeed()">{{ speed() }}× SPEED</button> }
         <button class="btn btn--ghost btn--sm" [class.on]="showTactics()" (click)="showTactics.set(!showTactics())">Q · TAKTIK</button>
         <button class="btn btn--ghost btn--sm" [class.on]="showSubs()" (click)="showSubs.set(!showSubs())">WECHSEL {{ subsRemaining() }}</button>

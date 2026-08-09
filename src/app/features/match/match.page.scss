@@ -167,7 +167,10 @@ canvas { display: block; width: 100%; height: 100%; image-rendering: pixelated; 
 .pause-layer { background: rgba(5,7,19,.88); pointer-events: auto; text-align: center; }
 .pause-layer span { max-width: 480px; color: var(--accent-3); font-size: 12px; }
 .replay-skip { position: absolute; right: 12px; top: 12px; z-index: 3; padding: 7px 9px; border: 2px solid var(--accent-3); background: var(--bg-900); color: var(--accent-3); font: 8px var(--font-display); cursor: pointer; }
-.device-chip { position: absolute; left: 12px; bottom: 12px; font-size: 7px; opacity: .86; }
+.device-chip { position: absolute; left: 12px; bottom: 12px; padding: 5px 7px; border: 1px solid var(--border); background: rgba(5,7,19,.78); color: var(--text-dim); font: 7px var(--font-display); opacity: .9; cursor: pointer; }
+.pass-guide { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 10px; }
+.pass-guide .eyebrow, .pass-guide .control-grid { grid-column: 1; }
+.pass-guide > button { grid-column: 2; grid-row: 1 / span 2; }
 .rotate-notice { display: none; position: absolute; inset: 0; z-index: 10; place-items: center; align-content: center; background: rgba(5,7,19,.96); text-align: center; }
 .rotate-notice strong { color: var(--accent-3); font: 14px var(--font-display); }
 .rotate-notice span { color: var(--text-dim); font-size: 11px; }
@@ -247,6 +250,8 @@ canvas { display: block; width: 100%; height: 100%; image-rendering: pixelated; 
   .crest { width: 52px; height: 52px; }
   .intro-teams { gap: 12px; }
   .scoreboard { gap: 6px; }
+  .pass-guide { grid-template-columns: 1fr; }
+  .pass-guide > button { grid-column: 1; grid-row: auto; }
   .sb-team strong { display: none; }
 }
 

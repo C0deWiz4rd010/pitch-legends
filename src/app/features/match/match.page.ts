@@ -35,6 +35,8 @@ import { I18nService } from '../../core/services/i18n.service';
 import { ArcadeMatch, MATCH_TICK } from '../../core/services/arcade-match';
 import { ArcadePitchRenderer } from './arcade-renderer';
 import { AudioService } from '../../core/services/audio.service';
+import { ControlHelpService } from '../../core/services/control-help.service';
+import { CONTROL_INPUT_MAP, MOVEMENT_KEYS } from '../../data/control-bindings';
 
 type PagePhase = 'preview' | 'intro' | 'simulating' | 'match' | 'halftime' | 'result';
 type TouchAction = 'sprint' | 'pass' | 'through' | 'lob' | 'shoot' | 'skill' | 'switch';
@@ -54,6 +56,7 @@ export class MatchPage implements OnDestroy {
   private readonly router = inject(Router);
   protected readonly i18n = inject(I18nService);
   private readonly audio = inject(AudioService);
+  protected readonly controlHelp = inject(ControlHelpService);
   protected readonly ratingColor = ratingColor;
   protected readonly playerName = playerName;
 
@@ -103,6 +106,9 @@ export class MatchPage implements OnDestroy {
   private touchPointer: number | null = null;
   private touchOrigin = { x: 0, y: 0 };
   private readonly keys = new Set<string>();
+  private pausedForHelp = false;
+  private previousLearningPass = false;
+  private pendingPassAttempt = -1;
 
   protected readonly mentalities: Mentality[] = ['ultra-defensive', 'defensive', 'balanced', 'attacking', 'ultra-attacking'];
   protected readonly pressings: PressingIntensity[] = ['low', 'medium', 'high', 'gegenpress'];
@@ -188,6 +194,19 @@ export class MatchPage implements OnDestroy {
     effect(() => {
       const canvas = this.canvasRef();
       if (this.phase() === 'match' && canvas && !this.renderer && this.arcade) this.startAnimation(canvas.nativeElement);
+    });
+    effect(() => {
+      const helpVisible = this.controlHelp.visible();
+      if (this.phase() !== 'match' || !this.arcade) return;
+      if (helpVisible && this.playing()) {
+        this.pausedForHelp = true;
+        this.playing.set(false);
+        this.arcade.setPaused(true);
+      } else if (!helpVisible && this.pausedForHelp) {
+        this.pausedForHelp = false;
+        this.playing.set(true);
+        this.arcade.setPaused(false);
+      }
     });
   }
 
@@ -307,6 +326,11 @@ export class MatchPage implements OnDestroy {
     this.audio.whistle();
     this.phase.set('match');
     this.playing.set(true);
+    if (this.selectedMode() === 'play' && !this.gs.game()?.settings.controlLearning.introSeen) this.controlHelp.open('pass');
+  }
+
+  protected openControls(): void {
+    this.controlHelp.open('pass');
   }
 
   private startAnimation(canvas: HTMLCanvasElement): void {
@@ -363,6 +387,11 @@ export class MatchPage implements OnDestroy {
     this.revealed.set([...this.arcade.events]);
     for (const event of this.arcade.events.slice(this.lastAudioEvent)) this.audio.matchEvent(event);
     this.lastAudioEvent = this.arcade.events.length;
+    const controlledStats = this.arcade.controlledSide === 'home' ? this.arcade.homeStats : this.arcade.awayStats;
+    if (this.pendingPassAttempt >= 0 && controlledStats.passesAttempted > this.pendingPassAttempt) {
+      this.controlHelp.complete('pass');
+      this.pendingPassAttempt = -1;
+    }
     if (this.arcade.homeScore > this.prevHome) {
       this.celebrate('home');
       this.prevHome = this.arcade.homeScore;
@@ -528,7 +557,7 @@ export class MatchPage implements OnDestroy {
     this.touchPointer = event.pointerId;
     this.touchOrigin = { x: event.clientX, y: event.clientY };
     (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
-    this.inputDevice.set('touch');
+    this.updateInputDevice('touch');
   }
 
   protected touchStickMove(event: PointerEvent): void {
@@ -552,35 +581,52 @@ export class MatchPage implements OnDestroy {
     const gamepad = typeof navigator !== 'undefined' ? navigator.getGamepads?.()[0] : null;
     const axisX = Math.abs(gamepad?.axes[0] ?? 0) > 0.18 ? gamepad!.axes[0] : 0;
     const axisY = Math.abs(gamepad?.axes[1] ?? 0) > 0.18 ? gamepad!.axes[1] : 0;
-    const keyboardX = (this.keys.has('ArrowRight') || this.keys.has('KeyD') ? 1 : 0) - (this.keys.has('ArrowLeft') || this.keys.has('KeyA') ? 1 : 0);
-    const keyboardY = (this.keys.has('ArrowDown') || this.keys.has('KeyS') ? 1 : 0) - (this.keys.has('ArrowUp') || this.keys.has('KeyW') ? 1 : 0);
+    const keyboardX = (MOVEMENT_KEYS.right.some((key) => this.keys.has(key)) ? 1 : 0) - (MOVEMENT_KEYS.left.some((key) => this.keys.has(key)) ? 1 : 0);
+    const keyboardY = (MOVEMENT_KEYS.down.some((key) => this.keys.has(key)) ? 1 : 0) - (MOVEMENT_KEYS.up.some((key) => this.keys.has(key)) ? 1 : 0);
     const touches = this.touchActions();
     const gamepadActive = !!gamepad && (Math.abs(axisX) + Math.abs(axisY) > 0 || gamepad.buttons.some((button) => button.pressed));
     if (gamepadActive) {
       this.gamepadSeen = true;
-      this.inputDevice.set('gamepad');
-    } else if (this.touchX() || this.touchY() || Object.values(touches).some(Boolean)) this.inputDevice.set('touch');
-    else if (keyboardX || keyboardY || [...this.keys].some((key) => key.startsWith('Key') || key.startsWith('Shift') || key === 'Space')) this.inputDevice.set('keyboard');
+      this.updateInputDevice('gamepad');
+    } else if (this.touchX() || this.touchY() || Object.values(touches).some(Boolean)) this.updateInputDevice('touch');
+    else if (keyboardX || keyboardY || [...this.keys].some((key) => key.startsWith('Key') || key.startsWith('Shift') || key === 'Space')) this.updateInputDevice('keyboard');
     const moveX = clampInput(keyboardX + axisX + this.touchX());
     const moveY = clampInput(keyboardY + axisY + this.touchY());
+    const pressed = (action: keyof typeof CONTROL_INPUT_MAP): boolean => {
+      const binding = CONTROL_INPUT_MAP[action];
+      return binding.keyboard.some((key) => this.keys.has(key)) || !!gamepad?.buttons[binding.gamepadButton]?.pressed || touches[action];
+    };
+    const pass = pressed('pass');
+    const arcade = this.arcade;
+    if (pass && !this.previousLearningPass && arcade && arcade.ball.ownerId === arcade.selectedPlayerId) {
+      const stats = arcade.controlledSide === 'home' ? arcade.homeStats : arcade.awayStats;
+      this.pendingPassAttempt = stats.passesAttempted;
+    }
+    this.previousLearningPass = pass;
     return {
       moveX,
       moveY,
       aimX: moveX,
       aimY: moveY,
-      sprint: this.keys.has('ShiftLeft') || this.keys.has('ShiftRight') || !!gamepad?.buttons[7]?.pressed || touches.sprint,
-      pass: this.keys.has('KeyJ') || !!gamepad?.buttons[0]?.pressed || touches.pass,
-      through: this.keys.has('KeyK') || !!gamepad?.buttons[3]?.pressed || touches.through,
-      lob: this.keys.has('KeyU') || !!gamepad?.buttons[2]?.pressed || touches.lob,
-      shoot: this.keys.has('KeyL') || !!gamepad?.buttons[1]?.pressed || touches.shoot,
-      skill: this.keys.has('KeyI') || !!gamepad?.buttons[5]?.pressed || touches.skill,
-      switchPlayer: this.keys.has('Space') || !!gamepad?.buttons[4]?.pressed || touches.switch,
-      keeperRush: this.keys.has('KeyK') || !!gamepad?.buttons[3]?.pressed,
+      sprint: pressed('sprint'),
+      pass,
+      through: pressed('through'),
+      lob: pressed('lob'),
+      shoot: pressed('shoot'),
+      skill: pressed('skill'),
+      switchPlayer: pressed('switch'),
+      keeperRush: pressed('through'),
       tacticX: 0,
       tacticY: 0,
       pause: false,
       device: this.inputDevice(),
     };
+  }
+
+  private updateInputDevice(device: Exclude<InputDevice, 'ai'>): void {
+    if (this.inputDevice() === device) return;
+    this.inputDevice.set(device);
+    this.controlHelp.setDevice(device);
   }
 
   private validateLineup(team: Team | null): string[] {
@@ -597,6 +643,8 @@ export class MatchPage implements OnDestroy {
 
   private resetInputs(): void {
     this.keys.clear();
+    this.previousLearningPass = false;
+    this.pendingPassAttempt = -1;
     this.touchX.set(0);
     this.touchY.set(0);
     this.touchActions.set({ sprint: false, pass: false, through: false, lob: false, shoot: false, skill: false, switch: false });

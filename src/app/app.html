@@ -37,6 +37,7 @@
           <strong>{{ gs.playerTeam()?.shortName }}</strong>
         </div>
         <div class="spacer"></div>
+        <button class="control-help" (click)="controlHelp.open('pass')">? <span>STEUERUNG</span></button>
         <div class="stat-pill">
           <span class="k">{{ 'app.week' | t }}</span>
           <span class="v tabular">{{ gs.currentWeek() }}<small>/{{ gs.totalWeeks() }}</small></span>
@@ -56,6 +57,7 @@
     @if (menuOpen()) {
       <div class="scrim" (click)="menuOpen.set(false)"></div>
     }
+    <app-control-handbook />
   </div>
 } @else {
   <app-start />

@@ -6,6 +6,8 @@ import { formatCoins } from './shared/rating-color';
 import { I18nPipe } from './shared/i18n.pipe';
 import { ClubCrestComponent } from './shared/components/club-crest.component';
 import { MiniKitComponent } from './shared/components/mini-kit.component';
+import { ControlHandbookComponent } from './shared/components/control-handbook.component';
+import { ControlHelpService } from './core/services/control-help.service';
 
 interface NavItem {
   path: string;
@@ -15,12 +17,13 @@ interface NavItem {
 
 @Component({
   selector: 'app-root',
-  imports: [RouterOutlet, RouterLink, RouterLinkActive, StartComponent, I18nPipe, ClubCrestComponent, MiniKitComponent],
+  imports: [RouterOutlet, RouterLink, RouterLinkActive, StartComponent, I18nPipe, ClubCrestComponent, MiniKitComponent, ControlHandbookComponent],
   templateUrl: './app.html',
   styleUrl: './app.scss',
 })
 export class App {
   protected readonly gs = inject(GameStateService);
+  protected readonly controlHelp = inject(ControlHelpService);
   protected readonly menuOpen = signal(false);
 
   protected readonly nav: NavItem[] = [
