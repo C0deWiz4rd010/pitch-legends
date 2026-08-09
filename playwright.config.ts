@@ -4,8 +4,10 @@ const executablePath = process.env['PLAYWRIGHT_CHROMIUM_EXECUTABLE'];
 
 export default defineConfig({
   testDir: './e2e',
-  fullyParallel: !process.env['CI'],
-  workers: process.env['CI'] ? 1 : undefined,
+  // Match frame pacing must not compete with several Chromium instances.
+  // A single worker also makes saved-career and viewport QA reproducible locally.
+  fullyParallel: false,
+  workers: 1,
   retries: process.env['CI'] ? 2 : 0,
   reporter: 'list',
   use: {

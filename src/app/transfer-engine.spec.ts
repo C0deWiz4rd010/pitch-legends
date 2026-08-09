@@ -119,7 +119,7 @@ describe('Transfer market V2', () => {
     expect(first.teams.every((team) => team.players.length >= 16 && team.coins >= 0)).toBe(true);
   });
 
-  it('uses the arcade economy bands and stores only V4 saves', () => {
+  it('uses the arcade economy bands and stores only V5 saves', () => {
     expect(marketValueFor(50, 26, 50)).toBeGreaterThanOrEqual(20_000);
     expect(marketValueFor(50, 26, 50)).toBeLessThanOrEqual(45_000);
     expect(marketValueFor(80, 26, 80)).toBeGreaterThanOrEqual(500_000);
@@ -127,13 +127,14 @@ describe('Transfer market V2', () => {
     const value = marketValueFor(70, 25, 74);
     expect(weeklySalaryFor({ marketValue: value, age: 25, overall: 70 })).toBeCloseTo(value * 0.006, -2);
 
-    const game = createNewGame({ managerName: 'V4', clubName: 'V4 FC', seed: 926 });
+    const game = createNewGame({ managerName: 'V5', clubName: 'V5 FC', seed: 926 });
     const saves = new SaveService();
     localStorage.clear();
     localStorage.setItem('pitch-legends:save:v3', JSON.stringify({ ...game, version: 3 }));
     expect(saves.load()).toBeNull();
     expect(localStorage.getItem('pitch-legends:save:v3')).toBeTruthy();
     saves.save(game);
-    expect(JSON.parse(localStorage.getItem('pitch-legends:save:v4')!).version).toBe(4);
+    expect(JSON.parse(localStorage.getItem('pitch-legends:save:v5')!).version).toBe(5);
+    expect(localStorage.getItem('pitch-legends:save:v4')).toBeNull();
   });
 });
