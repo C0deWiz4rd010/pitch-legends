@@ -20,6 +20,9 @@
   margin-bottom: 14px;
   flex-wrap: wrap;
 }
+.market-filters { display: flex; flex-wrap: wrap; gap: 7px; }
+.market-filters input,
+.market-filters select { min-height: 36px; }
 .segmented {
   display: inline-flex;
   gap: 4px;
@@ -68,6 +71,9 @@
   flex-direction: column;
   gap: 12px;
 }
+.pcard.expiring { border-color: var(--danger); }
+.wage-summary { grid-column: 1 / -1; flex-direction: row; justify-content: space-between; }
+.danger { color: var(--danger); }
 .pc-top {
   display: flex;
   align-items: center;

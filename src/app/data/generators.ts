@@ -135,7 +135,8 @@ export function generatePlayer(
     form: rng.int(-1, 2),
     injuryWeeks: 0,
     marketValue: marketValueFor(overall, age, potential),
-    salary: Math.round((marketValueFor(overall, age, potential) / 100) * (age <= 24 ? 1 : 1.4)),
+    // Weekly arcade-economy wage. Kept aligned with the club wage budget.
+    salary: Math.round((marketValueFor(overall, age, potential) / 1000) * (age <= 24 ? 1 : 1.25)),
     contractWeeks: rng.int(40, 160),
     seasonStats: emptySeasonStats(),
   };

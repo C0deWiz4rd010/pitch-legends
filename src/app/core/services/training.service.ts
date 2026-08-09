@@ -15,15 +15,15 @@ export interface TrainingDrill {
 }
 
 export const TRAINING_DRILLS: TrainingDrill[] = [
-  { id: 'finishing', name: 'Finishing', icon: '🎯', focus: 'shooting', description: 'Sharpen shooting and composure in front of goal.' },
-  { id: 'vision', name: 'Vision', icon: '🧠', focus: 'passing', description: 'Improve range and weight of passing.' },
-  { id: 'control', name: 'Close Control', icon: '🕹️', focus: 'dribbling', description: 'Tighten dribbling and ball manipulation.' },
-  { id: 'tackling', name: 'Tackling', icon: '🛡️', focus: 'defending', description: 'Drill positioning, marking and tackling.' },
-  { id: 'sprints', name: 'Sprints', icon: '⚡', focus: 'pace', description: 'Boost acceleration and top speed.' },
-  { id: 'strength', name: 'Strength', icon: '💪', focus: 'physical', description: 'Build strength and aerial dominance.' },
-  { id: 'endurance', name: 'Endurance', icon: '🏃', focus: 'stamina', description: 'Raise stamina for a full 90 minutes.' },
-  { id: 'handling', name: 'Shot Stopping', icon: '🧤', focus: 'goalkeeping', description: 'Goalkeeper reflexes and handling.' },
-  { id: 'recovery', name: 'Recovery', icon: '🧊', focus: 'recovery', description: 'Rest and regain fitness — no XP gained.' },
+  { id: 'finishing', name: 'Finishing', icon: 'SH', focus: 'shooting', description: 'Sharpen shooting and composure in front of goal.' },
+  { id: 'vision', name: 'Vision', icon: 'PS', focus: 'passing', description: 'Improve range and weight of passing.' },
+  { id: 'control', name: 'Close Control', icon: 'DR', focus: 'dribbling', description: 'Tighten dribbling and ball manipulation.' },
+  { id: 'tackling', name: 'Tackling', icon: 'DF', focus: 'defending', description: 'Drill positioning, marking and tackling.' },
+  { id: 'sprints', name: 'Sprints', icon: 'PC', focus: 'pace', description: 'Boost acceleration and top speed.' },
+  { id: 'strength', name: 'Strength', icon: 'PH', focus: 'physical', description: 'Build strength and aerial dominance.' },
+  { id: 'endurance', name: 'Endurance', icon: 'ST', focus: 'stamina', description: 'Raise stamina for a full 90 minutes.' },
+  { id: 'handling', name: 'Shot Stopping', icon: 'GK', focus: 'goalkeeping', description: 'Goalkeeper reflexes and handling.' },
+  { id: 'recovery', name: 'Recovery', icon: 'RC', focus: 'recovery', description: 'Rest and regain fitness — no XP gained.' },
 ];
 
 export interface TrainingOutcome {
@@ -64,8 +64,15 @@ export class TrainingService {
 
     player.fitness = clamp(player.fitness - Math.max(7, Math.round(FITNESS_COST / coachingMultiplier)), 0, 100);
 
+    const technical = ['shooting', 'passing', 'dribbling'].includes(drill.focus);
+    const physical = ['pace', 'physical', 'stamina'].includes(drill.focus);
+    const planMultiplier =
+      player.developmentPlan === 'technical' && technical ? 1.18 :
+      player.developmentPlan === 'physical' && physical ? 1.18 :
+      player.developmentPlan === 'position' && this.isPositionFocus(player, drill.focus) ? 1.2 : 1;
+    const personalityMultiplier = player.personality === 'professional' ? 1.08 : player.personality === 'volatile' ? 0.94 : 1;
     const xp = Math.round(
-      30 * (1 + trainingGroundLevel * 0.18) * coachingMultiplier * this.rng.float(0.85, 1.2),
+      30 * (1 + trainingGroundLevel * 0.18) * coachingMultiplier * planMultiplier * personalityMultiplier * this.rng.float(0.85, 1.2),
     );
     const { levelsGained } = this.rpg.awardXp(player, xp);
 
@@ -73,7 +80,7 @@ export class TrainingService {
     let attributeGained: AttributeKey | null = null;
     const attr = drill.focus;
     const canGrow = player.attributes[attr] < 99 && player.overall < player.potential + 2;
-    const growChance = 0.18 + trainingGroundLevel * 0.06;
+    const growChance = 0.18 + trainingGroundLevel * 0.06 + (planMultiplier > 1 ? 0.08 : 0);
     if (canGrow && this.rng.bool(growChance)) {
       player.attributes[attr] = clamp(player.attributes[attr] + 1, 1, 99);
       player.overall = computeOverall(player.attributes, player.positionGroup);
@@ -96,5 +103,13 @@ export class TrainingService {
 
   private fail(message: string): TrainingOutcome {
     return { ok: false, message, xpGained: 0, attributeGained: null, levelsGained: 0 };
+  }
+
+  private isPositionFocus(player: Player, focus: AttributeKey | 'recovery'): boolean {
+    if (focus === 'recovery') return false;
+    if (player.positionGroup === 'GK') return focus === 'goalkeeping';
+    if (player.positionGroup === 'DEF') return ['defending', 'physical', 'pace'].includes(focus);
+    if (player.positionGroup === 'MID') return ['passing', 'dribbling', 'stamina'].includes(focus);
+    return ['shooting', 'pace', 'dribbling'].includes(focus);
   }
 }

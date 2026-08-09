@@ -9,21 +9,16 @@
   gap: 20px;
   padding: 22px 24px;
   border-radius: var(--r-xl);
-  background: linear-gradient(120deg, color-mix(in srgb, var(--club, #38e07b) 22%, var(--surface)), var(--surface));
-  border: 1px solid var(--border);
+  background:
+    linear-gradient(90deg, rgba(5, 7, 19, .92), rgba(5, 7, 19, .48)),
+    url('/assets/pixel/stadium-night.png') center 58% / cover;
+  border: 2px solid var(--border);
   overflow: hidden;
   margin-bottom: 16px;
   flex-wrap: wrap;
 }
 .hero-glow {
-  position: absolute;
-  top: -60%;
-  right: -10%;
-  width: 340px;
-  height: 340px;
-  background: radial-gradient(circle, color-mix(in srgb, var(--club, #38e07b) 40%, transparent), transparent 70%);
-  filter: blur(30px);
-  pointer-events: none;
+  display: none;
 }
 .hero-main {
   display: flex;
@@ -148,7 +143,14 @@
   border-color: var(--surface-3);
 }
 .stat .ico {
-  font-size: 26px;
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border: 2px solid var(--border);
+  color: var(--accent-2);
+  font-family: var(--font-pixel);
+  font-size: 10px;
 }
 .stat-body {
   display: flex;
@@ -168,6 +170,13 @@
   border-color: rgba(56, 224, 123, 0.5);
   box-shadow: var(--shadow-glow);
 }
+.objectives { display: flex; flex-direction: column; gap: 12px; }
+.objective { display: grid; gap: 7px; }
+.objective > div:first-child { display: flex; justify-content: space-between; gap: 10px; font-size: 11px; }
+.objective > div:first-child span { color: var(--accent-3); font-size: 9px; }
+.objective-track { height: 7px; padding: 1px; border: 1px solid var(--border); background: var(--bg-900); }
+.objective-track i { display: block; height: 100%; background: var(--accent-2); }
+.objective.done strong { text-decoration: line-through; color: var(--accent); }
 
 // ── Columns ────────────────────────────────────────────────────────────────
 .cols {

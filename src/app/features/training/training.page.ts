@@ -3,9 +3,11 @@ import { GameStateService } from '../../core/services/game-state.service';
 import { TrainingService, TRAINING_DRILLS, TrainingDrill, TrainingOutcome } from '../../core/services/training.service';
 import { ratingColor } from '../../shared/rating-color';
 import { Player } from '../../models/player.model';
+import { I18nPipe } from '../../shared/i18n.pipe';
 
 @Component({
   selector: 'app-training',
+  imports: [I18nPipe],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './training.page.html',
   styleUrl: './training.page.scss',

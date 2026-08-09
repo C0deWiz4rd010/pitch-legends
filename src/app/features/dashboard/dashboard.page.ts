@@ -5,6 +5,7 @@ import { formatCoins, ratingColor, moraleIcon } from '../../shared/rating-color'
 import { playerName } from '../../core/ratings';
 import { Player } from '../../models/player.model';
 import { I18nService } from '../../core/services/i18n.service';
+import { CareerObjective } from '../../models/game.model';
 
 @Component({
   selector: 'app-dashboard',
@@ -97,5 +98,17 @@ export class DashboardPage {
 
   protected rankSuffix(n: number): string {
     return n === 1 ? 'st' : n === 2 ? 'nd' : n === 3 ? 'rd' : 'th';
+  }
+
+  protected objectiveLabel(objective: CareerObjective): string {
+    const de = this.gs.game()?.settings.locale === 'de';
+    if (objective.type === 'league-position') return de ? `Liga-Platz ${objective.target} erreichen` : `Finish in league position ${objective.target}`;
+    if (objective.type === 'player-growth') return de ? `${objective.target} Spieler-Level gewinnen` : `Gain ${objective.target} player levels`;
+    return de ? `${objective.target} Siege holen` : `Win ${objective.target} matches`;
+  }
+
+  protected objectiveProgress(objective: CareerObjective): number {
+    if (objective.type === 'league-position') return objective.completed ? 100 : Math.max(5, 100 - (this.rank() - objective.target) * 14);
+    return Math.min(100, Math.round(objective.progress / objective.target * 100));
   }
 }

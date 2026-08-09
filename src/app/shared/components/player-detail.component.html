@@ -12,7 +12,8 @@
             <span class="chip">Lv {{ p.level }}</span>
             <span class="chip">{{ p.age }}y · {{ p.foot }}</span>
             <span class="chip">{{ p.nationality }}</span>
-            @if (p.injuryWeeks > 0) { <span class="chip injury">🚑 {{ p.injuryWeeks }}w</span> }
+            <span class="chip archetype">{{ p.archetype }}</span>
+            @if (p.injuryWeeks > 0) { <span class="chip injury">INJ {{ p.injuryWeeks }}W</span> }
           </div>
         </div>
       </div>
@@ -39,7 +40,7 @@
       <div class="xp">
         <div class="xp-top">
           <span>Level {{ p.level }}</span>
-          <span class="sp">✨ {{ p.skillPoints }} skill points</span>
+          <span class="sp">SP {{ p.skillPoints }} skill points</span>
         </div>
         <div class="xp-track"><div class="xp-fill" [style.width.%]="xpPercent()"></div></div>
         <span class="muted xp-label">{{ p.xp }} / {{ p.xpToNext }} XP to next level</span>
@@ -67,15 +68,49 @@
         </div>
       </div>
 
+      <div class="development">
+        <div>
+          <p class="eyebrow">Development plan</p>
+          <span class="muted">Focused drills gain extra XP and attribute-growth chance.</span>
+        </div>
+        <div class="plan-picker">
+          @for (plan of developmentPlans; track plan) {
+            <button [class.active]="p.developmentPlan === plan" (click)="setDevelopmentPlan(plan)">{{ plan }}</button>
+          }
+        </div>
+      </div>
+
+      <div class="talents">
+        <p class="eyebrow">{{ p.archetype }} talent path</p>
+        <div class="talent-path">
+          @for (talent of talents(); track talent.id; let index = $index) {
+            <button class="talent" [class.owned]="(p.talentRanks[talent.id] ?? 0) > 0"
+              [disabled]="!canUnlockTalent(talent)" (click)="unlockTalent(talent.id)" [title]="talent.description">
+              <span class="node">{{ index + 1 }}</span>
+              <strong>{{ talent.name }}</strong>
+              <small>RANK {{ p.talentRanks[talent.id] ?? 0 }}/{{ talent.maxRank }} · LV {{ talent.unlockLevel }} · {{ talent.cost }} SP</small>
+            </button>
+          }
+        </div>
+      </div>
+
+      <div class="personal-goal">
+        <div>
+          <p class="eyebrow">Personal quest</p>
+          <strong>{{ p.personalGoal.type }}: {{ p.personalGoal.progress }} / {{ p.personalGoal.target }}</strong>
+        </div>
+        <span class="chip" [class.done]="p.personalGoal.completed">{{ p.personalGoal.completed ? 'COMPLETE' : '+' + p.personalGoal.rewardXp + ' XP' }}</span>
+      </div>
+
       <div class="traits">
         <p class="eyebrow">Traits</p>
         <div class="trait-list">
           @for (t of ownedTraits(); track t.id) {
-            <div class="trait owned" [title]="t.description">⭐ {{ t.name }}</div>
+            <div class="trait owned" [title]="t.description">ON {{ t.name }}</div>
           }
           @for (t of lockedTraits(); track t.id) {
             <button class="trait locked" [disabled]="!canUnlock(t.id)" (click)="unlockTrait(t.id)" [title]="t.description">
-              {{ canUnlock(t.id) ? '🔓' : '🔒' }} {{ t.name }}
+              {{ canUnlock(t.id) ? 'OPEN' : 'LOCK' }} {{ t.name }}
               <small>Lv {{ t.unlockLevel }} · 4 SP</small>
             </button>
           }
@@ -85,12 +120,12 @@
       <div class="season">
         <p class="eyebrow">This season</p>
         <div class="season-grid">
-          <span>⚽ {{ p.seasonStats.goals }} goals</span>
-          <span>🅰️ {{ p.seasonStats.assists }} assists</span>
-          <span>👕 {{ p.seasonStats.appearances }} apps</span>
-          <span>🧤 {{ p.seasonStats.cleanSheets }} CS</span>
-          <span>🟨 {{ p.seasonStats.yellowCards }}</span>
-          <span>🏅 {{ p.seasonStats.motmAwards }} MOTM</span>
+          <span>G {{ p.seasonStats.goals }} goals</span>
+          <span>A {{ p.seasonStats.assists }} assists</span>
+          <span>AP {{ p.seasonStats.appearances }} apps</span>
+          <span>CS {{ p.seasonStats.cleanSheets }}</span>
+          <span>YC {{ p.seasonStats.yellowCards }}</span>
+          <span>M {{ p.seasonStats.motmAwards }} MOTM</span>
         </div>
       </div>
     </div>

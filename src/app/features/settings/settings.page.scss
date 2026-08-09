@@ -17,6 +17,38 @@
   gap: 14px;
   align-items: start;
 }
+.manager-card {
+  margin-bottom: 14px;
+  display: grid;
+  grid-template-columns: minmax(180px, .7fr) 2fr;
+  gap: 18px;
+}
+.manager-level { display: flex; align-items: center; gap: 14px; }
+.level-badge {
+  width: 58px;
+  height: 58px;
+  display: grid;
+  place-items: center;
+  border: 2px solid var(--accent-3);
+  color: var(--accent-3);
+  box-shadow: 4px 4px 0 var(--accent-shadow);
+}
+.perk-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.perk {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  text-align: left;
+  padding: 10px;
+  border: 2px solid var(--border);
+  background: var(--bg-800);
+  color: var(--text);
+  cursor: pointer;
+}
+.perk span { color: var(--text-dim); font-size: 10px; }
+.perk small { color: var(--accent); font-size: 9px; }
+.perk:not(:disabled):hover { border-color: var(--accent); }
+.perk:disabled { opacity: .75; cursor: not-allowed; }
 .card {
   display: flex;
   flex-direction: column;
@@ -71,6 +103,8 @@
   font-size: 14px;
   cursor: pointer;
 }
+.range { display: grid; grid-template-columns: 100px 1fr; align-items: center; gap: 12px; font-size: 13px; }
+.range input { accent-color: var(--accent); width: 100%; }
 .import {
   cursor: pointer;
 }
@@ -82,4 +116,6 @@
   .cards {
     grid-template-columns: 1fr;
   }
+  .manager-card { grid-template-columns: 1fr; }
+  .perk-grid { grid-template-columns: repeat(2, 1fr); }
 }

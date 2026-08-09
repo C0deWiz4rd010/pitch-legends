@@ -7,7 +7,8 @@ import { attributeUpgradeCost } from '../../core/progression';
 import { RadarChartComponent } from './radar-chart.component';
 import { ratingColor, moraleIcon } from '../rating-color';
 import { TRAITS, getTrait } from '../../data/traits';
-import { Trait } from '../../models/player.model';
+import { DevelopmentPlan, Trait } from '../../models/player.model';
+import { TalentNode } from '../../data/talents';
 
 @Component({
   selector: 'app-player-detail',
@@ -27,6 +28,7 @@ export class PlayerDetailComponent {
   protected readonly labels = ATTRIBUTE_LABELS;
   protected readonly ratingColor = ratingColor;
   protected readonly moraleIcon = moraleIcon;
+  protected readonly developmentPlans: DevelopmentPlan[] = ['balanced', 'technical', 'physical', 'position'];
 
   protected readonly player = computed(() => this.gs.squad().find((p) => p.id === this.playerId()) ?? null);
 
@@ -46,6 +48,11 @@ export class PlayerDetailComponent {
     const p = this.player();
     if (!p) return [];
     return TRAITS.filter((t) => !p.traitIds.includes(t.id));
+  });
+
+  protected readonly talents = computed<TalentNode[]>(() => {
+    const player = this.player();
+    return player ? this.rpg.availableTalents(player) : [];
   });
 
   protected costFor(attr: AttributeKey): number {
@@ -82,5 +89,27 @@ export class PlayerDetailComponent {
     const trait = getTrait(traitId);
     if (!p || !trait) return false;
     return p.level >= trait.unlockLevel && p.skillPoints >= 4;
+  }
+
+  protected setDevelopmentPlan(plan: DevelopmentPlan): void {
+    const id = this.playerId();
+    this.gs.mutate((draft) => {
+      const player = draft.teams.find((team) => team.id === draft.clubId)?.players.find((candidate) => candidate.id === id);
+      if (player) player.developmentPlan = plan;
+    });
+  }
+
+  protected unlockTalent(talentId: string): void {
+    const id = this.playerId();
+    this.gs.mutate((draft) => {
+      const player = draft.teams.find((team) => team.id === draft.clubId)?.players.find((candidate) => candidate.id === id);
+      if (player) this.rpg.unlockTalent(player, talentId);
+    });
+  }
+
+  protected canUnlockTalent(talent: TalentNode): boolean {
+    const player = this.player();
+    if (!player) return false;
+    return player.level >= talent.unlockLevel && player.skillPoints >= talent.cost && (player.talentRanks[talent.id] ?? 0) < talent.maxRank;
   }
 }

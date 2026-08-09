@@ -1,21 +1,22 @@
 <header class="page-head fade-up">
   <div>
-    <p class="eyebrow">Training Ground · Level {{ trainingGround() }}</p>
-    <h1>Training</h1>
+    <p class="eyebrow">{{ 'training.ground' | t }} · LV {{ trainingGround() }}</p>
+    <h1>{{ 'nav.training' | t }}</h1>
   </div>
+  <div class="slot-counter"><strong>{{ gs.trainingSlotsRemaining() }}</strong><span>{{ 'training.slots' | t }}</span></div>
 </header>
 
 <div class="drill-picker card fade-up">
-  <p class="eyebrow">Select a drill, then train players to earn XP and push their stats</p>
+  <p class="eyebrow">{{ 'training.choose' | t }}</p>
   <div class="drills">
     @for (d of drills; track d.id) {
       <button class="drill" [class.active]="activeDrill().id === d.id" (click)="selectDrill(d)">
         <span class="d-ico">{{ d.icon }}</span>
-        <span class="d-name">{{ d.name }}</span>
+        <span class="d-name">{{ ('training.drill.' + d.id) | t }}</span>
       </button>
     }
   </div>
-  <p class="drill-desc muted">{{ activeDrill().icon }} {{ activeDrill().description }}</p>
+  <p class="drill-desc muted">{{ activeDrill().icon }} {{ ('training.drill.' + activeDrill().id + '.desc') | t }}</p>
 </div>
 
 @if (message()) {
@@ -32,8 +33,8 @@
             <strong>{{ p.firstName }} {{ p.lastName }}</strong>
             <span class="pos">{{ p.position }}</span>
             <span class="lvl">Lv {{ p.level }}</span>
-            @if (p.skillPoints > 0) { <span class="sp">✨ {{ p.skillPoints }}</span> }
-            @if (p.injuryWeeks > 0) { <span class="inj">🚑 {{ p.injuryWeeks }}w</span> }
+            @if (p.skillPoints > 0) { <span class="sp">SP {{ p.skillPoints }}</span> }
+            @if (p.injuryWeeks > 0) { <span class="inj">INJ {{ p.injuryWeeks }}W</span> }
           </div>
           <div class="bars">
             <div class="bar xp" title="XP">
@@ -45,9 +46,9 @@
           </div>
         </div>
         <div class="pactions">
-          <button class="btn btn--ghost btn--sm" (click)="recover(p.id)" title="Recover fitness">🧊</button>
+          <button class="btn btn--ghost btn--sm" (click)="recover(p.id)" title="Recover fitness">RC</button>
           <button class="btn btn--primary btn--sm" [disabled]="p.injuryWeeks > 0" (click)="train(p.id)">
-            Train {{ activeDrill().icon }}
+            {{ 'training.train' | t }} {{ activeDrill().icon }}
           </button>
         </div>
       </div>

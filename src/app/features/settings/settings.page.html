@@ -1,62 +1,82 @@
 <header class="page-head fade-up">
   <div>
     <p class="eyebrow">{{ gs.playerTeam()?.name }}</p>
-    <h1>Settings</h1>
+    <h1>{{ 'settings.title' | t }}</h1>
   </div>
 </header>
 
-@if (message()) {
-  <div class="toast fade-up">{{ message() }}</div>
-}
+@if (message()) { <div class="toast fade-up">{{ message() }}</div> }
+
+<div class="manager-card card fade-up">
+  <div class="manager-level">
+    <span class="level-badge">LV {{ gs.manager()?.level }}</span>
+    <div>
+      <p class="eyebrow">{{ 'settings.manager' | t }}</p>
+      <h2>{{ gs.game()?.managerName }}</h2>
+      <span class="muted">{{ gs.manager()?.xp }} / {{ gs.manager()?.xpToNext }} XP · {{ gs.manager()?.skillPoints }} SP</span>
+    </div>
+  </div>
+  <div class="perk-grid">
+    @for (path of perkPaths; track path) {
+      <button class="perk" [disabled]="!gs.manager()?.skillPoints || (gs.manager()?.perks?.[path] ?? 0) >= 5" (click)="unlockPerk(path)">
+        <strong>{{ ('perk.' + path) | t }}</strong>
+        <span>{{ ('perk.' + path + '.desc') | t }}</span>
+        <small>RANK {{ gs.manager()?.perks?.[path] ?? 0 }}/5</small>
+      </button>
+    }
+  </div>
+</div>
 
 <div class="cards fade-up">
   <div class="card">
-    <p class="eyebrow">Career</p>
-    <div class="info-row"><span class="muted">Manager</span><strong>{{ gs.game()?.managerName }}</strong></div>
-    <div class="info-row"><span class="muted">Club</span><strong>{{ gs.playerTeam()?.name }}</strong></div>
-    <div class="info-row"><span class="muted">Season</span><strong>{{ gs.season() }}</strong></div>
-    <div class="info-row"><span class="muted">Week</span><strong>{{ gs.currentWeek() }} / {{ gs.totalWeeks() }}</strong></div>
-
-    @if (gs.seasonOver()) {
-      <button class="btn btn--primary btn--block" (click)="startNextSeason()">🎬 Start Next Season</button>
-    }
-  </div>
-
-  <div class="card">
-    <p class="eyebrow">Gameplay</p>
+    <p class="eyebrow">{{ 'settings.gameplay' | t }}</p>
     <div class="setting">
-      <span>Difficulty</span>
+      <span>{{ 'settings.language' | t }}</span>
+      <div class="mini-seg">
+        <button [class.active]="gs.game()?.settings?.locale === 'de'" (click)="setLocale('de')">DE</button>
+        <button [class.active]="gs.game()?.settings?.locale === 'en'" (click)="setLocale('en')">EN</button>
+      </div>
+    </div>
+    <div class="setting">
+      <span>{{ 'settings.difficulty' | t }}</span>
       <div class="mini-seg">
         @for (d of difficulties; track d) {
-          <button [class.active]="gs.game()?.settings?.difficulty === d" (click)="setDifficulty(d)">{{ d }}</button>
+          <button [class.active]="gs.game()?.settings?.difficulty === d" (click)="setDifficulty(d)">{{ ('difficulty.' + d) | t }}</button>
         }
       </div>
     </div>
-    <label class="toggle">
-      <input type="checkbox" [checked]="gs.game()?.settings?.autoSave" (change)="toggleAutosave()" />
-      <span>Auto-save after each action</span>
-    </label>
-    <label class="toggle">
-      <input type="checkbox" [checked]="gs.game()?.settings?.soundEnabled" (change)="toggleSound()" />
-      <span>Sound effects</span>
-    </label>
+    <div class="setting">
+      <span>{{ 'settings.halfLength' | t }}</span>
+      <div class="mini-seg">
+        @for (duration of durations; track duration) {
+          <button [class.active]="gs.game()?.settings?.matchDuration === duration" (click)="setDuration(duration)">{{ duration }} MIN</button>
+        }
+      </div>
+    </div>
+    <label class="toggle"><input type="checkbox" [checked]="gs.game()?.settings?.autoSave" (change)="toggleAutosave()" /><span>{{ 'settings.autosave' | t }}</span></label>
+    <label class="toggle"><input type="checkbox" [checked]="gs.game()?.settings?.soundEnabled" (change)="toggleSound()" /><span>{{ 'settings.sound' | t }}</span></label>
+    <label class="range"><span>{{ 'settings.music' | t }}</span><input type="range" min="0" max="1" step="0.05" [value]="gs.game()?.settings?.musicVolume" (input)="setVolume('musicVolume', $event)" /></label>
+    <label class="range"><span>{{ 'settings.sfx' | t }}</span><input type="range" min="0" max="1" step="0.05" [value]="gs.game()?.settings?.sfxVolume" (input)="setVolume('sfxVolume', $event)" /></label>
   </div>
 
   <div class="card">
-    <p class="eyebrow">Save data</p>
-    <button class="btn btn--ghost btn--block" (click)="saveNow()">💾 Save now</button>
-    <button class="btn btn--ghost btn--block" (click)="exportSave()">📤 Export save (.json)</button>
-    <label class="btn btn--ghost btn--block import">
-      📥 Import save (.json)
-      <input type="file" accept="application/json" (change)="onImport($event)" hidden />
-    </label>
+    <p class="eyebrow">{{ 'settings.career' | t }}</p>
+    <div class="info-row"><span class="muted">{{ 'settings.club' | t }}</span><strong>{{ gs.playerTeam()?.name }}</strong></div>
+    <div class="info-row"><span class="muted">{{ 'common.season' | t }}</span><strong>{{ gs.season() }}</strong></div>
+    <div class="info-row"><span class="muted">{{ 'common.week' | t }}</span><strong>{{ gs.currentWeek() }} / {{ gs.totalWeeks() }}</strong></div>
+    @if (gs.seasonOver()) { <button class="btn btn--primary btn--block" (click)="startNextSeason()">{{ 'settings.nextSeason' | t }}</button> }
+  </div>
+
+  <div class="card">
+    <p class="eyebrow">{{ 'settings.saveData' | t }}</p>
+    <button class="btn btn--ghost btn--block" (click)="saveNow()">SAVE</button>
+    <button class="btn btn--ghost btn--block" (click)="exportSave()">EXPORT JSON</button>
+    <label class="btn btn--ghost btn--block import">IMPORT JSON<input type="file" accept="application/json" (change)="onImport($event)" hidden /></label>
   </div>
 
   <div class="card danger-zone">
-    <p class="eyebrow">Danger zone</p>
-    <p class="muted">Starting a new career permanently deletes your current save.</p>
-    <button class="btn btn--danger btn--block" (click)="newGame()">
-      {{ confirmNew() ? '⚠️ Tap again to confirm — delete & start new' : '🗑️ New career' }}
-    </button>
+    <p class="eyebrow">{{ 'settings.danger' | t }}</p>
+    <p class="muted">{{ 'settings.dangerText' | t }}</p>
+    <button class="btn btn--danger btn--block" (click)="newGame()">{{ confirmNew() ? ('settings.confirmDelete' | t) : ('settings.newCareer' | t) }}</button>
   </div>
 </div>

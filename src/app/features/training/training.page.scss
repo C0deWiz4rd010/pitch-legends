@@ -1,5 +1,9 @@
 @use '../../../styles/page' as *;
 
+.slot-counter { display: flex; align-items: center; gap: 9px; text-transform: uppercase; }
+.slot-counter strong { font-family: var(--font-pixel); font-size: 26px; color: var(--accent-3); }
+.slot-counter span { max-width: 90px; font-size: 10px; color: var(--text-dim); }
+
 .drill-picker {
   margin-bottom: 14px;
 }

@@ -8,6 +8,8 @@ import { MatchEngineService } from './match-engine.service';
 import { RpgService } from './rpg.service';
 import { Rng, clamp, uid } from '../util';
 import { playerName } from '../ratings';
+import { autoFillLineup, generatePlayer } from '../../data/generators';
+import { Position } from '../../models/enums';
 
 @Injectable({ providedIn: 'root' })
 export class SeasonService {
@@ -79,22 +81,24 @@ export class SeasonService {
     const away = draft.teams.find((t) => t.id === result.awayTeamId);
     if (!home || !away) return;
 
-    this.applyToTeam(home, result, result.homeScore, result.awayScore);
-    this.applyToTeam(away, result, result.awayScore, result.homeScore);
+    const homeGrowth = this.applyToTeam(home, result, result.homeScore, result.awayScore);
+    const awayGrowth = this.applyToTeam(away, result, result.awayScore, result.homeScore);
 
     if (isPlayerMatch) {
       // Store the full result for the match report & history (cap history length).
       draft.results.unshift(result);
       draft.results = draft.results.slice(0, 30);
       this.applyPlayerRewards(draft, home, away, result);
+      this.updateObjectives(draft, result, home.id === draft.clubId ? homeGrowth : awayGrowth);
     }
   }
 
-  private applyToTeam(team: Team, result: MatchResult, goalsFor: number, goalsAgainst: number): void {
+  private applyToTeam(team: Team, result: MatchResult, goalsFor: number, goalsAgainst: number): number {
     const won = goalsFor > goalsAgainst;
     const drew = goalsFor === goalsAgainst;
     const cleanSheet = goalsAgainst === 0;
 
+    let levelsGained = 0;
     for (const p of team.players) {
       const rating = result.ratings[p.id];
       if (rating === undefined) continue; // did not start
@@ -110,6 +114,9 @@ export class SeasonService {
         p.seasonStats.cleanSheets++;
       }
       if (p.id === result.manOfTheMatchId) p.seasonStats.motmAwards++;
+      if (result.events.some((event) => event.type === 'injury' && event.playerId === p.id)) {
+        p.injuryWeeks = Math.max(p.injuryWeeks, this.rng.int(1, 4));
+      }
 
       p.fitness = clamp(p.fitness - this.rng.int(18, 28), 0, 100);
       p.morale = clamp(p.morale + (won ? 4 : drew ? 1 : -4), 15, 100);
@@ -121,8 +128,21 @@ export class SeasonService {
         Math.round((rating - 6.5) * 22) +
         (won ? 25 : drew ? 10 : 0) +
         (p.id === result.manOfTheMatchId ? 20 : 0);
-      this.rpg.awardXp(p, Math.max(10, xp));
+      levelsGained += this.rpg.awardXp(p, Math.max(10, xp)).levelsGained;
+      const goal = p.personalGoal;
+      goal.progress =
+        goal.type === 'goals' ? p.seasonStats.goals :
+        goal.type === 'assists' ? p.seasonStats.assists :
+        goal.type === 'clean-sheets' ? p.seasonStats.cleanSheets :
+        goal.type === 'appearances' ? p.seasonStats.appearances :
+        Math.round(p.seasonStats.ratingSum / Math.max(1, p.seasonStats.appearances) * 10);
+      if (!goal.completed && goal.progress >= goal.target) {
+        goal.completed = true;
+        this.rpg.awardXp(p, goal.rewardXp);
+        p.morale = clamp(p.morale + 10, 0, 100);
+      }
     }
+    return levelsGained;
   }
 
   private applyPlayerRewards(draft: GameState, home: Team, away: Team, result: MatchResult): void {
@@ -138,7 +158,12 @@ export class SeasonService {
     const prize = won ? 60000 : drew ? 25000 : 8000;
     const income = Math.round(gate + prize);
     club.coins += income;
-    this.rpg.awardManagerXp(draft.manager, won ? 90 : drew ? 55 : 35);
+    club.reputation = clamp(club.reputation + (won ? 1 : drew ? 0 : -0.5), 20, 100);
+    const leadership = draft.manager.perks.leadership ?? 0;
+    this.rpg.awardManagerXp(draft.manager, Math.round((won ? 90 : drew ? 55 : 35) * (1 + leadership * 0.06)));
+    for (const player of club.players) {
+      player.morale = clamp(player.morale + leadership * (won ? 1 : 0.4), 0, 100);
+    }
 
     const opp = isHome ? away : home;
     draft.news.unshift({
@@ -157,6 +182,25 @@ export class SeasonService {
       },
     });
     draft.news = draft.news.slice(0, 20);
+  }
+
+  private updateObjectives(draft: GameState, result: MatchResult, playerLevels: number): void {
+    const clubIsHome = result.homeTeamId === draft.clubId;
+    const won = clubIsHome ? result.homeScore > result.awayScore : result.awayScore > result.homeScore;
+    for (const objective of draft.objectives) {
+      if (objective.completed) continue;
+      if (objective.type === 'wins' && won) objective.progress++;
+      if (objective.type === 'player-growth') objective.progress += playerLevels;
+      if (objective.type === 'league-position' || objective.progress < objective.target) continue;
+      objective.completed = true;
+      const club = draft.teams.find((team) => team.id === draft.clubId)!;
+      club.coins += objective.rewardCoins;
+      this.rpg.awardManagerXp(draft.manager, objective.rewardXp);
+      this.pushNews(draft, 'target', 'news.objective.title', 'news.objective.body', {
+        coins: objective.rewardCoins,
+        xp: objective.rewardXp,
+      });
+    }
   }
 
   private weeklyUpkeep(draft: GameState): void {
@@ -180,7 +224,13 @@ export class SeasonService {
           }
         }
         p.morale = clamp(p.morale + Math.sign(70 - p.morale) * 2, 15, 100);
-        if (p.contractWeeks > 0) p.contractWeeks--;
+        if (p.contractWeeks > 0) {
+          p.contractWeeks--;
+          if (p.contractWeeks === 0 && team.id === draft.clubId) {
+            this.pushNews(draft, 'contract', 'news.contract.title', 'news.contract.body', { player: playerName(p) });
+            p.morale = clamp(p.morale - 12, 0, 100);
+          }
+        }
       }
       const wages = team.players.reduce((sum, player) => sum + player.salary, 0);
       team.coins = Math.max(0, team.coins - wages);
@@ -202,6 +252,7 @@ export class SeasonService {
   /** Advance the season into a new one when all fixtures are played. */
   startNextSeason(): void {
     this.gs.mutate((draft) => {
+      this.resolveLeagueObjective(draft);
       draft.league.season++;
       draft.league.currentWeek = 1;
       draft.trainingWeek = { season: draft.league.season, week: 1, slotsUsed: 0, maxSlots: 3 };
@@ -229,9 +280,70 @@ export class SeasonService {
           p.fitness = 100;
         }
       }
+      this.promoteYouth(draft);
       this.pushNews(draft, 'flag', 'news.season.title', 'news.season.body', {
         season: draft.league.season,
       });
     });
+  }
+
+  private resolveLeagueObjective(draft: GameState): void {
+    const objective = draft.objectives.find((candidate) => candidate.type === 'league-position' && !candidate.completed);
+    if (!objective) return;
+    const points = new Map(draft.teams.map((team) => [team.id, { points: 0, diff: 0 }]));
+    for (const fixture of draft.league.fixtures) {
+      if (!fixture.played || fixture.homeScore == null || fixture.awayScore == null) continue;
+      const home = points.get(fixture.homeTeamId)!;
+      const away = points.get(fixture.awayTeamId)!;
+      home.diff += fixture.homeScore - fixture.awayScore;
+      away.diff += fixture.awayScore - fixture.homeScore;
+      if (fixture.homeScore > fixture.awayScore) home.points += 3;
+      else if (fixture.awayScore > fixture.homeScore) away.points += 3;
+      else {
+        home.points++;
+        away.points++;
+      }
+    }
+    const position = [...points.entries()]
+      .sort((a, b) => b[1].points - a[1].points || b[1].diff - a[1].diff)
+      .findIndex(([id]) => id === draft.clubId) + 1;
+    objective.progress = position;
+    if (position > 0 && position <= objective.target) {
+      objective.completed = true;
+      const club = draft.teams.find((team) => team.id === draft.clubId)!;
+      club.coins += objective.rewardCoins;
+      this.rpg.awardManagerXp(draft.manager, objective.rewardXp);
+    }
+  }
+
+  private promoteYouth(draft: GameState): void {
+    const club = draft.teams.find((team) => team.id === draft.clubId);
+    if (!club || club.players.length >= 26) return;
+    const academy = club.facilities.youthAcademy;
+    const positions: Position[] = ['GK', 'CB', 'RB', 'LB', 'CDM', 'CM', 'CAM', 'RW', 'LW', 'ST'];
+    const count = Math.min(26 - club.players.length, 1 + Math.floor(academy / 2));
+    const promoted: Player[] = [];
+    for (let index = 0; index < count; index++) {
+      const overall = clamp(Math.round(47 + academy * 3 + club.reputation * 0.08 + this.rng.gaussian(0, 4)), 46, 76);
+      const used = new Set(club.players.map((player) => player.kitNumber));
+      let kit = this.rng.int(24, 60);
+      while (used.has(kit)) kit = kit === 99 ? 24 : kit + 1;
+      const prospect = generatePlayer(this.rng, this.rng.pick(positions), [], overall, kit);
+      prospect.age = this.rng.int(16, 18);
+      prospect.potential = clamp(Math.max(prospect.potential, prospect.overall + 7 + academy * 2), prospect.overall, 99);
+      prospect.salary = Math.max(500, Math.round(prospect.marketValue / 1800));
+      prospect.contractWeeks = 156;
+      club.players.push(prospect);
+      promoted.push(prospect);
+    }
+    autoFillLineup(club);
+    if (promoted.length) {
+      const best = [...promoted].sort((a, b) => b.potential - a.potential)[0];
+      this.pushNews(draft, 'academy', 'news.academy.title', 'news.academy.body', {
+        count: promoted.length,
+        player: playerName(best),
+        potential: best.potential,
+      });
+    }
   }
 }

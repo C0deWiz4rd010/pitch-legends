@@ -5,7 +5,7 @@
   </div>
   <div class="budget">
     <span class="muted">Budget</span>
-    <strong class="gold">🪙 {{ formatCoins(gs.coins()) }}</strong>
+    <strong class="gold">CR {{ formatCoins(gs.coins()) }}</strong>
   </div>
 </header>
 
@@ -13,9 +13,16 @@
   <div class="segmented">
     <button [class.active]="tab() === 'buy'" (click)="tab.set('buy')">Buy</button>
     <button [class.active]="tab() === 'sell'" (click)="tab.set('sell')">Sell</button>
+    <button [class.active]="tab() === 'contracts'" (click)="tab.set('contracts')">Contracts</button>
   </div>
   @if (tab() === 'buy') {
-    <button class="btn btn--ghost btn--sm" (click)="refresh()">🔍 Scout new ({{ formatCoins(transfers.refreshCost) }})</button>
+    <div class="market-filters">
+      <input type="search" placeholder="SEARCH PLAYER" [value]="search()" (input)="search.set($any($event.target).value)" />
+      <select [value]="positionFilter()" (change)="positionFilter.set($any($event.target).value)">
+        @for (position of positions; track position) { <option [value]="position">{{ position }}</option> }
+      </select>
+      <button class="btn btn--ghost btn--sm" (click)="refresh()">SCOUT NEW ({{ formatCoins(transfers.refreshCost) }})</button>
+    </div>
   }
 </div>
 
@@ -25,10 +32,10 @@
 
 <div class="grid fade-up">
   @if (tab() === 'buy') {
-    @for (p of market(); track p.id) {
+    @for (p of filteredMarket(); track p.id) {
       <div class="pcard">
         <div class="pc-top">
-          <span class="rating" [style.background]="ratingColor(p.overall)">{{ p.overall }}</span>
+          <span class="rating" [style.background]="ratingColor(p.overall)">{{ estimatedRating(p) }}</span>
           <div class="pc-id">
             <strong>{{ playerName(p) }}</strong>
             <span class="muted">{{ p.position }} · {{ p.age }}y · {{ p.nationality }}</span>
@@ -43,14 +50,14 @@
           <span>PHY {{ p.attributes.physical }}</span>
         </div>
         <div class="pc-foot">
-          <span class="value gold">🪙 {{ formatCoins(p.marketValue) }}</span>
+          <span class="value gold">CR {{ formatCoins(p.marketValue) }} · W {{ formatCoins(p.salary) }}</span>
           <button class="btn btn--primary btn--sm" [disabled]="gs.coins() < p.marketValue" (click)="buy(p)">Sign</button>
         </div>
       </div>
     } @empty {
       <p class="muted">No players available. Scout for more.</p>
     }
-  } @else {
+  } @else if (tab() === 'sell') {
     @for (p of squad(); track p.id) {
       <div class="pcard">
         <div class="pc-top">
@@ -69,8 +76,25 @@
           <span>PHY {{ p.attributes.physical }}</span>
         </div>
         <div class="pc-foot">
-          <span class="value">Sell for <strong class="gold">🪙 {{ formatCoins(p.marketValue * 0.9) }}</strong></span>
+          <span class="value">Sell for <strong class="gold">CR {{ formatCoins(p.marketValue * 0.9) }}</strong></span>
           <button class="btn btn--danger btn--sm" (click)="sell(p)">Sell</button>
+        </div>
+      </div>
+    }
+  } @else {
+    <div class="wage-summary card">
+      <span>WEEKLY WAGES</span>
+      <strong [class.danger]="wages() > (gs.playerTeam()?.wageBudget ?? 0)">{{ formatCoins(wages()) }} / {{ formatCoins(gs.playerTeam()?.wageBudget ?? 0) }}</strong>
+    </div>
+    @for (p of contracts(); track p.id) {
+      <div class="pcard" [class.expiring]="p.contractWeeks <= 12">
+        <div class="pc-top">
+          <span class="rating" [style.background]="ratingColor(p.overall)">{{ p.overall }}</span>
+          <div class="pc-id"><strong>{{ playerName(p) }}</strong><span class="muted">{{ p.position }} · {{ p.contractWeeks }} weeks remaining</span></div>
+        </div>
+        <div class="pc-foot">
+          <span class="value">W {{ formatCoins(p.salary) }} · FEE {{ formatCoins(transfers.renewalCost(p)) }}</span>
+          <button class="btn btn--primary btn--sm" (click)="renew(p)">+104 WEEKS</button>
         </div>
       </div>
     }
