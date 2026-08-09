@@ -15,7 +15,7 @@ import { GameStateService } from '../../core/services/game-state.service';
 import { SeasonService } from '../../core/services/season.service';
 import { MatchEngineService } from '../../core/services/match-engine.service';
 import { LiveMatch } from '../../core/services/match-sim';
-import { MatchEvent, MatchResult } from '../../models/match.model';
+import { InputFrame, MatchEvent, MatchMode, MatchResult } from '../../models/match.model';
 import { Team } from '../../models/team.model';
 import { Player } from '../../models/player.model';
 import { Mentality, PressingIntensity } from '../../models/enums';
@@ -23,8 +23,11 @@ import { ratingColor } from '../../shared/rating-color';
 import { playerName } from '../../core/ratings';
 import { MatchPitchRenderer } from './match-renderer';
 import { I18nService } from '../../core/services/i18n.service';
+import { ArcadeMatch } from '../../core/services/arcade-match';
+import { ArcadePitchRenderer } from './arcade-renderer';
+import { AudioService } from '../../core/services/audio.service';
 
-type Phase = 'preview' | 'live' | 'result';
+type Phase = 'preview' | 'coach' | 'play' | 'result';
 
 @Component({
   selector: 'app-match',
@@ -39,6 +42,7 @@ export class MatchPage implements OnDestroy {
   private readonly engine = inject(MatchEngineService);
   private readonly router = inject(Router);
   protected readonly i18n = inject(I18nService);
+  private readonly audio = inject(AudioService);
   protected readonly ratingColor = ratingColor;
   protected readonly playerName = playerName;
 
@@ -55,14 +59,31 @@ export class MatchPage implements OnDestroy {
   protected readonly showSubs = signal(false);
   protected readonly subOutId = signal<string>('');
   protected readonly subInId = signal<string>('');
+  protected readonly selectedMode = signal<MatchMode>('play');
+  protected readonly touchX = signal(0);
+  protected readonly touchY = signal(0);
+  protected readonly touchSprint = signal(false);
+  protected readonly touchPass = signal(false);
+  protected readonly touchThrough = signal(false);
+  protected readonly touchShoot = signal(false);
+  protected readonly touchSwitch = signal(false);
 
   private live: LiveMatch | null = null;
+  private arcade: ArcadeMatch | null = null;
   private renderer: MatchPitchRenderer | null = null;
+  private arcadeRenderer: ArcadePitchRenderer | null = null;
   private raf = 0;
   private lastTs = 0;
   private virtualMinute = 0;
   private prevHome = 0;
   private prevAway = 0;
+  private fixedAccumulator = 0;
+  private readonly keys = new Set<string>();
+  private readonly keyDown = (event: KeyboardEvent) => {
+    if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].includes(event.code)) event.preventDefault();
+    this.keys.add(event.code);
+  };
+  private readonly keyUp = (event: KeyboardEvent) => this.keys.delete(event.code);
 
   protected readonly mentalities: Mentality[] = ['ultra-defensive', 'defensive', 'balanced', 'attacking', 'ultra-attacking'];
   protected readonly pressings: PressingIntensity[] = ['low', 'medium', 'high', 'gegenpress'];
@@ -131,22 +152,51 @@ export class MatchPage implements OnDestroy {
   protected readonly momentumHome = computed(() => Math.round((this.momentum() + 1) * 50));
 
   constructor() {
+    window.addEventListener('keydown', this.keyDown);
+    window.addEventListener('keyup', this.keyUp);
     effect(() => {
       const canvas = this.canvasRef();
-      if (this.phase() === 'live' && canvas && !this.renderer) {
+      if ((this.phase() === 'coach' || this.phase() === 'play') && canvas && !this.renderer && !this.arcadeRenderer) {
         this.startAnimation(canvas.nativeElement);
       }
     });
   }
 
-  protected kickOff(): void {
+  protected kickOff(mode: MatchMode = this.selectedMode()): void {
     const home = this.homeTeam();
     const away = this.awayTeam();
     const fx = this.gs.nextFixture();
     if (!home || !away || !fx) return;
     const controlledTeamId = this.gs.playerTeam()?.id ?? home.id;
-    this.live = this.engine.createLiveMatch(home, away, fx.week, controlledTeamId);
-    this.revealed.set([...this.live.events]);
+    if (mode === 'instant') {
+      const result = this.engine.simulate(home, away, fx.week);
+      this.result.set(result);
+      this.revealed.set([...result.events]);
+      this.minute.set(90);
+      this.phase.set('result');
+      return;
+    }
+
+    this.audio.whistle();
+    this.audio.startMusic();
+
+    if (mode === 'play') {
+      const settings = this.gs.game()?.settings;
+      this.arcade = new ArcadeMatch(
+        home,
+        away,
+        controlledTeamId,
+        settings?.matchDuration ?? 3,
+        Date.now() >>> 0,
+        settings?.difficulty ?? 'normal',
+      );
+      this.revealed.set([...this.arcade.events]);
+      this.phase.set('play');
+    } else {
+      this.live = this.engine.createLiveMatch(home, away, fx.week, controlledTeamId);
+      this.revealed.set([...this.live.events]);
+      this.phase.set('coach');
+    }
     this.virtualMinute = 0;
     this.minute.set(0);
     this.momentum.set(0);
@@ -154,12 +204,15 @@ export class MatchPage implements OnDestroy {
     this.prevAway = 0;
     this.playing.set(true);
     this.speed.set(1);
-    this.phase.set('live');
+    this.fixedAccumulator = 0;
   }
 
   private startAnimation(canvas: HTMLCanvasElement): void {
-    if (!this.live) return;
-    this.renderer = new MatchPitchRenderer(canvas, this.live.home, this.live.away, this.live.keyframes);
+    if (this.phase() === 'play' && this.arcade) {
+      this.arcadeRenderer = new ArcadePitchRenderer(canvas);
+    } else if (this.live) {
+      this.renderer = new MatchPitchRenderer(canvas, this.live.home, this.live.away, this.live.keyframes);
+    } else return;
     this.lastTs = 0;
     this.raf = requestAnimationFrame((ts) => this.loop(ts));
   }
@@ -169,19 +222,26 @@ export class MatchPage implements OnDestroy {
     const dt = Math.min((ts - this.lastTs) / 1000, 0.05);
     this.lastTs = ts;
 
-    if (this.playing() && this.live) {
+    if (this.playing() && this.phase() === 'coach' && this.live) {
       this.virtualMinute += dt * 2.4 * this.speed();
       this.live.stepTo(this.virtualMinute);
       const m = Math.min(90, Math.floor(this.virtualMinute));
       if (m !== this.minute()) this.minute.set(m);
       this.syncFromLive();
-      if (this.virtualMinute >= 90) {
-        this.finish();
-        return;
+      if (this.virtualMinute >= 90) return this.finish();
+    } else if (this.playing() && this.phase() === 'play' && this.arcade) {
+      this.fixedAccumulator = Math.min(this.fixedAccumulator + dt, 0.2);
+      const input = this.readInput();
+      while (this.fixedAccumulator >= 1 / 60) {
+        this.arcade.step(1 / 60, input);
+        this.fixedAccumulator -= 1 / 60;
       }
+      this.syncFromArcade();
+      if (this.arcade.finished) return this.finish();
     }
 
     this.renderer?.render(this.virtualMinute);
+    if (this.arcade && this.arcadeRenderer) this.arcadeRenderer.render(this.arcade);
     this.raf = requestAnimationFrame((t) => this.loop(t));
   }
 
@@ -199,51 +259,83 @@ export class MatchPage implements OnDestroy {
     }
   }
 
+  private syncFromArcade(): void {
+    if (!this.arcade) return;
+    this.revealed.set([...this.arcade.events]);
+    this.minute.set(this.arcade.footballMinute);
+    this.momentum.set(Math.max(-1, Math.min(1, (this.arcade.ball.x - 0.5) * 2)));
+    if (this.arcade.homeScore > this.prevHome) {
+      this.celebrate('home');
+      this.prevHome = this.arcade.homeScore;
+    }
+    if (this.arcade.awayScore > this.prevAway) {
+      this.celebrate('away');
+      this.prevAway = this.arcade.awayScore;
+    }
+  }
+
   private celebrate(side: 'home' | 'away'): void {
-    const scorer = [...(this.live?.events ?? [])].reverse().find((e) => e.type === 'goal' && e.side === side);
+    const scorer = [...(this.live?.events ?? this.arcade?.events ?? [])]
+      .reverse()
+      .find((e) => e.type === 'goal' && e.side === side);
     this.flash.set(scorer?.playerName ?? 'GOAL');
     this.renderer?.triggerGoal(side === 'home');
+    this.arcadeRenderer?.triggerGoal();
+    this.audio.goal();
     setTimeout(() => this.flash.set(null), 1800);
   }
 
   // ── Live management ────────────────────────────────────────────────────────
   protected currentMentality(): Mentality | undefined {
-    return this.live?.controlled.tactics.mentality;
+    return this.live?.controlled.tactics.mentality ?? this.arcade?.controlledTeam.tactics.mentality;
   }
   protected currentPressing(): PressingIntensity | undefined {
-    return this.live?.controlled.tactics.pressing;
+    return this.live?.controlled.tactics.pressing ?? this.arcade?.controlledTeam.tactics.pressing;
   }
   protected setMentality(m: Mentality): void {
-    this.live?.setMentality(m);
-    this.syncFromLive();
+    if (this.live) {
+      this.live.setMentality(m);
+      this.syncFromLive();
+    } else if (this.arcade) {
+      this.arcade.setMentality(m);
+      this.syncFromArcade();
+    }
   }
   protected setPressing(p: PressingIntensity): void {
-    this.live?.setPressing(p);
-    this.syncFromLive();
+    if (this.live) {
+      this.live.setPressing(p);
+      this.syncFromLive();
+    } else if (this.arcade) {
+      this.arcade.setPressing(p);
+      this.syncFromArcade();
+    }
   }
 
   protected onPitchPlayers(): Player[] {
+    if (this.arcade) return this.arcade.actors.filter((actor) => actor.side === this.arcade!.controlledSide).map((actor) => actor.player);
     if (!this.live) return [];
     return this.live.controlled.formation.slots
       .map((s) => this.live!.controlled.players.find((p) => p.id === s.playerId))
       .filter((p): p is Player => !!p);
   }
   protected benchPlayers(): Player[] {
-    return this.live?.bench() ?? [];
+    return this.live?.bench() ?? this.arcade?.bench() ?? [];
   }
   protected subsRemaining(): number {
-    return this.live?.subsRemaining ?? 0;
+    return this.live?.subsRemaining ?? (this.arcade ? Math.max(0, 5 - this.arcade.events.filter((event) => event.type === 'sub').length) : 0);
   }
   protected doSub(): void {
     const out = this.subOutId();
     const inId = this.subInId();
-    if (!this.live || !out || !inId) return;
-    if (this.live.makeSub(out, inId)) {
-      this.renderer?.refreshNumbers(this.live.home, this.live.away);
+    if ((!this.live && !this.arcade) || !out || !inId) return;
+    const changed = this.live ? this.live.makeSub(out, inId) : this.arcade!.makeSub(out, inId);
+    if (changed) {
+      if (this.live) this.renderer?.refreshNumbers(this.live.home, this.live.away);
       this.subOutId.set('');
       this.subInId.set('');
       this.showSubs.set(false);
-      this.syncFromLive();
+      if (this.live) this.syncFromLive();
+      else this.syncFromArcade();
     }
   }
 
@@ -251,10 +343,14 @@ export class MatchPage implements OnDestroy {
     this.playing.update((p) => !p);
   }
   protected cycleSpeed(): void {
+    if (this.phase() === 'play') return;
     this.speed.update((s) => (s === 1 ? 2 : s === 2 ? 4 : 1));
   }
   protected skip(): void {
-    if (this.live) {
+    if (this.arcade) {
+      this.arcade.simulateToEnd();
+      this.syncFromArcade();
+    } else if (this.live) {
       this.live.stepTo(90);
       this.virtualMinute = 90;
       this.syncFromLive();
@@ -270,8 +366,16 @@ export class MatchPage implements OnDestroy {
       const r = this.live.finalize();
       this.result.set(r);
       this.revealed.set([...r.events]);
+    } else if (this.arcade) {
+      const r = this.arcade.result();
+      const fx = this.gs.nextFixture();
+      if (fx) r.week = fx.week;
+      this.result.set(r);
+      this.revealed.set([...r.events]);
     }
     this.phase.set('result');
+    this.audio.whistle();
+    this.audio.stopMusic();
   }
 
   protected confirm(): void {
@@ -287,7 +391,11 @@ export class MatchPage implements OnDestroy {
     cancelAnimationFrame(this.raf);
     this.renderer?.destroy();
     this.renderer = null;
+    this.arcadeRenderer?.destroy();
+    this.arcadeRenderer = null;
     this.live = null;
+    this.arcade = null;
+    this.audio.stopMusic();
     this.result.set(null);
     this.phase.set('preview');
   }
@@ -311,8 +419,44 @@ export class MatchPage implements OnDestroy {
       .sort((a, b) => b.rating - a.rating);
   }
 
+  protected setTouchDirection(x: number, y: number, active: boolean): void {
+    this.touchX.set(active ? x : 0);
+    this.touchY.set(active ? y : 0);
+  }
+
+  protected setTouchAction(action: 'sprint' | 'pass' | 'through' | 'shoot' | 'switch', active: boolean): void {
+    if (action === 'sprint') this.touchSprint.set(active);
+    if (action === 'pass') this.touchPass.set(active);
+    if (action === 'through') this.touchThrough.set(active);
+    if (action === 'shoot') this.touchShoot.set(active);
+    if (action === 'switch') this.touchSwitch.set(active);
+  }
+
+  private readInput(): InputFrame {
+    const gamepad = typeof navigator !== 'undefined' ? navigator.getGamepads?.()[0] : null;
+    const axisX = Math.abs(gamepad?.axes[0] ?? 0) > 0.18 ? gamepad!.axes[0] : 0;
+    const axisY = Math.abs(gamepad?.axes[1] ?? 0) > 0.18 ? gamepad!.axes[1] : 0;
+    const keyboardX = (this.keys.has('ArrowRight') || this.keys.has('KeyD') ? 1 : 0) -
+      (this.keys.has('ArrowLeft') || this.keys.has('KeyA') ? 1 : 0);
+    const keyboardY = (this.keys.has('ArrowDown') || this.keys.has('KeyS') ? 1 : 0) -
+      (this.keys.has('ArrowUp') || this.keys.has('KeyW') ? 1 : 0);
+    return {
+      moveX: Math.max(-1, Math.min(1, keyboardX + axisX + this.touchX())),
+      moveY: Math.max(-1, Math.min(1, keyboardY + axisY + this.touchY())),
+      sprint: this.keys.has('ShiftLeft') || this.keys.has('ShiftRight') || !!gamepad?.buttons[7]?.pressed || this.touchSprint(),
+      pass: this.keys.has('KeyJ') || !!gamepad?.buttons[0]?.pressed || this.touchPass(),
+      through: this.keys.has('KeyK') || !!gamepad?.buttons[3]?.pressed || this.touchThrough(),
+      shoot: this.keys.has('KeyL') || !!gamepad?.buttons[1]?.pressed || this.touchShoot(),
+      switchPlayer: this.keys.has('Space') || !!gamepad?.buttons[4]?.pressed || this.touchSwitch(),
+    };
+  }
+
   ngOnDestroy(): void {
     cancelAnimationFrame(this.raf);
     this.renderer?.destroy();
+    this.arcadeRenderer?.destroy();
+    window.removeEventListener('keydown', this.keyDown);
+    window.removeEventListener('keyup', this.keyUp);
+    this.audio.stopMusic();
   }
 }

@@ -5,6 +5,7 @@ import { MatchEngineService } from './core/services/match-engine.service';
 import { buildProfile, LiveMatch } from './core/services/match-sim';
 import { RpgService } from './core/services/rpg.service';
 import { SAVE_VERSION } from './models/game.model';
+import { ArcadeMatch } from './core/services/arcade-match';
 
 describe('ratings', () => {
   it('computes a goalkeeper overall dominated by goalkeeping', () => {
@@ -76,6 +77,36 @@ describe('match engine', () => {
 
     expect(adjusted.midfield).toBeGreaterThan(baseline.midfield);
     expect(adjusted.attack).toBeGreaterThan(baseline.attack);
+  });
+});
+
+describe('arcade match', () => {
+  it('creates 22 actors and remains deterministic for the same seed and input', () => {
+    const game = createNewGame({ managerName: 'Pixel', clubName: 'Arcade FC', seed: 51 });
+    const [home, away] = game.teams;
+    const first = new ArcadeMatch(home, away, home.id, 3, 2026);
+    const second = new ArcadeMatch(home, away, home.id, 3, 2026);
+    const input = { moveX: 1, moveY: 0, sprint: true, pass: false, through: false, shoot: false, switchPlayer: false };
+
+    for (let frame = 0; frame < 900; frame++) {
+      first.step(1 / 60, input);
+      second.step(1 / 60, input);
+    }
+
+    expect(first.actors).toHaveLength(22);
+    expect(first.ball).toEqual(second.ball);
+    expect(first.actors.map(({ x, y, stamina }) => ({ x, y, stamina }))).toEqual(
+      second.actors.map(({ x, y, stamina }) => ({ x, y, stamina })),
+    );
+  });
+
+  it('assigns direct control to the player club when playing away', () => {
+    const game = createNewGame({ managerName: 'Pixel', clubName: 'Arcade FC', seed: 52 });
+    const match = new ArcadeMatch(game.teams[1], game.teams[0], game.teams[0].id, 3, 9);
+
+    expect(match.controlledSide).toBe('away');
+    expect(match.controlledTeam.id).toBe(game.teams[0].id);
+    expect(match.actors.find((actor) => actor.player.id === match.selectedPlayerId)?.side).toBe('away');
   });
 });
 
