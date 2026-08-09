@@ -18,7 +18,7 @@ export class PlayerSpriteFactory {
   get(actor: ArcadeActor, runtime: ArcadeActor | PlayerRuntimeSnapshot, kit: KitDesign, tick: number): CanvasImageSource {
     const direction = quantizeDirection(runtime.facingX, runtime.facingY);
     const actionTick = Math.max(0, tick - runtime.actionStartedTick);
-    const frame = animationFrame(runtime.action, actionTick);
+    const frame = animationFrame(runtime.action, actionTick, Math.hypot(runtime.vx, runtime.vy));
     const visual = actor.player.visuals;
     const key = [actor.player.id, kitSignature(kit), runtime.action, direction, frame, actor.player.positionGroup === 'GK' ? 1 : 0].join('|');
     const cached = this.cache.get(key);
@@ -203,9 +203,10 @@ function createSurface(): SpriteSurface {
   return canvas;
 }
 
-function animationFrame(action: PlayerActionState, ticks: number): number {
-  const speed = action === 'sprint' ? 4 : action === 'carry' || action === 'jog' || action === 'press' ? 6 : 14;
-  return Math.floor(ticks / speed) % 2;
+function animationFrame(action: PlayerActionState, ticks: number, worldSpeed: number): number {
+  const moving = ['sprint', 'carry', 'jog', 'press', 'support-press', 'keeper-rush'].includes(action);
+  const cadence = moving ? Math.max(3, Math.round(7 - Math.min(4, worldSpeed * 0.45))) : 14;
+  return Math.floor(ticks / cadence) % 2;
 }
 
 function quantizeDirection(x: number, y: number): number {

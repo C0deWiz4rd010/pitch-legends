@@ -34,6 +34,23 @@ export const FIELD_WIDTH = 68;
 export const GOAL_WIDTH = 7.32;
 export const GOAL_HEIGHT = 2.44;
 export const MATCH_TICK = 1 / 60;
+export const ARCADE_MATCH_TUNING = {
+  sprintMin: 6,
+  sprintMax: 9.4,
+  jogRatio: 0.82,
+  ballJogRatio: 0.95,
+  ballSprintRatio: 0.91,
+  maxCatchUpSteps: 8,
+} as const;
+
+export function arcadeSprintSpeed(pace: number): number {
+  const normalized = clamp((pace - 40) / 59, 0, 1);
+  return ARCADE_MATCH_TUNING.sprintMin + normalized * (ARCADE_MATCH_TUNING.sprintMax - ARCADE_MATCH_TUNING.sprintMin);
+}
+
+export function arcadeJogSpeed(pace: number): number {
+  return arcadeSprintSpeed(pace) * ARCADE_MATCH_TUNING.jogRatio;
+}
 
 export interface ArcadeActor {
   player: Player;
@@ -680,13 +697,13 @@ export class ArcadeMatch {
     const targetVx = nx * targetSpeed;
     const targetVy = ny * targetSpeed;
     const fitnessPenalty = actor.stamina < 40 ? 0.78 + actor.stamina * 0.0055 : 1;
-    const acceleration = (3.4 + actor.player.attributes.pace * 0.055 + actor.player.attributes.dribbling * 0.018) * fitnessPenalty;
-    const braking = 12 + actor.player.attributes.dribbling * 0.06;
-    const rate = targetSpeed === 0 ? braking : acceleration;
+    const acceleration = (5.2 + actor.player.attributes.pace * 0.07 + actor.player.attributes.dribbling * 0.025) * fitnessPenalty;
+    const braking = 14.4 + actor.player.attributes.dribbling * 0.075;
+    const rate = targetSpeed === 0 ? braking : acceleration * (sprint ? 0.94 : 1);
     actor.vx = this.approach(actor.vx, targetVx, rate * dt);
     actor.vy = this.approach(actor.vy, targetVy, rate * dt);
     if (magnitude > 0.08) {
-      const turnRate = (2.7 + actor.player.attributes.dribbling / 28) * dt / (sprint ? 1.45 : 1);
+      const turnRate = (3.2 + actor.player.attributes.dribbling / 25) * dt / (sprint ? 1.38 : 1);
       actor.facingX = this.approach(actor.facingX, nx, turnRate);
       actor.facingY = this.approach(actor.facingY, ny, turnRate);
       const facingLength = Math.hypot(actor.facingX, actor.facingY) || 1;
@@ -705,10 +722,9 @@ export class ArcadeMatch {
     actor.decisionCooldown -= dt;
     if (actor.decisionCooldown <= 0) {
       this.chooseAiIntent(actor);
-      const base = this.config.difficulty === 'easy' ? 0.42 : this.config.difficulty === 'hard' ? 0.16 : 0.26;
-      const spread = this.config.difficulty === 'easy' ? 0.28 : this.config.difficulty === 'hard' ? 0.08 : 0.16;
-      const homeAwareness = actor.side === 'home' ? 0.96 : 1;
-      actor.decisionCooldown = (base + this.rng.float(0, spread)) * homeAwareness;
+      const base = this.config.difficulty === 'easy' ? 0.3 : this.config.difficulty === 'hard' ? 0.11 : 0.18;
+      const spread = this.config.difficulty === 'easy' ? 0.2 : this.config.difficulty === 'hard' ? 0.09 : 0.12;
+      actor.decisionCooldown = base + this.rng.float(0, spread);
     }
     const dx = actor.intentX - actor.x;
     const dy = actor.intentY - actor.y;
@@ -733,10 +749,10 @@ export class ArcadeMatch {
         : goalDistance < 32
           ? 0.18 + actor.player.attributes.shooting / 700
           : 0.035 + actor.player.attributes.shooting / 1600;
-      const shotProbability = shotProbabilityBase * (actor.side === 'home' ? 1.1 : 1);
+      const shotProbability = shotProbabilityBase * 0.82;
       if (goalDistance < 50 && shootingLane && this.rng.bool(shotProbability)) {
         this.shoot(actor, this.rng.float(0.55, 1), 0, this.rng.float(-0.45, 0.45), false, false);
-      } else if ((pressured || this.rng.bool(0.38)) && actor.player.positionGroup !== 'GK') {
+      } else if ((pressured || this.rng.bool(0.28)) && actor.player.positionGroup !== 'GK') {
         this.pass(actor, this.rng.bool(0.28), false, this.rng.float(0.35, 0.8), direction, this.rng.float(-0.5, 0.5));
       } else if (actor.player.positionGroup === 'GK') {
         this.pass(actor, false, this.rng.bool(0.4), 0.8, direction, this.rng.float(-0.4, 0.4));
@@ -848,8 +864,8 @@ export class ArcadeMatch {
     const px = dx / length * cos - dy / length * sin;
     const py = dx / length * sin + dy / length * cos;
     const speed = target && !lob
-      ? clamp(7 + length * 0.45 + power * 4 + (through ? 2.5 : 0), 10, 23)
-      : (lob ? 14 : through ? 13 : 10.5) + power * (lob ? 12 : 13) + actor.player.attributes.passing * 0.025;
+      ? clamp(8 + length * 0.48 + power * 4.5 + (through ? 2.8 : 0), 12, 25)
+      : (lob ? 14 : through ? 14.5 : 11.8) + power * (lob ? 12 : 13.5) + actor.player.attributes.passing * 0.025;
     this.passAttempts[actor.side]++;
     this.stats(actor.side).passesAttempted++;
     this.lastPasser = { id: actor.player.id, side: actor.side, at: this.elapsed };
@@ -1118,7 +1134,7 @@ export class ArcadeMatch {
     const candidate = this.actors
       .filter((actor) =>
         actor.active &&
-        (this.ball.controlledTouch >= 0.18 || actor.player.id !== this.ball.lastTouchPlayerId) &&
+        (this.ball.controlledTouch >= 0.14 || actor.player.id !== this.ball.lastTouchPlayerId) &&
         distance(actor, this.ball) < (actor.player.positionGroup === 'GK' ? 1.65 : actor.player.id === this.intendedReceiverId ? 3 : 1.18)
       )
       .sort((a, b) => distance(a, this.ball) - distance(b, this.ball))[0];
@@ -1152,6 +1168,10 @@ export class ArcadeMatch {
       this.pendingOffsideTargetId = null;
       this.intendedReceiverId = null;
       this.activeShot = null;
+      if (!this.isHumanControlled(candidate)) {
+        const settle = 0.08 + (100 - candidate.player.attributes.dribbling) * 0.0012;
+        candidate.decisionCooldown = Math.max(candidate.decisionCooldown, settle);
+      }
       if (candidate.side === this.controlledSide && !this.config.playerLockId) this.selectedPlayerId = candidate.player.id;
     } else {
       this.ball.vx *= 0.48;
@@ -1391,13 +1411,25 @@ export class ArcadeMatch {
           const length = Math.hypot(dx, dy) || 0.001;
           const minimum = 1.05;
           if (length >= minimum) continue;
-          const push = (minimum - length) / 2;
+          const normalX = dx / length;
+          const normalY = dy / length;
+          const penetration = Math.max(0, minimum - length - 0.02);
+          const push = penetration * 0.78;
           const massA = 0.75 + actor.player.attributes.physical / 100;
           const massB = 0.75 + other.player.attributes.physical / 100;
-          actor.x -= dx / length * push * (massB / (massA + massB));
-          actor.y -= dy / length * push * (massB / (massA + massB));
-          other.x += dx / length * push * (massA / (massA + massB));
-          other.y += dy / length * push * (massA / (massA + massB));
+          const totalMass = massA + massB;
+          actor.x = clamp(actor.x - normalX * push * (massB / totalMass), 0.8, FIELD_LENGTH - 0.8);
+          actor.y = clamp(actor.y - normalY * push * (massB / totalMass), 0.8, FIELD_WIDTH - 0.8);
+          other.x = clamp(other.x + normalX * push * (massA / totalMass), 0.8, FIELD_LENGTH - 0.8);
+          other.y = clamp(other.y + normalY * push * (massA / totalMass), 0.8, FIELD_WIDTH - 0.8);
+          const closingSpeed = (other.vx - actor.vx) * normalX + (other.vy - actor.vy) * normalY;
+          if (closingSpeed < 0) {
+            const impulse = -closingSpeed * 0.32;
+            actor.vx -= normalX * impulse * (massB / totalMass);
+            actor.vy -= normalY * impulse * (massB / totalMass);
+            other.vx += normalX * impulse * (massA / totalMass);
+            other.vy += normalY * impulse * (massA / totalMass);
+          }
         }
       }
     }
@@ -1519,10 +1551,11 @@ export class ArcadeMatch {
   }
 
   private maxSpeed(actor: ArcadeActor, sprint: boolean): number {
-    const base = 5.4 + (actor.player.attributes.pace - 40) / 59 * 3.1;
+    const base = arcadeSprintSpeed(actor.player.attributes.pace);
     const fitness = actor.stamina < 40 ? 0.82 + actor.stamina * 0.0045 : 1;
-    const ball = this.ball.ownerId === actor.player.id ? sprint ? 0.94 : 0.89 + actor.player.attributes.dribbling / 900 : 1;
-    return base * fitness * ball * (sprint ? 1 : 0.72);
+    const ownsBall = this.ball.ownerId === actor.player.id;
+    const ball = ownsBall ? sprint ? ARCADE_MATCH_TUNING.ballSprintRatio : ARCADE_MATCH_TUNING.ballJogRatio : 1;
+    return base * fitness * ball * (sprint ? 1 : ARCADE_MATCH_TUNING.jogRatio);
   }
 
   private approach(current: number, target: number, amount: number): number {

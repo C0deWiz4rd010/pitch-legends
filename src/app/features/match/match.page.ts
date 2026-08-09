@@ -34,7 +34,7 @@ import { Mentality, PressingIntensity, Width } from '../../models/enums';
 import { ratingColor } from '../../shared/rating-color';
 import { playerName } from '../../core/ratings';
 import { I18nService } from '../../core/services/i18n.service';
-import { ArcadeMatch, MATCH_TICK } from '../../core/services/arcade-match';
+import { ARCADE_MATCH_TUNING, ArcadeMatch, MATCH_TICK } from '../../core/services/arcade-match';
 import { ArcadePitchRenderer } from './arcade-renderer';
 import { AudioService } from '../../core/services/audio.service';
 import { ControlHelpService } from '../../core/services/control-help.service';
@@ -401,7 +401,7 @@ export class MatchPage implements OnDestroy {
       this.fixedAccumulator += Math.min(rawDelta, 0.5) * simulationSpeed * tacticalTimeScale;
       const input = this.arcade.controllerMode === 'human' ? this.readInput() : EMPTY_MATCH_COMMAND;
       let steps = 0;
-      while (this.fixedAccumulator >= MATCH_TICK && steps < 8) {
+      while (this.fixedAccumulator >= MATCH_TICK && steps < ARCADE_MATCH_TUNING.maxCatchUpSteps) {
         this.previousRenderState = this.currentRenderState ?? this.arcade.renderState();
         this.arcade.step(MATCH_TICK, input);
         this.currentRenderState = this.arcade.renderState();

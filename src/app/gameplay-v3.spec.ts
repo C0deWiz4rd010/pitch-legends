@@ -1,4 +1,4 @@
-import { ArcadeMatch, MATCH_TICK } from './core/services/arcade-match';
+import { arcadeJogSpeed, arcadeSprintSpeed, ArcadeMatch, MATCH_TICK } from './core/services/arcade-match';
 import { MATCH_CHECKPOINT_KEY, MatchCheckpointService } from './core/services/match-checkpoint.service';
 import { createNewGame } from './data/generators';
 import { EMPTY_MATCH_COMMAND, MatchCommand, MatchConfig } from './models/match.model';
@@ -29,6 +29,14 @@ function advance(match: ArcadeMatch, ticks: number, command: MatchCommand = EMPT
 }
 
 describe('Gameplay V3 match contracts', () => {
+  it('maps pace to the faster arcade sprint and jogging bands', () => {
+    expect(arcadeSprintSpeed(40)).toBeCloseTo(6, 5);
+    expect(arcadeSprintSpeed(99)).toBeCloseTo(9.4, 5);
+    expect(arcadeJogSpeed(40)).toBeCloseTo(4.92, 2);
+    expect(arcadeJogSpeed(99)).toBeCloseTo(7.71, 2);
+    expect(arcadeSprintSpeed(70)).toBeGreaterThan(arcadeSprintSpeed(60));
+  });
+
   it('produces an identical state hash for the same seed and command stream', () => {
     const game = createNewGame({ managerName: 'Hash', clubName: 'Hash FC', seed: 81 });
     const [home, away] = game.teams;
