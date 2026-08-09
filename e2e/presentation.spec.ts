@@ -24,6 +24,44 @@ test('command centre stays responsive and keeps the primary match action visible
   }
 });
 
+test('mobile career objectives clamp progress without horizontal overflow', async ({ page }) => {
+  await createCareer(page);
+  await page.setViewportSize({ width: 390, height: 844 });
+  const objectives = page.locator('.objectives');
+  await objectives.scrollIntoViewIfNeeded();
+  await expect(objectives).toBeVisible();
+  const firstProgress = objectives.locator('.objective > i > em').first();
+  const dimensions = await firstProgress.evaluate((bar) => ({
+    bar: bar.getBoundingClientRect().width,
+    track: bar.parentElement!.getBoundingClientRect().width,
+    objectivesScroll: (bar.closest('.objectives') as HTMLElement).scrollWidth,
+    objectivesClient: (bar.closest('.objectives') as HTMLElement).clientWidth,
+  }));
+  expect(dimensions.bar).toBeLessThanOrEqual(dimensions.track);
+  expect(dimensions.objectivesScroll).toBeLessThanOrEqual(dimensions.objectivesClient);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)).toBe(false);
+});
+
+test('PWA manifest exposes branded regular and maskable install icons', async ({ page, request }) => {
+  await page.goto('/');
+  await expect(page.locator('link[rel="manifest"]')).toHaveAttribute('href', 'manifest.webmanifest');
+  const manifestResponse = await request.get('/manifest.webmanifest');
+  expect(manifestResponse.ok()).toBe(true);
+  const manifest = await manifestResponse.json();
+  expect(manifest.name).toBe('Pitch Legends');
+  expect(manifest.display).toBe('standalone');
+  expect(manifest.icons).toEqual(expect.arrayContaining([
+    expect.objectContaining({ sizes: '192x192', purpose: 'any' }),
+    expect.objectContaining({ sizes: '512x512', purpose: 'any' }),
+    expect.objectContaining({ sizes: '512x512', purpose: 'maskable' }),
+  ]));
+  for (const icon of manifest.icons) {
+    const iconResponse = await request.get(`/${icon.src}`);
+    expect(iconResponse.ok()).toBe(true);
+    expect(iconResponse.headers()['content-type']).toContain('image/png');
+  }
+});
+
 test('handbook exposes the real pass binding and keeps focus inside its native dialog', async ({ page }) => {
   await createCareer(page);
   await page.getByRole('button', { name: /steuerung/i }).first().click();
