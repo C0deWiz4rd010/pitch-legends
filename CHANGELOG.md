@@ -4,6 +4,16 @@ All notable changes to Pitch Legends are recorded here. Releases follow
 [Semantic Versioning](https://semver.org/) and are generated from Conventional
 Commits by Release Please.
 
+## [1.4.0](https://github.com/C0deWiz4rd010/pitch-legends/compare/pitch-legends-v1.3.0...pitch-legends-v1.4.0) (2026-08-09)
+
+
+### Features
+
+* **injuries:** integrate medical rehab with matches and training ([11824b1](https://github.com/C0deWiz4rd010/pitch-legends/commit/11824b1924051b6c95a9ab5fecea777707ceac72))
+* **league:** add interactive atlas and travel events ([fb9350e](https://github.com/C0deWiz4rd010/pitch-legends/commit/fb9350ef31f5841d7ac6547d8ac841cb47c03081))
+* **match-art:** refine pitch goals nets and coach presentation ([0c7125f](https://github.com/C0deWiz4rd010/pitch-legends/commit/0c7125f52e64c22b8094d660dbe9cf3e771383e4))
+* **world:** generate seeded clubs people and managers ([bf23492](https://github.com/C0deWiz4rd010/pitch-legends/commit/bf23492b3c40492c0416efb53b3ecfab819019c2))
+
 ## [1.3.0](https://github.com/C0deWiz4rd010/pitch-legends/compare/pitch-legends-v1.2.0...pitch-legends-v1.3.0) (2026-08-09)
 
 
