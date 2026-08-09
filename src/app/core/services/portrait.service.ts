@@ -18,18 +18,17 @@ export class PortraitService {
     const visual = player.visuals;
     const home = team?.visuals.kits.home;
     const options = {
-      seed: [visual.portraitSeed],
-      backgroundColor: [stripHash(home?.secondary ?? '#172144')],
-      clothingColor: [stripHash(home?.shirt ?? '#37d8ff')],
-      skinColor: [SKIN_COLORS[visual.skinTone % SKIN_COLORS.length]],
-      hairColor: [HAIR_COLORS[visual.hairColor % HAIR_COLORS.length]],
-      hair: [`short${String(visual.hairStyle % 18 + 1).padStart(2, '0')}`],
-      beardProbability: [visual.facialHair === 0 ? 0 : 100],
-      beard: [`variant${String(Math.max(1, visual.facialHair)).padStart(2, '0')}`],
-      glassesProbability: [0],
-      hatProbability: [0],
+      seed: visual.portraitSeed,
+      backgroundColor: stripHash(home?.secondary ?? '#172144'),
+      clothingColor: stripHash(home?.shirt ?? '#37d8ff'),
+      skinColor: SKIN_COLORS[visual.skinTone % SKIN_COLORS.length],
+      hairColor: HAIR_COLORS[visual.hairColor % HAIR_COLORS.length],
+      hairVariant: `short${String(visual.hairStyle % 18 + 1).padStart(2, '0')}`,
+      beardProbability: visual.facialHair === 0 ? 0 : 100,
+      beardVariant: `variant${String(Math.max(1, visual.facialHair)).padStart(2, '0')}`,
+      glassesProbability: 0,
+      hatProbability: 0,
       size: 96,
-      scale: 94,
     } as never;
     const avatar = new Avatar(style as never, options);
     const uri = avatar.toDataUri();
