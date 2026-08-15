@@ -49,7 +49,9 @@ test('PWA manifest exposes branded regular and maskable install icons', async ({
   expect(manifestResponse.ok()).toBe(true);
   const manifest = await manifestResponse.json();
   expect(manifest.name).toBe('Pitch Legends');
-  expect(manifest.display).toBe('standalone');
+  expect(manifest.display).toBe('fullscreen');
+  expect(manifest.display_override).toEqual(expect.arrayContaining(['fullscreen', 'standalone']));
+  await expect(page.locator('meta[name="viewport"]')).toHaveAttribute('content', /viewport-fit=cover/);
   expect(manifest.icons).toEqual(expect.arrayContaining([
     expect.objectContaining({ sizes: '192x192', purpose: 'any' }),
     expect.objectContaining({ sizes: '512x512', purpose: 'any' }),

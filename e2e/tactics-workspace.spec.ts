@@ -48,12 +48,13 @@ test('presets, lineup swap and keyboard shape editing are interactive', async ({
   await expect(slots.nth(1).locator('.slot-copy b')).toHaveText(secondName!);
   await expect(slots.nth(2).locator('.slot-copy b')).toHaveText(firstName!);
 
-  await page.locator('.mode-toggle').click();
+  const modeToggle = page.locator('.mode-toggle');
+  await modeToggle.click();
+  await expect(modeToggle).toHaveClass(/active/);
   await slots.nth(3).focus();
   const before = await slots.nth(3).evaluate((element: HTMLElement) => element.style.left);
   await page.keyboard.press('ArrowRight');
-  const after = await slots.nth(3).evaluate((element: HTMLElement) => element.style.left);
-  expect(after).not.toBe(before);
+  await expect.poll(() => slots.nth(3).evaluate((element: HTMLElement) => element.style.left)).not.toBe(before);
 });
 
 test('mobile field and inspector use exclusive full-height views', async ({ page }) => {

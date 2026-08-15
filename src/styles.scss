@@ -242,6 +242,41 @@ textarea {
   }
 }
 
+@media (max-width: 1024px) and (orientation: landscape) and (pointer: coarse) {
+  body.match-immersive {
+    overscroll-behavior: none;
+    touch-action: none;
+  }
+
+  body.match-immersive app-root .layout,
+  body.match-immersive app-root .main,
+  body.match-immersive app-root .content {
+    height: 100dvh;
+    min-height: 0;
+  }
+
+  body.match-immersive app-root .topbar {
+    display: none;
+  }
+
+  body.match-immersive app-root .content {
+    max-width: none;
+    padding: 0;
+    overflow: hidden;
+    overscroll-behavior: none;
+    scrollbar-gutter: auto;
+  }
+
+  body.match-immersive app-match {
+    display: block;
+    width: 100%;
+    height: 100%;
+    min-height: 0;
+    overflow: hidden;
+    touch-action: none;
+  }
+}
+
 @media (max-width: 620px) {
   app-transfer .filter-toggle {
     width: 100%;

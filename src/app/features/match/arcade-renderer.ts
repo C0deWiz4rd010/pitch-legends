@@ -577,7 +577,15 @@ export class ArcadePitchRenderer {
 
   private drawMinimap(match: ArcadeMatch, state: VisualMatchState): void {
     const ctx = this.ctx;
-    const map = { x: this.w - 140, y: this.h - 68, w: 126, h: 52 };
+    const compactTouchHud = matchMedia('(max-width: 900px) and (orientation: landscape) and (pointer: coarse)').matches;
+    const mapWidth = compactTouchHud ? 112 : 126;
+    const mapHeight = compactTouchHud ? 46 : 52;
+    const map = {
+      x: compactTouchHud ? Math.round((this.w - mapWidth) / 2) : this.w - 140,
+      y: this.h - mapHeight - 16,
+      w: mapWidth,
+      h: mapHeight,
+    };
     ctx.fillStyle = 'rgba(5,7,19,.84)';
     ctx.fillRect(map.x - 4, map.y - 4, map.w + 8, map.h + 8);
     ctx.fillStyle = '#146b3c';

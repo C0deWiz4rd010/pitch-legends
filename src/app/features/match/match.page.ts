@@ -9,7 +9,7 @@ import {
   signal,
   viewChild,
 } from '@angular/core';
-import { DecimalPipe } from '@angular/common';
+import { DOCUMENT, DecimalPipe } from '@angular/common';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { GameStateService } from '../../core/services/game-state.service';
 import { SeasonService } from '../../core/services/season.service';
@@ -74,6 +74,7 @@ export class MatchPage implements OnDestroy {
   private readonly checkpoints = inject(MatchCheckpointService);
   private readonly router = inject(Router);
   private readonly route = inject(ActivatedRoute);
+  private readonly document = inject(DOCUMENT);
   protected readonly i18n = inject(I18nService);
   private readonly audio = inject(AudioService);
   private readonly travel = inject(TravelService);
@@ -98,6 +99,7 @@ export class MatchPage implements OnDestroy {
   protected readonly performanceMessage = signal('');
   protected readonly inputDevice = signal<InputDevice>('keyboard');
   protected readonly autoEnabled = signal(false);
+  protected readonly fullscreenActive = signal(false);
   protected readonly matchView = signal<MatchViewState>(EMPTY_MATCH_VIEW);
   protected readonly committing = signal(false);
   protected readonly showSubs = signal(false);
@@ -211,6 +213,7 @@ export class MatchPage implements OnDestroy {
   private readonly gamepadDisconnected = () => {
     if (this.gamepadSeen && this.phase() === 'match') this.pauseFor('Controller getrennt. Bitte Eingabegerät prüfen.');
   };
+  private readonly fullscreenChange = () => this.fullscreenActive.set(!!this.document.fullscreenElement);
 
   constructor() {
     const settings = this.gs.game()?.settings;
@@ -222,6 +225,10 @@ export class MatchPage implements OnDestroy {
     window.addEventListener('blur', this.blur);
     window.addEventListener('gamepaddisconnected', this.gamepadDisconnected);
     document.addEventListener('visibilitychange', this.visibilityChange);
+    document.addEventListener('fullscreenchange', this.fullscreenChange);
+    effect(() => {
+      this.document.body.classList.toggle('match-immersive', this.phase() === 'match');
+    });
     effect(() => {
       const fixture = this.gs.nextFixture();
       this.resumeOffer.set(fixture ? this.checkpoints.load(fixture.id) : null);
@@ -302,6 +309,7 @@ export class MatchPage implements OnDestroy {
       });
       return;
     }
+    void this.enterImmersiveMode(false);
     const lockId = this.playerLock() ? this.playerLockId() || this.starters().find((player) => player.positionGroup !== 'GK')?.id || null : null;
     this.arcade = this.engine.createSession(home, away, {
       mode: this.selectedMode(),
@@ -367,6 +375,7 @@ export class MatchPage implements OnDestroy {
     this.introTimer = null;
     this.audio.stopMusic();
     this.audio.whistle();
+    if (navigator.userActivation?.isActive) void this.enterImmersiveMode(false);
     this.phase.set('match');
     this.playing.set(true);
     if (this.selectedMode() === 'play' && !this.autoEnabled() && !this.gs.game()?.settings.controlLearning.introSeen) this.controlHelp.open('pass');
@@ -374,6 +383,14 @@ export class MatchPage implements OnDestroy {
 
   protected openControls(): void {
     this.controlHelp.open('pass');
+  }
+
+  protected async toggleImmersive(): Promise<void> {
+    if (this.document.fullscreenElement) {
+      await this.exitImmersiveMode();
+      return;
+    }
+    await this.enterImmersiveMode(true);
   }
 
   private startAnimation(canvas: HTMLCanvasElement): void {
@@ -757,6 +774,54 @@ export class MatchPage implements OnDestroy {
     this.touchActions.set({ sprint: false, pass: false, through: false, lob: false, shoot: false, skill: false, switch: false });
   }
 
+  private async enterImmersiveMode(force: boolean): Promise<void> {
+    if (!this.isTouchDevice()) return;
+    if (!force && !this.isInstalledApp()) return;
+
+    const root = this.document.documentElement;
+    try {
+      if (!this.document.fullscreenElement && root.requestFullscreen) {
+        await root.requestFullscreen({ navigationUI: 'hide' });
+      }
+    } catch {
+      // Installed PWAs and iOS can already be immersive without exposing the API.
+    }
+
+    const orientation = screen.orientation as ScreenOrientation & {
+      lock?: (orientation: 'landscape') => Promise<void>;
+    };
+    try {
+      await orientation.lock?.('landscape');
+    } catch {
+      // Orientation locking is optional and browser-dependent.
+    }
+  }
+
+  private async exitImmersiveMode(): Promise<void> {
+    const orientation = screen.orientation as ScreenOrientation & { unlock?: () => void };
+    try {
+      orientation.unlock?.();
+    } catch {
+      // No-op on browsers that keep the installed-app orientation.
+    }
+    try {
+      if (this.document.fullscreenElement && this.document.exitFullscreen) await this.document.exitFullscreen();
+    } catch {
+      // The operating system can own fullscreen state after an app switch.
+    }
+  }
+
+  private isInstalledApp(): boolean {
+    const navigatorWithStandalone = navigator as Navigator & { standalone?: boolean };
+    return navigatorWithStandalone.standalone === true
+      || matchMedia('(display-mode: fullscreen)').matches
+      || matchMedia('(display-mode: standalone)').matches;
+  }
+
+  private isTouchDevice(): boolean {
+    return navigator.maxTouchPoints > 0 || matchMedia('(pointer: coarse)').matches;
+  }
+
   private reset(): void {
     if (this.introTimer) clearTimeout(this.introTimer);
     cancelAnimationFrame(this.raf);
@@ -804,6 +869,9 @@ export class MatchPage implements OnDestroy {
     window.removeEventListener('blur', this.blur);
     window.removeEventListener('gamepaddisconnected', this.gamepadDisconnected);
     document.removeEventListener('visibilitychange', this.visibilityChange);
+    document.removeEventListener('fullscreenchange', this.fullscreenChange);
+    this.document.body.classList.remove('match-immersive');
+    void this.exitImmersiveMode();
     this.audio.stopMusic();
   }
 }
