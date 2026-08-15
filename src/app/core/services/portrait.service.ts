@@ -2,6 +2,7 @@ import { Injectable } from '@angular/core';
 import { Player } from '../../models/player.model';
 import { Team } from '../../models/team.model';
 import { KitDesign } from '../../models/visual.model';
+import { kitVisualSignature } from '../kit-visuals';
 import { PlayerSpriteFactory, PLAYER_SPRITE_HEIGHT, PLAYER_SPRITE_WIDTH } from '../../features/match/player-sprite.factory';
 
 @Injectable({ providedIn: 'root' })
@@ -10,18 +11,18 @@ export class PortraitService {
   private readonly sprites = new PlayerSpriteFactory();
 
   async portrait(player: Player, team?: Team): Promise<string> {
-    const key = `${player.id}|${team?.visuals.seed ?? 'free'}|${player.visuals.seed}`;
+    const kit = team?.visuals.kits.home ?? neutralKit();
+    const key = `portrait-v3|${player.id}|${player.visuals.seed}|${kitVisualSignature(kit)}`;
     const cached = this.cache.get(key);
     if (cached) return cached;
-    const kit = team?.visuals.kits.home ?? neutralKit();
-    const sprite = this.sprites.getStandalone(player, kit, 'idle', 1, 2);
-    const uri = renderDataUri(sprite, 48, 48, { sx: 6, sy: 0, sw: 28, sh: 29 });
+    const sprite = this.sprites.getPortrait(player, kit);
+    const uri = renderDataUri(sprite, 48, 48);
     this.cache.set(key, uri);
     return uri;
   }
 
   async figure(player: Player, kit: KitDesign): Promise<string> {
-    const key = `figure|${player.id}|${player.visuals.seed}|${kit.shirt}|${kit.pattern}`;
+    const key = `figure-v3|${player.id}|${player.visuals.seed}|${kitVisualSignature(kit)}`;
     const cached = this.cache.get(key);
     if (cached) return cached;
     const sprite = this.sprites.getStandalone(player, kit, 'idle', 1, 2);

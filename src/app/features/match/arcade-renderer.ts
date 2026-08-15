@@ -1,8 +1,9 @@
 import { ArcadeActor, ArcadeMatch, FIELD_LENGTH, FIELD_WIDTH, GOAL_WIDTH } from '../../core/services/arcade-match';
 import { hash32, mixHex } from '../../core/visual-identity';
+import { MatchKitSelection, resolveMatchKits } from '../../core/kit-visuals';
 import { MatchRenderFrame, MatchRenderState, MatchSnapshot, PlayerRuntimeSnapshot } from '../../models/match.model';
 import { KitDesign } from '../../models/visual.model';
-import { PlayerSpriteFactory } from './player-sprite.factory';
+import { PLAYER_SPRITE_HEIGHT, PLAYER_SPRITE_WIDTH, PlayerSpriteFactory } from './player-sprite.factory';
 
 interface Point { x: number; y: number }
 interface VisualParticle { x: number; y: number; vx: number; vy: number; life: number; color: string; size: number }
@@ -27,6 +28,8 @@ export class ArcadePitchRenderer {
   private goalBurst = 0;
   private renderAttackDirection: 1 | -1 = 1;
   private visualBall = { x: FIELD_LENGTH / 2, y: FIELD_WIDTH / 2 };
+  private matchKits: MatchKitSelection | null = null;
+  private matchKitId = '';
 
   constructor(private readonly canvas: HTMLCanvasElement) {
     const ctx = canvas.getContext('2d', { alpha: false });
@@ -50,6 +53,7 @@ export class ArcadePitchRenderer {
     this.time += deltaSeconds;
     this.renderAttackDirection = state.attackDirection;
     this.visualBall = state.ball;
+    this.ensureMatchKits(match);
     if (this.prewarmedMatchId !== match.matchId) {
       this.prewarmedMatchId = match.matchId;
       this.sprites.prewarm(match.actors, (actor) => this.kitFor(actor, match));
@@ -62,6 +66,7 @@ export class ArcadePitchRenderer {
     this.recordBallTrail(match, state);
     this.drawBallTrail(match);
     this.spawnActionParticles(match);
+    this.sprites.beginFrame(0);
     this.drawActors(match, state);
     this.drawBall(match, state);
     this.drawGoalFront(match, 0);
@@ -86,6 +91,8 @@ export class ArcadePitchRenderer {
     this.particles.length = 0;
     this.ballTrail.length = 0;
     this.emittedActions.clear();
+    this.matchKits = null;
+    this.matchKitId = '';
   }
 
   private updateCamera(match: ArcadeMatch, state: VisualMatchState, deltaSeconds: number, replay: boolean): void {
@@ -229,24 +236,28 @@ export class ArcadePitchRenderer {
     this.drawTechnicalAreas(match);
     ctx.strokeStyle = '#e8f5d2';
     ctx.lineWidth = 2;
+    this.drawPitchMarkings(match);
+    this.dotWorld(match, FIELD_LENGTH / 2, FIELD_WIDTH / 2, 0.3);
+    this.dotWorld(match, 11, FIELD_WIDTH / 2, 0.24);
+    this.dotWorld(match, FIELD_LENGTH - 11, FIELD_WIDTH / 2, 0.24);
+    this.drawCornerFlags(match);
+    this.drawAdvertisingBoards(match);
+  }
+
+  private drawPitchMarkings(match: ArcadeMatch): void {
     this.rectWorld(match, 0, 0, FIELD_LENGTH, FIELD_WIDTH);
     this.lineWorld(match, FIELD_LENGTH / 2, 0, FIELD_LENGTH / 2, FIELD_WIDTH);
     this.circleWorld(match, FIELD_LENGTH / 2, FIELD_WIDTH / 2, 9.15);
-    this.dotWorld(match, FIELD_LENGTH / 2, FIELD_WIDTH / 2, 0.3);
     this.rectWorld(match, 0, FIELD_WIDTH / 2 - 20.16, 16.5, 40.32);
     this.rectWorld(match, FIELD_LENGTH - 16.5, FIELD_WIDTH / 2 - 20.16, 16.5, 40.32);
     this.rectWorld(match, 0, FIELD_WIDTH / 2 - 9.16, 5.5, 18.32);
     this.rectWorld(match, FIELD_LENGTH - 5.5, FIELD_WIDTH / 2 - 9.16, 5.5, 18.32);
-    this.dotWorld(match, 11, FIELD_WIDTH / 2, 0.24);
-    this.dotWorld(match, FIELD_LENGTH - 11, FIELD_WIDTH / 2, 0.24);
     this.arcWorld(match, 11, FIELD_WIDTH / 2, 9.15, -0.92, 0.92);
     this.arcWorld(match, FIELD_LENGTH - 11, FIELD_WIDTH / 2, 9.15, Math.PI - 0.92, Math.PI + 0.92);
     this.arcWorld(match, 0, 0, 1, 0, Math.PI / 2);
     this.arcWorld(match, 0, FIELD_WIDTH, 1, -Math.PI / 2, 0);
     this.arcWorld(match, FIELD_LENGTH, 0, 1, Math.PI / 2, Math.PI);
     this.arcWorld(match, FIELD_LENGTH, FIELD_WIDTH, 1, Math.PI, Math.PI * 1.5);
-    this.drawCornerFlags(match);
-    this.drawAdvertisingBoards(match);
   }
 
   private drawTechnicalAreas(match: ArcadeMatch): void {
@@ -327,8 +338,10 @@ export class ArcadePitchRenderer {
     const backX = a.x + depth;
     const top = Math.min(a.y, b.y);
     const bottom = Math.max(a.y, b.y);
-    ctx.fillStyle = 'rgba(160,190,218,.08)';
+    ctx.fillStyle = 'rgba(160,190,218,.055)';
     ctx.fillRect(Math.min(a.x, backX), top, Math.abs(depth), bottom - top);
+    ctx.fillStyle = 'rgba(1,5,12,.15)';
+    ctx.fillRect(Math.min(a.x, backX), bottom - 2, Math.abs(depth), 3);
     ctx.strokeStyle = '#496986';
     ctx.lineWidth = 1;
     for (let y = top; y <= bottom; y += 4) {
@@ -341,8 +354,18 @@ export class ArcadePitchRenderer {
     for (let netX = Math.min(a.x, backX); netX <= Math.max(a.x, backX); netX += netStep) {
       ctx.beginPath(); ctx.moveTo(netX, top); ctx.lineTo(netX, bottom); ctx.stroke();
     }
+    for (const edgeY of [top, bottom]) {
+      for (let rib = 0; rib <= Math.abs(depth); rib += 4) {
+        const ribX = a.x + direction * rib;
+        ctx.fillStyle = rib % 8 === 0 ? '#b7c7da' : '#637b96';
+        ctx.fillRect(Math.round(ribX), Math.round(edgeY), 1, 2);
+      }
+    }
     ctx.strokeStyle = '#9fb3c9';
     ctx.strokeRect(Math.min(a.x, backX), top, Math.abs(depth), bottom - top);
+    ctx.fillStyle = '#f7fbff';
+    ctx.fillRect(Math.round(backX) - 1, Math.round(top) - 1, 3, 3);
+    ctx.fillRect(Math.round(backX) - 1, Math.round(bottom) - 1, 3, 3);
     ctx.fillStyle = 'rgba(0,0,0,.22)';
     ctx.fillRect(Math.min(a.x, backX), bottom + 2, Math.abs(depth) + 2, 2);
   }
@@ -363,6 +386,9 @@ export class ArcadePitchRenderer {
     ctx.fillStyle = '#aab8cf';
     ctx.fillRect(a.x + 1, a.y + 1, 2, 2);
     ctx.fillRect(b.x + 1, b.y + 1, 2, 2);
+    ctx.fillStyle = 'rgba(223,241,255,.72)';
+    ctx.fillRect(a.x - 1, a.y - 3, 3, 2);
+    ctx.fillRect(b.x - 1, b.y - 3, 3, 2);
   }
 
   private drawWeather(match: ArcadeMatch): void {
@@ -395,17 +421,17 @@ export class ArcadePitchRenderer {
   private drawActor(actor: ArcadeActor, position: ArcadeActor | PlayerRuntimeSnapshot, match: ArcadeMatch, selectedId: string, renderTick: number): void {
     const ctx = this.ctx;
     const point = this.worldToScreen(match, position.x, position.y);
-    if (point.x < -24 || point.x > this.w + 24 || point.y < -42 || point.y > this.h + 28) return;
+    if (point.x < -30 || point.x > this.w + 30 || point.y < -46 || point.y > this.h + 30) return;
     const x = Math.round(point.x);
     const y = Math.round(point.y);
     const team = actor.side === 'home' ? match.home : match.away;
     const selected = actor.player.id === selectedId;
-    ctx.fillStyle = 'rgba(2,4,10,.48)';
-    ctx.fillRect(x - 9, y + 8, 19, 4);
+    this.drawPlayerShadow(x, y, position.action === 'slide' || position.action === 'keeper-dive');
     if (selected) {
       ctx.fillStyle = '#ffd34e';
-      ctx.fillRect(x - 9, y - 39, 18, 3);
-      ctx.fillRect(x - 4, y - 36, 8, 2);
+      ctx.fillRect(x - 7, y - 43, 15, 2);
+      ctx.fillRect(x - 5, y - 41, 11, 2);
+      ctx.fillRect(x - 2, y - 39, 5, 2);
     }
     if (position.card === 'yellow') {
       ctx.fillStyle = '#ffd34e';
@@ -414,16 +440,30 @@ export class ArcadePitchRenderer {
     const kit = this.kitFor(actor, match);
     try {
       const sprite = this.sprites.get(actor, position, kit, renderTick);
-      ctx.drawImage(sprite, x - 20, y - 38, 40, 48);
+      ctx.drawImage(sprite, x - PLAYER_SPRITE_WIDTH / 2, y - 39, PLAYER_SPRITE_WIDTH, PLAYER_SPRITE_HEIGHT);
     } catch {
       this.drawPrimitiveActor(x, y, kit, actor.player.kitNumber);
     }
   }
 
   private kitFor(actor: ArcadeActor, match: ArcadeMatch): KitDesign {
-    const team = actor.side === 'home' ? match.home : match.away;
-    if (actor.player.positionGroup === 'GK') return team.visuals.kits.goalkeeper;
-    return actor.side === 'home' ? team.visuals.kits.home : team.visuals.kits.away;
+    this.ensureMatchKits(match);
+    if (!this.matchKits) return actor.side === 'home' ? match.home.visuals.kits.home : match.away.visuals.kits.away;
+    if (actor.player.positionGroup === 'GK') return actor.side === 'home' ? this.matchKits.homeGoalkeeper : this.matchKits.awayGoalkeeper;
+    return actor.side === 'home' ? this.matchKits.home : this.matchKits.away;
+  }
+
+  private ensureMatchKits(match: ArcadeMatch): void {
+    if (this.matchKitId === match.matchId && this.matchKits) return;
+    this.matchKitId = match.matchId;
+    this.matchKits = resolveMatchKits(match.home, match.away);
+  }
+
+  private drawPlayerShadow(x: number, y: number, groundedWide: boolean): void {
+    const ctx = this.ctx;
+    const width = groundedWide ? 28 : 20;
+    ctx.fillStyle = 'rgba(2,4,10,.5)';
+    ctx.fillRect(x - Math.floor(width / 2), y + 7, width, 3);
   }
 
   private drawPrimitiveActor(x: number, y: number, kit: KitDesign, number: number): void {

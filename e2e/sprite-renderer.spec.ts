@@ -17,7 +17,7 @@ async function startMatch(page: Page): Promise<void> {
   await expect(page.locator('canvas')).toBeVisible();
 }
 
-test('40x48 procedural footballers render through live locomotion without canvas errors', async ({ page }, testInfo) => {
+test('48x48 V3 footballers render through live locomotion without canvas errors', async ({ page }, testInfo) => {
   const errors: string[] = [];
   page.on('pageerror', (error) => errors.push(error.message));
   page.on('console', (message) => { if (message.type() === 'error') errors.push(message.text()); });
@@ -31,6 +31,6 @@ test('40x48 procedural footballers render through live locomotion without canvas
     return colours.size;
   });
   expect(colourCount).toBeGreaterThan(45);
-  await page.screenshot({ path: testInfo.outputPath('sprite-v2-live.png'), fullPage: false });
+  await page.screenshot({ path: testInfo.outputPath('sprite-v3-live.png'), fullPage: false });
   expect(errors).toEqual([]);
 });

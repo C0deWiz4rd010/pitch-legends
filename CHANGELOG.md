@@ -4,6 +4,19 @@ All notable changes to Pitch Legends are recorded here. Releases follow
 [Semantic Versioning](https://semver.org/) and are generated from Conventional
 Commits by Release Please.
 
+## 1.4.2 (2026-08-15)
+
+### Features
+
+* **match-art:** introduce the V3 top-down player style with natural tapered limbs, directional pose projection and pixel-perfect shirt patterns
+* **player-art:** render portraits and full-body figures from one shared procedural identity recipe
+* **kits:** resolve fixture and goalkeeper colour clashes with deterministic emergency designs
+* **match-vfx:** refine player grounding, selection markers and goal construction
+
+### Performance Improvements
+
+* **match-art:** compose uncommon sprite frames during browser idle time and protect the live render path with a stable per-player fallback
+
 ## [1.4.1](https://github.com/C0deWiz4rd010/pitch-legends/compare/pitch-legends-v1.4.0...pitch-legends-v1.4.1) (2026-08-09)
 
 
