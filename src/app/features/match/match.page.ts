@@ -3,6 +3,7 @@ import {
   Component,
   ElementRef,
   OnDestroy,
+  NgZone,
   computed,
   effect,
   inject,
@@ -43,6 +44,8 @@ import { ClubCrestComponent } from '../../shared/components/club-crest.component
 import { MiniKitComponent } from '../../shared/components/mini-kit.component';
 import { ManagerPortraitComponent } from '../../shared/components/manager-portrait.component';
 import { TravelService } from '../../core/services/travel.service';
+import { BufferedButton, TickInputBuffer } from '../../core/football/tick-input';
+import { MatchMetrics } from '../../core/football/match-metrics';
 
 type PagePhase = 'preview' | 'intro' | 'simulating' | 'match' | 'halftime' | 'result';
 type TouchAction = 'sprint' | 'pass' | 'through' | 'lob' | 'shoot' | 'skill' | 'switch';
@@ -75,6 +78,9 @@ export class MatchPage implements OnDestroy {
   private readonly router = inject(Router);
   private readonly route = inject(ActivatedRoute);
   private readonly document = inject(DOCUMENT);
+  private readonly zone = inject(NgZone);
+  private readonly inputBuffer = new TickInputBuffer();
+  private readonly metrics = new MatchMetrics();
   protected readonly i18n = inject(I18nService);
   private readonly audio = inject(AudioService);
   private readonly travel = inject(TravelService);
@@ -126,6 +132,8 @@ export class MatchPage implements OnDestroy {
   private previousRenderState: MatchRenderState | null = null;
   private currentRenderState: MatchRenderState | null = null;
   private lastViewSync = 0;
+  private lastSimulationCost = 0;
+  private lastMetricsAt = 0;
   private replayElapsed = 0;
   private prevHome = 0;
   private prevAway = 0;
@@ -201,8 +209,9 @@ export class MatchPage implements OnDestroy {
     if (event.code === 'KeyQ' && this.phase() === 'match' && !event.repeat) this.showTactics.update((value) => !value);
     if (!event.repeat) this.edgeKeys.add(event.code);
     this.keys.add(event.code);
+    this.captureKeyboard(event.code, true);
   };
-  private readonly keyUp = (event: KeyboardEvent) => this.keys.delete(event.code);
+  private readonly keyUp = (event: KeyboardEvent) => { this.keys.delete(event.code); this.captureKeyboard(event.code, false); };
   private readonly visibilityChange = () => {
     if (document.hidden && (this.phase() === 'match' || this.phase() === 'halftime')) this.pauseFor('Match automatisch pausiert: Browser-Tab verlassen.');
   };
@@ -399,7 +408,7 @@ export class MatchPage implements OnDestroy {
     this.lastTs = 0;
     this.fixedAccumulator = 0;
     if (!this.currentRenderState) this.initializeMatchProjection();
-    this.raf = requestAnimationFrame((time) => this.loop(time));
+    this.zone.runOutsideAngular(() => { this.raf = requestAnimationFrame((time) => this.loop(time)); });
   }
 
   private loop(timestamp: number): void {
@@ -419,6 +428,7 @@ export class MatchPage implements OnDestroy {
       return;
     }
     if (this.playing()) {
+      const simulationStarted = performance.now();
       const tacticalTimeScale = this.showTactics() ? 0.15 : 1;
       const simulationSpeed = this.selectedMode() === 'coach' && this.autoEnabled() ? this.speed() : 1;
       this.fixedAccumulator += Math.min(rawDelta, 0.5) * simulationSpeed * tacticalTimeScale;
@@ -426,22 +436,30 @@ export class MatchPage implements OnDestroy {
       let steps = 0;
       while (this.fixedAccumulator >= MATCH_TICK && steps < ARCADE_MATCH_TUNING.maxCatchUpSteps) {
         this.previousRenderState = this.currentRenderState ?? this.arcade.renderState();
-        this.arcade.step(MATCH_TICK, input);
+        this.arcade.step(MATCH_TICK, this.inputBuffer.consume(input, timestamp));
         this.currentRenderState = this.arcade.renderState();
         this.fixedAccumulator -= MATCH_TICK;
         steps++;
       }
       if (this.fixedAccumulator > 0.25) this.pauseFor('Performance-Schutz: Die Simulation liegt mehr als 250 ms zurück.');
       this.syncMatch(timestamp);
+      this.lastSimulationCost = performance.now() - simulationStarted;
     }
     const current = this.currentRenderState ?? this.arcade.renderState();
     const previous = this.previousRenderState ?? current;
+    const renderStarted = performance.now();
     this.renderer?.render(this.arcade, {
       previous,
       current,
       alpha: Math.max(0, Math.min(1, this.fixedAccumulator / MATCH_TICK)),
       deltaSeconds: renderDelta,
     });
+    if (this.playing() && rawDelta > 0) this.metrics.record(rawDelta * 1000, this.lastSimulationCost, performance.now() - renderStarted);
+    if (timestamp - this.lastMetricsAt > 1000) {
+      this.lastMetricsAt = timestamp;
+      const canvas = this.canvasRef()?.nativeElement;
+      if (canvas) canvas.dataset['performance'] = JSON.stringify(this.metrics.summary());
+    }
     if (this.arcade.phase === 'halftime') {
       this.enterHalftime();
       return;
@@ -669,6 +687,7 @@ export class MatchPage implements OnDestroy {
   }
 
   protected setTouchAction(action: TouchAction, active: boolean): void {
+    this.inputBuffer.set(`touch-${action}`, action === 'switch' ? 'switchPlayer' : action, active, performance.now());
     if (active) this.touchEdges.add(action);
     this.touchActions.update((current) => ({ ...current, [action]: active }));
   }
@@ -713,6 +732,7 @@ export class MatchPage implements OnDestroy {
     const moveY = clampInput(keyboardY + axisY + this.touchY());
     const pressed = (action: keyof typeof CONTROL_INPUT_MAP): boolean => {
       const binding = CONTROL_INPUT_MAP[action];
+      this.inputBuffer.set(`gamepad-${action}`, action === 'switch' ? 'switchPlayer' : action, !!gamepad?.buttons[binding.gamepadButton]?.pressed, performance.now());
       return binding.keyboard.some((key) => this.keys.has(key) || this.edgeKeys.has(key)) || !!gamepad?.buttons[binding.gamepadButton]?.pressed || touches[action] || this.touchEdges.has(action as TouchAction);
     };
     const pass = pressed('pass');
@@ -745,6 +765,12 @@ export class MatchPage implements OnDestroy {
     return command;
   }
 
+  private captureKeyboard(code: string, active: boolean): void {
+    for (const [action, binding] of Object.entries(CONTROL_INPUT_MAP)) {
+      if ((binding.keyboard as readonly string[]).includes(code)) this.inputBuffer.set(`key-${code}`, (action === 'switch' ? 'switchPlayer' : action) as BufferedButton, active, performance.now());
+    }
+  }
+
   private updateInputDevice(device: Exclude<InputDevice, 'ai'>): void {
     if (this.inputDevice() === device) return;
     this.inputDevice.set(device);
@@ -764,6 +790,7 @@ export class MatchPage implements OnDestroy {
   }
 
   private resetInputs(): void {
+    this.inputBuffer.clear();
     this.keys.clear();
     this.edgeKeys.clear();
     this.touchEdges.clear();

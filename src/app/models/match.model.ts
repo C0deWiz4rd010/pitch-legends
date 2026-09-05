@@ -310,6 +310,14 @@ export interface MatchCheckpoint {
   contributions: Record<string, MatchContribution>;
   safeSnapshot: MatchSnapshot;
   runtime: {
+    football?: {
+      selectionUntilTick: number;
+      queuedAction: { kind: 'pass' | 'through' | 'lob' | 'shoot'; expiresTick: number; power: number; aimX: number; aimY: number; finesse: boolean; low: boolean } | null;
+      offsideCandidates: string[];
+      oneTwoRunnerId: string | null;
+      oneTwoUntilTick: number;
+      restartRelease?: { phase: RuleState['phase']; side: Side; takerId: string } | null;
+    };
     previousInput: MatchCommand;
     actionHeld: { pass: number; through: number; lob: number; shoot: number };
     possessionHomeSeconds: number;

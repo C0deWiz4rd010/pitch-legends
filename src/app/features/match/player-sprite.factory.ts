@@ -80,6 +80,7 @@ export class PlayerSpriteFactory {
     if (cached) {
       this.cache.delete(key);
       this.cache.set(key, cached);
+      this.fallbackKeys.set(actor.player.id, key);
       return cached;
     }
 
@@ -95,7 +96,9 @@ export class PlayerSpriteFactory {
     }
 
     if (Number.isFinite(this.compositionBudget)) this.compositionBudget--;
-    return this.composeAndCache(key, visual, kit, actor.player.kitNumber, goalkeeper, actor.player.personality, runtime.action, direction, frame);
+    const composed = this.composeAndCache(key, visual, kit, actor.player.kitNumber, goalkeeper, actor.player.personality, runtime.action, direction, frame);
+    this.fallbackKeys.set(actor.player.id, key);
+    return composed;
   }
 
   /** Render a UI figure from the exact same layers used by live match sprites. */

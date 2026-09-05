@@ -29,6 +29,8 @@ import { Difficulty } from '../../models/game.model';
 import { playerName } from '../ratings';
 import { clamp, Rng, round } from '../util';
 import { createInjury, isPlayerAvailable } from '../injury-engine';
+import { accelerateTowards, turnTowards } from '../football/movement';
+import { actionIsPlaying, isLocomotionAction } from '../football/action-timing';
 
 export const FIELD_LENGTH = 105;
 export const FIELD_WIDTH = 68;
@@ -41,6 +43,8 @@ export const ARCADE_MATCH_TUNING = {
   jogRatio: 0.82,
   ballJogRatio: 0.95,
   ballSprintRatio: 0.91,
+  acceleration: 28,
+  braking: 38,
   maxCatchUpSteps: 8,
   aiFirstTouchAssist: 55,
   aiIntendedReceiverBonus: 8,
@@ -283,6 +287,7 @@ export class ArcadeMatch {
   }
 
   step(dt: number, rawInput: InputFrame | MatchCommand = EMPTY_MATCH_COMMAND): void {
+    if (!Number.isFinite(dt) || dt <= 0) return;
     if (this.paused || this.finished || this.phase === 'halftime' || this.phase === 'goalReplay') return;
     const acceptsHumanInput = this.config.controllerMode === 'human' && this.tick - this.controllerChangedAtTick >= 15;
     const input = acceptsHumanInput ? normaliseCommand(rawInput) : EMPTY_MATCH_COMMAND;
@@ -694,7 +699,8 @@ export class ArcadeMatch {
   private moveControlled(actor: ArcadeActor, input: MatchCommand, dt: number): void {
     const worldX = input.moveX * this.currentAttackDirection;
     this.moveActor(actor, worldX, input.moveY, input.sprint, dt);
-    this.setAction(actor, input.sprint ? 'sprint' : Math.hypot(worldX, input.moveY) > 0.1 ? 'carry' : 'idle');
+    const moving = Math.hypot(worldX, input.moveY) > 0.1;
+    this.setAction(actor, !moving ? 'idle' : input.sprint ? 'sprint' : this.ball.ownerId === actor.player.id ? 'carry' : 'jog');
     if (input.skill && !this.previousInput.skill) this.performSkill(actor, worldX, input.moveY);
   }
 
@@ -709,18 +715,18 @@ export class ArcadeMatch {
     const targetVx = nx * targetSpeed;
     const targetVy = ny * targetSpeed;
     const fitnessPenalty = actor.stamina < 40 ? 0.78 + actor.stamina * 0.0055 : 1;
-    const acceleration = (5.2 + actor.player.attributes.pace * 0.07 + actor.player.attributes.dribbling * 0.025) * fitnessPenalty;
-    const braking = 14.4 + actor.player.attributes.dribbling * 0.075;
-    const rate = targetSpeed === 0 ? braking : acceleration * (sprint ? 0.94 : 1);
-    actor.vx = this.approach(actor.vx, targetVx, rate * dt);
-    actor.vy = this.approach(actor.vy, targetVy, rate * dt);
+    const acceleration = ARCADE_MATCH_TUNING.acceleration * (0.88 + actor.player.attributes.pace * 0.0012 + actor.player.attributes.dribbling * 0.0005) * fitnessPenalty;
+    const braking = ARCADE_MATCH_TUNING.braking * (0.9 + actor.player.attributes.dribbling * 0.0015);
+    const counterSteering = actor.vx * targetVx + actor.vy * targetVy < 0;
+    const rate = targetSpeed === 0 || counterSteering ? braking : acceleration;
+    const velocity = accelerateTowards(actor.vx, actor.vy, targetVx, targetVy, rate * dt);
+    actor.vx = velocity.x;
+    actor.vy = velocity.y;
     if (magnitude > 0.08) {
-      const turnRate = (3.2 + actor.player.attributes.dribbling / 25) * dt / (sprint ? 1.38 : 1);
-      actor.facingX = this.approach(actor.facingX, nx, turnRate);
-      actor.facingY = this.approach(actor.facingY, ny, turnRate);
-      const facingLength = Math.hypot(actor.facingX, actor.facingY) || 1;
-      actor.facingX /= facingLength;
-      actor.facingY /= facingLength;
+      const turnRate = (11 + actor.player.attributes.dribbling / 24) * dt / (sprint ? 1.18 : 1);
+      const facing = turnTowards(actor.facingX, actor.facingY, nx, ny, turnRate);
+      actor.facingX = facing.x;
+      actor.facingY = facing.y;
     }
     actor.x = clamp(actor.x + actor.vx * dt, 0.8, FIELD_LENGTH - 0.8);
     actor.y = clamp(actor.y + actor.vy * dt, 0.8, FIELD_WIDTH - 0.8);
@@ -743,6 +749,9 @@ export class ArcadeMatch {
     const dy = actor.intentY - actor.y;
     const sprint = distance(actor, { x: actor.intentX, y: actor.intentY }) > 14 && actor.stamina > 25;
     this.moveActor(actor, dx, dy, sprint, dt);
+    if (actor.action === 'formation' || actor.action === 'idle' || actor.action === 'jog' || actor.action === 'sprint') {
+      this.setAction(actor, Math.hypot(actor.vx, actor.vy) < 0.15 ? 'idle' : sprint ? 'sprint' : 'jog');
+    }
   }
 
   private chooseAiIntent(actor: ArcadeActor): void {
@@ -1579,6 +1588,7 @@ export class ArcadeMatch {
   }
 
   private setAction(actor: ArcadeActor, action: PlayerActionState): void {
+    if (isLocomotionAction(action) && actionIsPlaying(actor.action, actor.actionStartedTick, this.tick)) return;
     if (actor.action === action) return;
     actor.action = action;
     actor.actionStartedTick = this.tick;

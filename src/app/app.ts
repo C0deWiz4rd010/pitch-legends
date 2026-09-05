@@ -1,4 +1,4 @@
-import { Component, inject, signal } from '@angular/core';
+import { Component, inject, signal, isDevMode } from '@angular/core';
 import { RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 import { GameStateService } from './core/services/game-state.service';
 import { StartComponent } from './features/start/start.component';
@@ -44,7 +44,7 @@ export class App {
   constructor() {
     // Resume an existing career automatically so a page reload persists state.
     if (this.gs.hasStoredSave()) this.gs.loadFromStorage();
-    void fetch(new URL('build-info.json', document.baseURI))
+    if (!isDevMode()) void fetch(new URL('build-info.json', document.baseURI))
       .then((response) => response.ok ? response.json() : null)
       .then((build: { revision?: string } | null) => {
         if (build?.revision && /^[a-f0-9]{40}$/.test(build.revision)) this.revision.set(build.revision.slice(0, 8));
