@@ -46,6 +46,9 @@ import { ManagerPortraitComponent } from '../../shared/components/manager-portra
 import { TravelService } from '../../core/services/travel.service';
 import { BufferedButton, TickInputBuffer } from '../../core/football/tick-input';
 import { MatchMetrics } from '../../core/football/match-metrics';
+import { createPracticeTeams } from '../../core/football/practice';
+import { interpolateThreeReplay } from './three-render-state';
+import type { ThreePitchRenderer } from './three-pitch.renderer';
 
 type PagePhase = 'preview' | 'intro' | 'simulating' | 'match' | 'halftime' | 'result';
 type TouchAction = 'sprint' | 'pass' | 'through' | 'lob' | 'shoot' | 'skill' | 'switch';
@@ -65,6 +68,7 @@ const EMPTY_MATCH_VIEW: MatchViewState = {
 
 @Component({
   selector: 'app-match',
+  host: { '[class.practice-mode]': 'practice' },
   imports: [RouterLink, DecimalPipe, ClubCrestComponent, MiniKitComponent, ManagerPortraitComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './match.page.html',
@@ -77,6 +81,13 @@ export class MatchPage implements OnDestroy {
   private readonly checkpoints = inject(MatchCheckpointService);
   private readonly router = inject(Router);
   private readonly route = inject(ActivatedRoute);
+  protected readonly practice = this.route.snapshot.routeConfig?.path === 'play';
+  private readonly practiceTeams = this.practice ? createPracticeTeams() : null;
+  private readonly matchFixture = computed(() => this.practice ? { id: 'practice-20260905', week: 1 } : this.gs.nextFixture());
+  protected readonly graphicsLoading = signal(false);
+  protected readonly graphicsError = signal('');
+  private startingRenderer = false;
+  private disposed = false;
   private readonly document = inject(DOCUMENT);
   private readonly zone = inject(NgZone);
   private readonly inputBuffer = new TickInputBuffer();
@@ -125,7 +136,7 @@ export class MatchPage implements OnDestroy {
   });
 
   private arcade: ArcadeMatch | null = null;
-  private renderer: ArcadePitchRenderer | null = null;
+  private renderer: ArcadePitchRenderer | ThreePitchRenderer | null = null;
   private raf = 0;
   private lastTs = 0;
   private fixedAccumulator = 0;
@@ -158,16 +169,18 @@ export class MatchPage implements OnDestroy {
   protected readonly assists: AssistPreset[] = ['assisted', 'balanced', 'manual'];
 
   protected readonly homeTeam = computed<Team | null>(() => {
+    if (this.practiceTeams) return this.practiceTeams.home;
     const result = this.result();
     const fixture = this.gs.nextFixture();
     return this.gs.teamById(result?.homeTeamId ?? fixture?.homeTeamId ?? '') ?? null;
   });
   protected readonly awayTeam = computed<Team | null>(() => {
+    if (this.practiceTeams) return this.practiceTeams.away;
     const result = this.result();
     const fixture = this.gs.nextFixture();
     return this.gs.teamById(result?.awayTeamId ?? fixture?.awayTeamId ?? '') ?? null;
   });
-  protected readonly controlledTeam = computed(() => this.gs.playerTeam());
+  protected readonly controlledTeam = computed(() => this.practiceTeams?.home ?? this.gs.playerTeam());
   protected readonly opponent = computed(() => {
     const club = this.controlledTeam();
     return this.homeTeam()?.id === club?.id ? this.awayTeam() : this.homeTeam();
@@ -240,7 +253,7 @@ export class MatchPage implements OnDestroy {
     });
     effect(() => {
       const fixture = this.gs.nextFixture();
-      this.resumeOffer.set(fixture ? this.checkpoints.load(fixture.id) : null);
+      this.resumeOffer.set(!this.practice && fixture ? this.checkpoints.load(fixture.id) : null);
     });
     effect(() => {
       const canvas = this.canvasRef();
@@ -259,7 +272,7 @@ export class MatchPage implements OnDestroy {
         this.arcade.setPaused(false);
       }
     });
-    if (this.autoStartRequested || this.instantStartRequested) queueMicrotask(() => this.kickOff());
+    if (this.autoStartRequested || this.instantStartRequested || this.practice) queueMicrotask(() => { this.kickOff(); if (this.practice) this.skipIntro(); });
   }
 
   protected teamRating(team: Team | null): number {
@@ -305,10 +318,10 @@ export class MatchPage implements OnDestroy {
   protected kickOff(): void {
     const home = this.homeTeam();
     const away = this.awayTeam();
-    const fixture = this.gs.nextFixture();
+    const fixture = this.matchFixture();
     const settings = this.gs.game()?.settings;
     if (!home || !away || !fixture || this.lineupErrors().length) return;
-    this.travel.resolveSafeForFixture(fixture.id);
+    if (!this.practice) this.travel.resolveSafeForFixture(fixture.id);
     if (this.selectedMode() === 'instant') {
       this.phase.set('simulating');
       void this.engine.simulateAsync(home, away, fixture.week, this.stableSeed(fixture.id), fixture.id).then((result) => {
@@ -330,9 +343,9 @@ export class MatchPage implements OnDestroy {
       difficulty: settings?.difficulty ?? 'normal',
       assist: this.assist(),
       playerLockId: lockId,
-      weather: this.expectedWeather(),
+      weather: this.practice ? 'clear' : this.expectedWeather(),
       inputDevice: this.selectedMode() === 'coach' ? 'ai' : this.inputDevice(),
-      camera: { zoom: 1, lookAhead: 0.18, shake: settings?.cameraShake ?? true, reducedMotion: settings?.reducedMotion ?? false },
+      camera: { zoom: this.practice ? 1.25 : 1, lookAhead: 0.18, shake: settings?.cameraShake ?? true, reducedMotion: settings?.reducedMotion ?? false },
     }, this.gs.manager()?.perks.tactics ?? 0);
     this.autoEnabled.set(this.arcade.controllerMode === 'auto');
     this.prevHome = this.arcade.homeScore;
@@ -340,7 +353,7 @@ export class MatchPage implements OnDestroy {
     this.revealed.set([...this.arcade.events]);
     this.lastAudioEvent = this.arcade.events.length;
     this.initializeMatchProjection();
-    this.checkpoints.save(this.arcade.checkpoint());
+    this.saveCheckpoint();
     this.phase.set('intro');
     this.audio.startMusic();
     this.introTimer = setTimeout(() => this.skipIntro(), 2800);
@@ -387,7 +400,7 @@ export class MatchPage implements OnDestroy {
     if (navigator.userActivation?.isActive) void this.enterImmersiveMode(false);
     this.phase.set('match');
     this.playing.set(true);
-    if (this.selectedMode() === 'play' && !this.autoEnabled() && !this.gs.game()?.settings.controlLearning.introSeen) this.controlHelp.open('pass');
+    if (!this.practice && this.selectedMode() === 'play' && !this.autoEnabled() && !this.gs.game()?.settings.controlLearning.introSeen) this.controlHelp.open('pass');
   }
 
   protected openControls(): void {
@@ -402,9 +415,28 @@ export class MatchPage implements OnDestroy {
     await this.enterImmersiveMode(true);
   }
 
-  private startAnimation(canvas: HTMLCanvasElement): void {
-    if (!this.arcade) return;
-    this.renderer = new ArcadePitchRenderer(canvas);
+  private async startAnimation(canvas: HTMLCanvasElement): Promise<void> {
+    if (!this.arcade || this.startingRenderer || this.disposed) return;
+    this.startingRenderer = true;
+    const match = this.arcade;
+    if (this.practice) {
+      this.graphicsLoading.set(true);
+      try {
+        const { ThreePitchRenderer } = await import('./three-pitch.renderer');
+        if (this.disposed || this.arcade !== match || !canvas.isConnected) return;
+        const renderer = this.zone.runOutsideAngular(() => new ThreePitchRenderer(canvas));
+        this.renderer = renderer;
+        await renderer.prepare(match);
+        if (this.disposed || this.arcade !== match || this.renderer !== renderer) return;
+      } catch {
+        this.graphicsError.set(this.i18n.locale() === 'de' ? 'Die 3D-Grafik konnte nicht gestartet werden. Aktiviere Hardwarebeschleunigung und versuche es erneut.' : 'Could not start 3D graphics. Enable hardware acceleration and try again.');
+        this.renderer?.destroy(); this.renderer = null;
+        this.startingRenderer = false; this.graphicsLoading.set(false);
+        return;
+      }
+      this.graphicsLoading.set(false);
+    } else this.renderer = new ArcadePitchRenderer(canvas);
+    this.startingRenderer = false;
     this.lastTs = 0;
     this.fixedAccumulator = 0;
     if (!this.currentRenderState) this.initializeMatchProjection();
@@ -420,9 +452,11 @@ export class MatchPage implements OnDestroy {
     if (this.arcade.phase === 'goalReplay') {
       this.replayElapsed += renderDelta;
       const frames = this.arcade.replaySnapshots();
-      const index = Math.min(frames.length - 1, Math.floor(this.replayElapsed / 3.4 * frames.length));
+      const cursor = Math.min(frames.length - 1, this.replayElapsed / 3.4 * Math.max(0, frames.length - 1));
+      const index = Math.max(0, Math.floor(cursor));
       const current = this.currentRenderState ?? this.arcade.renderState();
-      this.renderer?.render(this.arcade, { previous: current, current, alpha: 1, deltaSeconds: renderDelta }, frames[Math.max(0, index)]);
+      const replay = frames.length ? interpolateThreeReplay(frames[index], frames[Math.min(frames.length - 1, index + 1)], cursor - index) : undefined;
+      this.renderer?.render(this.arcade, { previous: current, current, alpha: 1, deltaSeconds: renderDelta }, replay);
       if (this.replayElapsed >= 3.4) this.skipReplay();
       this.raf = requestAnimationFrame((time) => this.loop(time));
       return;
@@ -458,7 +492,12 @@ export class MatchPage implements OnDestroy {
     if (timestamp - this.lastMetricsAt > 1000) {
       this.lastMetricsAt = timestamp;
       const canvas = this.canvasRef()?.nativeElement;
-      if (canvas) canvas.dataset['performance'] = JSON.stringify(this.metrics.summary());
+      if (canvas) {
+        canvas.dataset['performance'] = JSON.stringify(this.metrics.summary());
+        const actor = this.arcade.actors.find(player => player.player.id === this.arcade!.selectedPlayerId);
+        canvas.dataset['matchState'] = JSON.stringify({ tick: this.arcade.tick, rule: this.arcade.rule.phase, controlledId: actor?.player.id, x: actor?.x, y: actor?.y, facingX: actor?.facingX, facingY: actor?.facingY, activePlayers: this.arcade.actors.filter(player => player.active).length });
+        if (this.renderer && 'diagnostics' in this.renderer) canvas.dataset['graphics'] = JSON.stringify(this.renderer.diagnostics());
+      }
     }
     if (this.arcade.phase === 'halftime') {
       this.enterHalftime();
@@ -479,7 +518,7 @@ export class MatchPage implements OnDestroy {
     this.lastAudioEvent = this.arcade.events.length;
     const controlledStats = this.arcade.controlledSide === 'home' ? this.arcade.homeStats : this.arcade.awayStats;
     if (this.pendingPassAttempt >= 0 && controlledStats.passesAttempted > this.pendingPassAttempt) {
-      this.controlHelp.complete('pass');
+      if (!this.practice) this.controlHelp.complete('pass');
       this.pendingPassAttempt = -1;
     }
     if (this.arcade.homeScore > this.prevHome) {
@@ -492,7 +531,7 @@ export class MatchPage implements OnDestroy {
     }
     const safeRules = ['kickoff', 'throwIn', 'corner', 'goalKick', 'freeKick', 'penalty'];
     if (this.arcade.rule.phase !== this.previousRule && safeRules.includes(this.arcade.rule.phase)) {
-      this.checkpoints.save(this.arcade.checkpoint());
+      this.saveCheckpoint();
       this.previousRule = this.arcade.rule.phase;
     } else if (this.arcade.rule.phase === 'playing') {
       this.previousRule = 'playing';
@@ -552,7 +591,7 @@ export class MatchPage implements OnDestroy {
     this.raf = 0;
     this.renderer?.destroy();
     this.renderer = null;
-    this.checkpoints.save(this.arcade.checkpoint());
+    this.saveCheckpoint();
     this.phase.set('halftime');
     this.audio.whistle();
   }
@@ -572,20 +611,25 @@ export class MatchPage implements OnDestroy {
   protected togglePlay(): void {
     if (!this.arcade || this.arcade.phase === 'goalReplay') return;
     this.playing.update((value) => !value);
+    this.fixedAccumulator = 0;
+    this.lastTs = 0;
+    this.resetInputs();
     this.arcade.setPaused(!this.playing());
     this.matchView.set(this.projectMatchView());
-    if (!this.playing()) this.checkpoints.save(this.arcade.checkpoint());
+    if (!this.playing()) this.saveCheckpoint();
     else this.performanceMessage.set('');
   }
 
   private pauseFor(message: string): void {
     this.resetInputs();
+    this.fixedAccumulator = 0;
+    this.lastTs = 0;
     if (!this.arcade) return;
     this.playing.set(false);
     this.arcade.setPaused(true);
     this.matchView.set(this.projectMatchView());
     this.performanceMessage.set(message);
-    this.checkpoints.save(this.arcade.checkpoint());
+    this.saveCheckpoint();
   }
 
   protected cycleSpeed(): void {
@@ -601,7 +645,7 @@ export class MatchPage implements OnDestroy {
     this.autoEnabled.set(mode === 'auto');
     this.matchView.set(this.projectMatchView());
     if (mode === 'human') this.speed.set(1);
-    this.checkpoints.save(this.arcade.checkpoint());
+    this.saveCheckpoint();
   }
 
   protected simulateRemainder(): void {
@@ -637,6 +681,7 @@ export class MatchPage implements OnDestroy {
   protected async confirm(): Promise<void> {
     const result = this.result();
     if (!result || this.committing()) return;
+    if (this.practice) { this.reset(); this.kickOff(); this.skipIntro(); return; }
     this.committing.set(true);
     const committed = await this.season.commitWeek(result);
     if (committed) this.checkpoints.clear();
@@ -663,7 +708,7 @@ export class MatchPage implements OnDestroy {
       this.subOutId.set('');
       this.subInId.set('');
       this.showSubs.set(false);
-      this.checkpoints.save(this.arcade.checkpoint());
+      this.saveCheckpoint();
     }
   }
 
@@ -774,7 +819,7 @@ export class MatchPage implements OnDestroy {
   private updateInputDevice(device: Exclude<InputDevice, 'ai'>): void {
     if (this.inputDevice() === device) return;
     this.inputDevice.set(device);
-    this.controlHelp.setDevice(device);
+    if (!this.practice) this.controlHelp.setDevice(device);
   }
 
   private validateLineup(team: Team | null): string[] {
@@ -787,6 +832,10 @@ export class MatchPage implements OnDestroy {
     if (players.filter((player) => player.positionGroup === 'GK').length !== 1) errors.push('Die Startelf benötigt genau einen Torwart.');
     if (players.some((player) => player.injuryWeeks > 0)) errors.push('Verletzte Spieler müssen aus der Startelf entfernt werden.');
     return errors;
+  }
+
+  private saveCheckpoint(): void {
+    if (!this.practice && this.arcade) this.checkpoints.save(this.arcade.checkpoint());
   }
 
   private resetInputs(): void {
@@ -888,6 +937,7 @@ export class MatchPage implements OnDestroy {
   }
 
   ngOnDestroy(): void {
+    this.disposed = true;
     if (this.introTimer) clearTimeout(this.introTimer);
     cancelAnimationFrame(this.raf);
     this.destroyRenderer();

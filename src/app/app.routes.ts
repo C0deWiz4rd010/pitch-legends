@@ -1,6 +1,7 @@
 import { Routes } from '@angular/router';
 
 export const routes: Routes = [
+  { path: 'play', loadComponent: () => import('./features/match/match.page').then((m) => m.MatchPage) },
   { path: '', loadComponent: () => import('./features/dashboard/dashboard.page').then((m) => m.DashboardPage) },
   { path: 'squad', loadComponent: () => import('./features/squad/squad.page').then((m) => m.SquadPage) },
   { path: 'tactics', loadComponent: () => import('./features/tactics/tactics.page').then((m) => m.TacticsPage) },

@@ -1,5 +1,13 @@
 # Third-party assets and libraries
 
+## Three.js (2.0 development)
+
+- Package: `three`, pinned to `0.185.1`; typings `@types/three` `0.185.4`.
+- Source: https://github.com/mrdoob/three.js
+- License: MIT, bundled with the dependency and production license report.
+- Usage: locally bundled WebGL 2 stadium, skinned footballers and animation. No CDN or runtime asset API.
+- All 3D player geometry, rigs, kit panels, football poses, stadium meshes and pitch textures currently used are original procedural code. No Quaternius files have been imported; the library remains a researched reference, not an undeclared dependency.
+
 Pitch Legends remains offline-capable. Runtime graphics are generated locally and no avatar or asset API is contacted.
 
 ## Faker

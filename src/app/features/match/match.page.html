@@ -1,3 +1,6 @@
+@if (practice) {
+  <div class="practice-bar"><a routerLink="/">← {{ i18n.locale() === 'de' ? 'Zur Karriere' : 'Career' }}</a><strong>PITCH LEGENDS · PLAYGROUND</strong><span>{{ i18n.locale() === 'de' ? 'WASD bewegen · J passen · L schießen · Shift sprinten' : 'WASD move · J pass · L shoot · Shift sprint' }}</span></div>
+}
 @if (phase() === 'preview') {
   <header class="page-head fade-up">
     <div>
@@ -170,6 +173,8 @@
     <div class="pitch-panel">
       <div class="canvas-wrap">
         <canvas #pitch aria-label="Live football pitch"></canvas>
+        @if (graphicsLoading()) { <div class="graphics-loading" role="status">{{ i18n.locale() === 'de' ? 'Dein Stadion wird vorbereitet …' : 'Preparing your stadium …' }}</div> }
+        @if (graphicsError()) { <div class="graphics-loading" role="alert"><p>{{ graphicsError() }}</p><a routerLink="/" class="btn btn--primary">← {{ i18n.locale() === 'de' ? 'Zurück' : 'Back' }}</a></div> }
         <div class="rotate-notice"><strong>GERÄT DREHEN</strong><span>Touchmatches benötigen Querformat.</span></div>
         @if (flash(); as scorer) { <div class="goal-flash"><strong>GOAL!</strong><span>{{ scorer }}</span></div> }
         @if (matchPhase() === 'goalReplay') { <button class="replay-skip" (click)="skipReplay()">REPLAY ÜBERSPRINGEN</button> }

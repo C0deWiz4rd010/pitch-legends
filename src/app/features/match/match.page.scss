@@ -160,7 +160,17 @@ kbd { min-width: 68px; padding: 5px; border: 1px solid var(--border); background
 .match-shell { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(240px, .55fr); gap: 14px; align-items: start; min-width: 0; }
 .pitch-panel { min-width: 0; }
 .canvas-wrap { position: relative; overflow: hidden; aspect-ratio: 16 / 9; border: 2px solid var(--border); background: #050713; box-shadow: var(--shadow-2); }
-canvas { display: block; width: 100%; height: 100%; image-rendering: pixelated; touch-action: none; }
+canvas { display: block; width: 100%; height: 100%; image-rendering: auto; touch-action: none; }
+.practice-bar { display: flex; align-items: center; gap: 20px; padding: 16px 20px; color: #c6d7df; background: #112b36; font: 12px system-ui; flex-wrap: wrap; }
+.practice-bar a { color: #8de5ce; text-decoration: none; }
+.practice-bar strong { color: #fff3ce; letter-spacing: .12em; }
+.practice-bar span { margin-left: auto; }
+.graphics-loading { position: absolute; inset: 0; z-index: 9; display: flex; align-items: center; justify-content: center; flex-direction: column; background: #102934; color: #fff0cd; padding: 24px; text-align: center; font: 16px system-ui; }
+:host(.practice-mode) .match-shell { display: block; }
+:host(.practice-mode) .ticker { display: none; }
+:host(.practice-mode) .scoreboard { padding: 8px 20px; margin: 0; min-height: 58px; }
+:host(.practice-mode) .canvas-wrap { height: calc(100dvh - 166px); min-height: 250px; aspect-ratio: auto; }
+:host(.practice-mode) .match-toolbar { margin: 0; padding: 8px; background: #112b36; }
 .goal-flash,
 .pause-layer { position: absolute; inset: 0; display: grid; place-items: center; align-content: center; gap: 10px; background: radial-gradient(circle, rgba(84,242,139,.3), rgba(5,7,19,.65)); pointer-events: none; }
 .goal-flash strong { color: var(--accent-3); font: 42px var(--font-display); text-shadow: 4px 4px #02040a; }

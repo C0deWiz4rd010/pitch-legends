@@ -1,6 +1,6 @@
 import { ChangeDetectionStrategy, Component, computed, effect, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { Router } from '@angular/router';
+import { Router, RouterLink } from '@angular/router';
 import { GameStateService } from '../../core/services/game-state.service';
 import { SaveService } from '../../core/services/save.service';
 import { Difficulty, ManagerProfile, TacticalPhilosophy } from '../../models/game.model';
@@ -22,7 +22,7 @@ import { ManagerPortraitComponent } from '../../shared/components/manager-portra
 
 @Component({
   selector: 'app-start',
-  imports: [FormsModule, I18nPipe, ClubCrestComponent, MiniKitComponent, ManagerPortraitComponent],
+  imports: [FormsModule, RouterLink, I18nPipe, ClubCrestComponent, MiniKitComponent, ManagerPortraitComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './start.component.html',
   styleUrl: './start.component.scss',

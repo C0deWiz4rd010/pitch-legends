@@ -1,5 +1,6 @@
 import { Component, inject, signal, isDevMode } from '@angular/core';
-import { RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
+import { NavigationEnd, Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { GameStateService } from './core/services/game-state.service';
 import { StartComponent } from './features/start/start.component';
 import { formatCoins } from './shared/rating-color';
@@ -28,6 +29,8 @@ export class App {
   protected readonly menuOpen = signal(false);
   protected readonly version = APP_VERSION;
   protected readonly revision = signal('');
+  private readonly router = inject(Router);
+  protected readonly standalonePage = signal(/\/play(?:[/?#]|$)/.test(location.pathname));
 
   protected readonly nav: NavItem[] = [
     { path: '', labelKey: 'nav.dashboard', icon: '⌂' },
@@ -42,6 +45,9 @@ export class App {
   ];
 
   constructor() {
+    this.router.events.pipe(takeUntilDestroyed()).subscribe(event => {
+      if (event instanceof NavigationEnd) this.standalonePage.set(/^\/play(?:[/?#]|$)/.test(event.urlAfterRedirects));
+    });
     // Resume an existing career automatically so a page reload persists state.
     if (this.gs.hasStoredSave()) this.gs.loadFromStorage();
     if (!isDevMode()) void fetch(new URL('build-info.json', document.baseURI))
