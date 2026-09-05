@@ -1,3 +1,4 @@
+import { Vector3 } from 'three';
 import { createAppearanceRecipe, createProceduralFootballer, poseFootballer, solveLeg } from './features/match/three-player.factory';
 import { createPlayerVisualIdentity, createClubVisualIdentity } from './core/visual-identity';
 import { createPracticeTeams } from './core/football/practice';
@@ -50,4 +51,33 @@ describe('procedural three-dimensional footballers', () => {
       expect(Object.values(solveLeg(.42,.40,...target as [number,number])).every(Number.isFinite)).toBe(true);
     }
   });
+  it('plants the support foot while the hips advance through a running stride', () => {
+    const teams = createPracticeTeams();
+    const match = new ArcadeMatch(teams.home, teams.away, teams.home.id);
+    const runtime = match.renderState().players[1];
+    const model = createProceduralFootballer(teams.home.players[0].visuals, kit);
+    const positions = [0.10, 0.18, 0.26].map(distance => {
+      poseFootballer(model, { ...runtime, vx: 0, vy: 4, facingX: 0, facingY: 1, animationDistance: distance, action: 'jog' }, 60, 1, true);
+      model.mesh.position.z = distance;
+      model.mesh.updateMatrixWorld(true);
+      return model.joints.leftFoot.getWorldPosition(new Vector3());
+    });
+    expect(Math.max(...positions.map(p => p.z)) - Math.min(...positions.map(p => p.z))).toBeLessThan(0.005);
+    expect(Math.max(...positions.map(p => p.y)) - Math.min(...positions.map(p => p.y))).toBeLessThan(0.005);
+    model.destroy();
+  });
+
+  it('places the kicking boot at the ball surface on the authoritative contact tick', () => {
+    const teams = createPracticeTeams();
+    const match = new ArcadeMatch(teams.home, teams.away, teams.home.id);
+    const base = match.renderState().players[1];
+    const model = createProceduralFootballer(teams.home.players[0].visuals, kit);
+    const contact = { tick: 120, x: 0, y: 0.56, z: 0.11, kind: 'foot' as const, foot: 'right' as const };
+    poseFootballer(model, { ...base, x: 0, y: 0, vx: 0, vy: 0, facingX: 0, facingY: 1, action: 'pass', actionStartedTick: 120, contact }, 120, 2, true);
+    model.mesh.updateMatrixWorld(true);
+    const bootToe = model.joints.rightFoot.localToWorld(new Vector3(0, -0.031, 0.20));
+    expect(Math.abs(bootToe.distanceTo(new Vector3(0,0.11,0.56)) - 0.11)).toBeLessThan(0.03);
+    model.destroy();
+  });
+
 });

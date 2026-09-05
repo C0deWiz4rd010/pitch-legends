@@ -10,28 +10,45 @@ export class PortraitService {
   private readonly cache = new Map<string, string>();
   private readonly sprites = new PlayerSpriteFactory();
 
-  async portrait(player: Player, team?: Team): Promise<string> {
-    const kit = team?.visuals.kits.home ?? neutralKit();
-    const key = `portrait-v3|${player.id}|${player.visuals.seed}|${kitVisualSignature(kit)}`;
-    const cached = this.cache.get(key);
-    if (cached) return cached;
-    const sprite = this.sprites.getPortrait(player, kit);
-    const uri = renderDataUri(sprite, 48, 48);
-    this.cache.set(key, uri);
-    return uri;
+  private readonly inFlight = new Map<string, Promise<string>>();
+  private epoch = 0;
+
+  portrait(player: Player, team?: Team): Promise<string> {
+    const kit = (player.positionGroup === 'GK' ? team?.visuals.kits.goalkeeper : team?.visuals.kits.home) ?? neutralKit();
+    return this.image(player, kit, false);
   }
 
-  async figure(player: Player, kit: KitDesign): Promise<string> {
-    const key = `figure-v3|${player.id}|${player.visuals.seed}|${kitVisualSignature(kit)}`;
+  figure(player: Player, kit: KitDesign): Promise<string> {
+    return this.image(player, kit, true);
+  }
+
+  private image(player: Player, kit: KitDesign, full: boolean): Promise<string> {
+    const key = `three-v1|${full}|${player.id}|${JSON.stringify(player.visuals)}|${player.kitNumber}|${kitVisualSignature(kit)}`;
     const cached = this.cache.get(key);
-    if (cached) return cached;
-    const sprite = this.sprites.getStandalone(player, kit, 'idle', 1, 2);
-    const uri = renderDataUri(sprite, PLAYER_SPRITE_WIDTH, PLAYER_SPRITE_HEIGHT);
-    this.cache.set(key, uri);
-    return uri;
+    if (cached) return Promise.resolve(cached);
+    const active = this.inFlight.get(key);
+    if (active) return active;
+    const epoch = this.epoch;
+    const job = import('../../features/match/footballer-portrait')
+      .then(module => module.footballerPortrait(player, kit, full))
+      .catch(() => {
+        const sprite = full ? this.sprites.getStandalone(player, kit, 'idle', 1, 2) : this.sprites.getPortrait(player, kit);
+        return renderDataUri(sprite, full ? PLAYER_SPRITE_WIDTH : 48, full ? PLAYER_SPRITE_HEIGHT : 48);
+      }).then(uri => {
+        if (epoch === this.epoch) {
+          if (this.cache.size >= 256) this.cache.delete(this.cache.keys().next().value!);
+          this.cache.set(key, uri);
+          this.inFlight.delete(key);
+        }
+        return uri;
+      });
+    this.inFlight.set(key, job);
+    return job;
   }
 
   clear(): void {
+    this.epoch++;
+    this.inFlight.clear();
     this.cache.clear();
     this.sprites.destroy();
   }

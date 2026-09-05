@@ -268,32 +268,52 @@ export function solveLeg(upper: number, lower: number, forward: number, drop: nu
   return { hip, knee, ankle: -(hip + knee) };
 }
 
+/** A lateral hip rotation and two-link sagittal solution place the ankle in 3D. */
+export function placeFoot(model: ProceduralFootballer, side: 'left' | 'right', x: number, y: number, z: number): void {
+  const j = model.joints;
+  const hip = j[`${side}Thigh`];
+  const lateral = x - hip.position.x;
+  const drop = j.hips.position.y - y;
+  const tilt = Math.atan2(lateral, drop);
+  const leg = solveLeg(model.thighLength, model.shinLength, z, Math.hypot(drop, lateral));
+  hip.rotation.order = 'ZXY';
+  hip.rotation.set(leg.hip, 0, tilt);
+  j[`${side}Shin`].rotation.x = leg.knee;
+  j[`${side}Foot`].rotation.order = 'XZY';
+  j[`${side}Foot`].rotation.set(leg.ankle, 0, -tilt);
+}
+
 /** Continuous, distance-driven locomotion and simulation-timed action poses. */
 export function poseFootballer(model: ProceduralFootballer, state: PlayerRuntimeSnapshot, tick: number, time: number, reducedMotion = false): void {
   const j = model.joints;
   const speed = Math.hypot(state.vx, state.vy);
   const run = THREE.MathUtils.clamp(speed / 7.8, 0, 1);
-  const phase = (state.animationDistance ?? 0) / (2.20 + run * 1.4) * TAU;
+  const cycle = (state.animationDistance ?? 0) / 2.5;
+  const phase = cycle * TAU;
   const age = Math.max(0, (tick - state.actionStartedTick) / 60);
   const breath = reducedMotion ? 0 : Math.sin(time * 2.2 + model.recipe.seed % 11) * 0.005;
   for (const joint of Object.values(j)) joint.rotation.set(0, 0, 0);
-  const hipBob = Math.abs(Math.sin(phase)) * 0.035 * run;
-  j.hips.position.y = model.hipHeight - 0.035 * run + hipBob + breath;
+  const moving = Math.min(1, speed / 0.8);
+  const maximumReach = model.thighLength + model.shinLength - 0.014;
+  const stanceHalf = 2.5 * 0.25 / 2;
+  const hipDrop = model.hipHeight - (0.11 + Math.sqrt(maximumReach * maximumReach - stanceHalf * stanceHalf));
+  j.hips.position.y = model.hipHeight - hipDrop * moving + breath;
   j.spine.rotation.x = 0.13 * run;
-  j.spine.rotation.y = Math.sin(phase) * 0.10 * run;
-  j.chest.rotation.y = -Math.sin(phase) * 0.15 * run;
+  j.spine.rotation.y = Math.sin(phase) * 0.08 * run;
+  j.chest.rotation.y = -Math.sin(phase) * 0.12 * run;
   j.head.rotation.x = -0.08 * run;
+  const forwardVelocity = speed > 0.01 ? (state.vx * state.facingX + state.vy * state.facingY) / speed : 1;
+  const sideVelocity = speed > 0.01 ? (state.vx * state.facingY - state.vy * state.facingX) / speed : 0;
   for (const side of ['left', 'right'] as const) {
-    const p = phase + (side === 'left' ? 0 : Math.PI);
+    const t = ((cycle + (side === 'left' ? 0 : 0.5)) % 1 + 1) % 1;
     const sign = side === 'left' ? 1 : -1;
-    // The support foot travels backwards relative to the hip; the swing foot lifts.
-    const stride = Math.sin(p) * (0.20 + run * 0.39) * Math.min(1, speed / 0.8);
-    const lift = Math.max(0, Math.cos(p)) * 0.22 * run;
-    const leg = solveLeg(model.thighLength, model.shinLength, stride, model.thighLength + model.shinLength - 0.018 - lift);
-    j[`${side}Thigh`].rotation.x = leg.hip;
-    j[`${side}Shin`].rotation.x = leg.knee;
-    j[`${side}Foot`].rotation.x = leg.ankle;
-    j[`${side}Arm`].rotation.x = Math.sin(p) * 0.58 * run;
+    // During stance, d(forward)/d(distance) = -1: the foot stays on the turf.
+    const swing = Math.max(0, (t - 0.25) / 0.75);
+    const travel = t < 0.25 ? stanceHalf - t * 2.5 : -stanceHalf * Math.cos(swing * Math.PI);
+    const lift = t < 0.25 ? 0 : Math.sin(swing * Math.PI) * (0.07 + run * 0.19);
+    placeFoot(model, side, sign * 0.108 + travel * sideVelocity * moving,
+      0.11 + lift * moving, travel * forwardVelocity * moving);
+    j[`${side}Arm`].rotation.x = Math.sin(phase + (side === 'left' ? 0 : Math.PI)) * 0.58 * run;
     j[`${side}Arm`].rotation.z = sign * (0.10 + run * 0.04);
     j[`${side}Forearm`].rotation.x = -0.22 - run * 0.78;
   }
@@ -358,6 +378,22 @@ export function poseFootballer(model: ProceduralFootballer, state: PlayerRuntime
       j.hips.position.y -= envelope * 0.22;
       j.leftArm.rotation.z = 2.3 * envelope;
       j.rightArm.rotation.z = -2.3 * envelope;
+    }
+  }
+  const contact = state.contact;
+  if (contact?.kind === 'foot' && tick >= contact.tick && tick - contact.tick < 9) {
+    const dx = contact.x - state.x, dy = contact.y - state.y;
+    const forward = dx * state.facingX + dy * state.facingY - 0.31;
+    const lateral = dx * state.facingY - dy * state.facingX;
+    const distance = Math.hypot(forward, lateral);
+    if (distance < maximumReach * 0.85) {
+      const weight = Math.max(0, 1 - (tick - contact.tick) / 9);
+      const targetDrop = Math.sqrt(Math.max(0.2, maximumReach * maximumReach - distance * distance));
+      j.hips.position.y = Math.min(j.hips.position.y, 0.11 + targetDrop);
+      const thigh = j[`${contact.foot}Thigh`], shin = j[`${contact.foot}Shin`], foot = j[`${contact.foot}Foot`];
+      const old = [thigh.quaternion.clone(), shin.quaternion.clone(), foot.quaternion.clone()];
+      placeFoot(model, contact.foot, lateral, 0.11, forward);
+      [thigh, shin, foot].forEach((bone, i) => bone.quaternion.copy(old[i].slerp(bone.quaternion, weight)));
     }
   }
   if (state.action === 'celebrate') {

@@ -16,9 +16,9 @@ Dieser Bericht dokumentiert tatsächliche Änderungen und Prüfungen. Ein Eintra
 | --- | --- | --- |
 | 0 – Ausgangsbasis | Veröffentlicht | `f3b393b`; Entwicklungs-404 in `a2c89df` behoben; Pages-Lauf 33967406375 erfolgreich |
 | 1 – Steuerung | Veröffentlicht; Vorabeingaben/Wechselschutz folgen in Phase 3 | `a2c89df`, 23 Gameplay-/Inputtests, Build und Gameplay-E2E |
-| 2 – 3D-Trainingsplatz | Implementiert; CI-Veröffentlichung ausstehend | Fünf 3D-Unit-Tests, Produktionsbuild, zwei Browserprüfungen bestanden |
-| 3 – Ballgefühl | Offen | |
-| 4 – Spieler/Animation | Offen | |
+| 2 – 3D-Trainingsplatz | Veröffentlicht | `6ace9bc`; Pages-Lauf 33968766580 erfolgreich |
+| 3 – Ballgefühl | Implementiert; Veröffentlichung läuft | `40c70a1`, 25 gezielte Tests und Build bestanden; finale Balance offen |
+| 4 – Spieler/Animation | Implementiert; erweiterte Kontaktabnahme bleibt in QA | 90 Tests im Gesamtlauf + neuer Kontakttest; 19 Browserprüfungen und Build bestanden |
 | 5 – KI | Offen | |
 | 6 – Vollständige Partien | Offen | |
 | 7 – Präsentation | Offen | |
@@ -47,14 +47,25 @@ Dieser Bericht dokumentiert tatsächliche Änderungen und Prüfungen. Ein Eintra
 - Sichtprüfung des Screenshots: Spielfeld, Ball und Auswahl sichtbar, Spieler weiterhin klein in der taktischen Übersicht. Nahansicht, detaillierte Kontaktanimation und mobile Leistungsabnahme bleiben Aufgaben der folgenden Phasen.
 - Keine reale Handy-Leistungsmessung. Die Vorschau ist kein Nachweis für das finale 60-FPS-Ziel.
 
-## Phase 3 ? Ballkontakt und Kombinationen
+## Phase 3 – Ballkontakt und Kombinationen
 
-- Einzelne Dribbelimpulse mit kontinuierlicher Integration ersetzen die starre Ballanbindung. Sprints legen weiter vor; Tricks ver?ndern Impulse und versetzen Spieler nicht.
-- Ballannahme nur in Fu?-/K?rperreichweite, abh?ngig von H?he, Geschwindigkeit, Attributen und Wetter. Die bisherige 4,2-m-Annahmehilfe entf?llt.
-- Manuelle Zielrichtung bleibt frei; ausgewogene und starke Assistenz verwenden begrenzte Winkel. P?sse ber?cksichtigen Laufwege, Passkorridore und taktische Distanzen.
-- 180-ms-Vorabeingaben f?r direkte P?sse/Sch?sse, Sprint+Pass f?r anschlie?enden Doppelpasslauf; flache, angeschnittene und gelupfte Abschl?sse sowie Kopfballkontakte.
-- Physik-Unterteilung auf h?chstens 8 cm verhindert Pfosten-/Latten-Tunneling. Erst ein vollst?ndiger Torlinien?bertritt z?hlt. Torh?ter m?ssen die Ballposition tats?chlich erreichen; erstes Winkelspiel und r?umliche Paraden vorgezogen.
-- Abseitspositionen werden bei der Passabgabe festgehalten. Manueller Spielerwechsel bleibt f?r 600 ms gegen automatische R?ckwechsel gesch?tzt. Neue Laufzeitdaten werden im Checkpoint mitgespeichert und im Determinismusvergleich ber?cksichtigt.
-- Acht neue Verhaltenstests: Reichweite, Dribbelkontinuit?t, direkte Aktion mit Wiederaufnahme, verfallene Vorabeingabe, Pfosten, Latte, Torlinie und entfernte Torh?ter. Mit bisherigen Gameplaytests 25 bestanden; vollst?ndiger Zwischenlauf 89 Tests bestanden; Build und 3D-E2E bestanden.
-- Explorative 30-Partien-Serie: 3,57 Tore/Partie, 6,1 Sch?sse/Team, 73,12 % Passquote, 439,87 ms/Partie. **Finale Balanceziele nicht bestanden**; Schussh?ufigkeit und Ergebnisverteilung werden nach dem koordinierten KI-Umbau in Phase 5 und der 500-Partien-Abnahme in Phase 11 erneut abgestimmt.
-- Phase-2-Nachbesserung: verz?gerte GPU-Frames begrenzen den nachzuholenden Zeit?berschuss und reduzieren Grafikqualit?t, statt dauerhaft zu pausieren. Der Browsertest pr?ft Bewegung unabh?ngig von Empf?ngerwechseln. CI-Diagnoseartefakte bleiben erhalten.
+- Einzelne Dribbelimpulse mit kontinuierlicher Integration ersetzen die starre Ballanbindung. Sprints legen weiter vor; Tricks verändern Impulse und versetzen Spieler nicht.
+- Ballannahme nur in Fuß-/Körperreichweite, abhängig von Höhe, Geschwindigkeit, Attributen und Wetter. Die bisherige 4,2-m-Annahmehilfe entfällt.
+- Manuelle Zielrichtung bleibt frei; ausgewogene und starke Assistenz verwenden begrenzte Winkel. Pässe ber?cksichtigen Laufwege, Passkorridore und taktische Distanzen.
+- 180-ms-Vorabeingaben für direkte Pässe/Schüsse, Sprint+Pass für anschließenden Doppelpasslauf; flache, angeschnittene und gelupfte Abschlüsse sowie Kopfballkontakte.
+- Physik-Unterteilung auf höchstens 8 cm verhindert Pfosten-/Latten-Tunneling. Erst ein vollständiger Torlinienübertritt zählt. Torhüter müssen die Ballposition tatsächlich erreichen; erstes Winkelspiel und räumliche Paraden vorgezogen.
+- Abseitspositionen werden bei der Passabgabe festgehalten. Manueller Spielerwechsel bleibt für 600 ms gegen automatische Rückwechsel geschützt. Neue Laufzeitdaten werden im Checkpoint mitgespeichert und im Determinismusvergleich berücksichtigt.
+- Acht neue Verhaltenstests: Reichweite, Dribbelkontinuität, direkte Aktion mit Wiederaufnahme, verfallene Vorabeingabe, Pfosten, Latte, Torlinie und entfernte Torhüter. Mit bisherigen Gameplaytests 25 bestanden; vollständiger Zwischenlauf 89 Tests bestanden; Build und 3D-E2E bestanden.
+- Explorative 30-Partien-Serie: 3,57 Tore/Partie, 6,1 Schüsse/Team, 73,12 % Passquote, 439,87 ms/Partie. **Finale Balanceziele nicht bestanden**; Schusshäufigkeit und Ergebnisverteilung werden nach dem koordinierten KI-Umbau in Phase 5 und der 500-Partien-Abnahme in Phase 11 erneut abgestimmt.
+- Phase-2-Nachbesserung: verzögerte GPU-Frames begrenzen den nachzuholenden Zeitüberschuss und reduzieren Grafikqualität, statt dauerhaft zu pausieren. Der Browsertest prüft Bewegung unabhängig von Empfängerwechseln. CI-Diagnoseartefakte bleiben erhalten.
+
+## Phase 4 – Individuelle Figuren und Animationswerkstatt
+
+- `/players` zeigt 128 feste Identitäten, wählbare Trikots, drehbare Ganzkörperansicht, Portraits, 17 Bewegungen, Zeitlupe, Skelett und Kontaktmarkierung.
+- Portrait, Ganzkörperbild und Match verwenden dieselbe prozedurale Mesh-/Skelettfabrik. Ein temporärer gemeinsamer WebGL-Kontext rendert Portraits; die Ausgabe wird auf 256 Bilder begrenzt zwischengespeichert. Veraltete asynchrone Antworten überschreiben keinen nachfolgenden Spieler oder Trikotwechsel.
+- Strecke steuert den Gangzyklus ohne Phasensprung durch wechselnde Geschwindigkeit. Räumliche Bein-IK berücksichtigt Seitwärts-/Rückwärtsbewegung. Ein geometrischer Test misst weniger als 5 mm Drift des Stützfußes im geprüften Laufabschnitt.
+- Fuß-, Kopf- und Handkontakte werden in der Simulation mit Ort und Tick erfasst und über Checkpoints/Renderzustand weitergegeben. Der Kurzpass-Test prüft den Stiefelkontakt zur Balloberfläche mit weniger als 3 cm Abweichung. Schwierige Sprint-/Kopfball-/Hechtkontakte sind noch nicht vollständig geometrisch abgenommen.
+- Ballradius und Bodenhöhe entsprechen jetzt den Simulationsmaßen. Die Standardkamera zeigt Spieler näher und in flacherem Winkel.
+- Sämtliche Modelle und Bewegungen sind eigene prozedurale Implementierungen. Die im Plan erwähnte Quaternius-Bibliothek wurde nicht benötigt oder importiert; dadurch keine zusätzlichen Assetdownloads, Formatanpassungen oder Lizenzdateien.
+- Vollständiger Testlauf: 90 Unit-Tests und 19 Chromium-Browserprüfungen bestanden. Nach dem letzten Kontaktabstand-Fix zusätzlich sieben gezielte 3D-Tests bestanden (insgesamt jetzt 91). Produktionsbuild bestanden. Screenshots der Werkstatt und des Matchs visuell geprüft.
+- Reale Mobilgeräte, alle extremen Kontaktposen und subjektive Langzeit-Spielspaßbewertung bleiben Teil der abschließenden QA; sie werden nicht aus grünen Automatiktests abgeleitet.

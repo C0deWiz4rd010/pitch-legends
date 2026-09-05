@@ -39,7 +39,7 @@ body::after {
   background: repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.018) 0 1px, transparent 1px 4px);
   mix-blend-mode: screen;
 }
-body.match-immersive::after { display: none; }
+body.match-immersive::after, body.player-studio::after { display: none; }
 .standalone-play { height: 100dvh; overflow: auto; background: #112b36; }
 
 h1, h2, h3, h4, .brand-text strong {

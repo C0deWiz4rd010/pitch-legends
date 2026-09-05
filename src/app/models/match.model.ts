@@ -204,7 +204,17 @@ export interface RuleState {
   pendingCardPlayerId: string | null;
 }
 
+export interface FootballContact {
+  tick: number;
+  x: number;
+  y: number;
+  z: number;
+  kind: 'foot' | 'head' | 'hand';
+  foot: 'left' | 'right';
+}
+
 export interface PlayerRuntimeSnapshot {
+  contact?: FootballContact;
   id: string;
   side: Side;
   x: number;

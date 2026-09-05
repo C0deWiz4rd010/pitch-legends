@@ -30,7 +30,7 @@ export class App {
   protected readonly version = APP_VERSION;
   protected readonly revision = signal('');
   private readonly router = inject(Router);
-  protected readonly standalonePage = signal(/\/play(?:[/?#]|$)/.test(location.pathname));
+  protected readonly standalonePage = signal(/\/(?:play|players)(?:[/?#]|$)/.test(location.pathname));
 
   protected readonly nav: NavItem[] = [
     { path: '', labelKey: 'nav.dashboard', icon: '⌂' },
@@ -46,7 +46,7 @@ export class App {
 
   constructor() {
     this.router.events.pipe(takeUntilDestroyed()).subscribe(event => {
-      if (event instanceof NavigationEnd) this.standalonePage.set(/^\/play(?:[/?#]|$)/.test(event.urlAfterRedirects));
+      if (event instanceof NavigationEnd) this.standalonePage.set(/^\/(?:play|players)(?:[/?#]|$)/.test(event.urlAfterRedirects));
     });
     // Resume an existing career automatically so a page reload persists state.
     if (this.gs.hasStoredSave()) this.gs.loadFromStorage();

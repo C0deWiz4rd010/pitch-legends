@@ -64,6 +64,7 @@ export function arcadeJogSpeed(pace: number): number {
 }
 
 export interface ArcadeActor {
+  contact?: PlayerRuntimeSnapshot['contact'];
   player: Player;
   side: Side;
   x: number;
@@ -1002,6 +1003,7 @@ export class ArcadeMatch {
 
   private releaseBall(actor: ArcadeActor, vx: number, vy: number, vz: number, spin: number): void {
     this.ball.ownerId = null;
+    actor.contact = { tick: this.tick, x: this.ball.x, y: this.ball.y, z: this.ball.z, kind: 'foot', foot: actor.player.foot === 'Left' ? 'left' : 'right' };
     // The ball leaves its actual contact point, preserving visual continuity.
     this.ball.z = Math.max(BALL_RADIUS, this.ball.z);
     this.ball.vx = vx;
@@ -1112,6 +1114,7 @@ export class ArcadeMatch {
           this.ball.vy = correction.y;
           this.ball.vz = speed > 1 ? 0.35 : 0;
           this.ball.controlledTouch = 0;
+          owner.contact = { tick: this.tick, x: this.ball.x, y: this.ball.y, z: this.ball.z, kind: 'foot', foot: owner.player.foot === 'Left' ? 'left' : 'right' };
           this.ball.lastTouch = owner.side;
           this.ball.lastTouchPlayerId = owner.player.id;
         }
@@ -1169,6 +1172,7 @@ export class ArcadeMatch {
       this.ratings[keeper.player.id] = clamp((this.ratings[keeper.player.id] ?? 6.5) + 0.18 + shot.xG * 0.25, 1, 10);
       this.events.push({ minute: this.footballMinute, type: 'save', side: keeper.side, playerId: keeper.player.id, params: { keeper: playerName(keeper.player) } });
     }
+    keeper.contact = { tick: this.tick, x: this.ball.x, y: this.ball.y, z: this.ball.z, kind: 'hand', foot: 'right' };
     this.ball.lastTouch = keeper.side;
     this.ball.lastTouchPlayerId = keeper.player.id;
     this.ball.controlledTouch = 0;
@@ -1315,6 +1319,7 @@ export class ArcadeMatch {
     const length = Math.hypot(goalX - actor.x, targetY - actor.y);
     const speed = 11 + actor.player.attributes.physical * 0.07;
     this.releaseBall(actor, (goalX - actor.x) / length * speed, (targetY - actor.y) / length * speed, -1.4, 0);
+    if (actor.contact) actor.contact.kind = 'head';
     this.setAction(actor, 'header');
     this.stats(actor.side).shots++;
     this.stats(actor.side).shotsOnTarget++;
@@ -1640,6 +1645,7 @@ export class ArcadeMatch {
 
   private actorSnapshot(actor: ArcadeActor): PlayerRuntimeSnapshot {
     return {
+      contact: actor.contact ? { ...actor.contact } : undefined,
       id: actor.player.id,
       side: actor.side,
       x: actor.x,
@@ -1665,6 +1671,7 @@ export class ArcadeMatch {
   }
 
   private applyActorSnapshot(actor: ArcadeActor, saved: PlayerRuntimeSnapshot): void {
+    actor.contact = saved.contact ? { ...saved.contact } : undefined;
     actor.x = saved.x;
     actor.y = saved.y;
     actor.homeX = saved.homeX;

@@ -127,7 +127,7 @@ export class ThreePitchRenderer {
     this.power.rotation.x = -Math.PI / 2;
     this.scene.add(this.power);
 
-    const ballGeometry = new THREE.IcosahedronGeometry(0.255, 2);
+    const ballGeometry = new THREE.IcosahedronGeometry(0.11, 2);
     const colors: number[] = [];
     const pos = ballGeometry.getAttribute('position');
     for (let i = 0; i < pos.count; i += 3) {
@@ -340,7 +340,7 @@ export class ThreePitchRenderer {
     const fastBall = Math.hypot(state.ball.vx, state.ball.vy) > 15;
     const penalty = Math.abs(bx) > 32;
     const kickoff = match.rule.phase === 'kickoff';
-    const baseWidth = replay ? 59 : kickoff ? 94 : penalty ? 66 : fastBall ? 85 : 76;
+    const baseWidth = replay ? 46 : kickoff ? 84 : penalty ? 58 : fastBall ? 78 : 64;
     const targetWidth = Math.max(baseWidth, Math.abs(bx - sx) * 1.25 + 25) / THREE.MathUtils.clamp(match.config.camera.zoom || 1, 0.8, 1.3);
     const smooth = 1 - Math.exp(-(match.config.camera.reducedMotion ? 12 : replay ? 5.0 : 6.3) * dt);
     if (this.lastDirection !== mirror) {
@@ -352,7 +352,7 @@ export class ThreePitchRenderer {
     this.cameraX += (targetX - this.cameraX) * smooth;
     this.cameraZ += (targetZ - this.cameraZ) * smooth;
     this.viewWidth += (targetWidth - this.viewWidth) * (1 - Math.exp(-2.4 * dt));
-    this.camera.position.set(this.cameraX, 68, this.cameraZ + 51);
+    this.camera.position.set(this.cameraX, 52, this.cameraZ + 51);
     this.camera.lookAt(this.cameraX, 0, this.cameraZ);
     this.updateFrustum();
   }
@@ -566,11 +566,11 @@ export class ThreePitchRenderer {
     const x = (state.ball.x - FIELD_LENGTH / 2) * state.attackDirection;
     const z = state.ball.y - FIELD_WIDTH / 2;
     const h = Math.max(0, state.ball.z);
-    const next = new THREE.Vector3(x, h + 0.265, z);
+    const next = new THREE.Vector3(x, Math.max(0.11, h), z);
     const travelled = next.distanceTo(this.ball.position);
     this.ball.position.copy(next);
-    this.ball.rotation.x += state.ball.vy * dt / 0.255;
-    this.ball.rotation.z -= state.ball.vx * state.attackDirection * dt / 0.255;
+    this.ball.rotation.x += state.ball.vy * dt / 0.11;
+    this.ball.rotation.z -= state.ball.vx * state.attackDirection * dt / 0.11;
     this.ball.rotation.y += state.ball.spin * dt;
     this.ballShadow.position.set(x, 0.02, z);
     this.ballShadow.scale.setScalar(1 + h * 0.15);

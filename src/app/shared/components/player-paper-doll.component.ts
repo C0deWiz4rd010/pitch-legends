@@ -8,11 +8,11 @@ import { PortraitService } from '../../core/services/portrait.service';
   changeDetection: ChangeDetectionStrategy.OnPush,
   host: { '[style.width.px]': 'size()', '[style.height.px]': 'size()' },
   template: `
-    @if (src()) { <img [src]="src()" [alt]="player().firstName + ' ' + player().lastName + ' Pixel-Spieler'" /> }
+    @if (src()) { <img [src]="src()" [alt]="player().firstName + ' ' + player().lastName + ' 3D-Spieler'" /> }
   `,
   styles: [`
-    :host { display: inline-grid; image-rendering: pixelated; }
-    img { width:100%; height:100%; object-fit:contain; image-rendering:pixelated; transform-origin:50% 100%; animation:doll-idle 1.25s steps(3) infinite; }
+    :host { display: inline-grid; image-rendering: auto; }
+    img { width:100%; height:100%; object-fit:contain; image-rendering:auto; transform-origin:50% 100%;  }
     @keyframes doll-idle { 50% { transform:translateY(-1px); } }
     @media(prefers-reduced-motion:reduce){ img { animation:none; } }
   `],
@@ -25,11 +25,13 @@ export class PlayerPaperDollComponent {
   protected readonly src = signal('');
 
   constructor() {
-    effect(() => {
+    effect((onCleanup) => {
+      let active = true;
+      onCleanup(() => { active = false; });
       const player = this.player();
       const kit = this.kit();
       void this.portraits.figure(player, kit).then((src) => {
-        if (this.player().id === player.id) this.src.set(src);
+        if (active && this.player().id === player.id) this.src.set(src);
       });
     });
   }

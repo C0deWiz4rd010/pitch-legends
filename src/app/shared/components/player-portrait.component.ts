@@ -17,7 +17,7 @@ import { GameStateService } from '../../core/services/game-state.service';
   `,
   styles: [`
     :host { display: inline-grid; overflow: hidden; flex: 0 0 auto; border: 2px solid var(--border); background: var(--bg-900); box-shadow: 3px 3px 0 #02040a; }
-    img { width: 100%; height: 100%; object-fit: cover; image-rendering: pixelated; }
+    img { width: 100%; height: 100%; object-fit: cover; image-rendering: auto; }
     .loading { width: 100%; height: 100%; background: repeating-linear-gradient(135deg, var(--surface), var(--surface) 6px, var(--surface-2) 6px, var(--surface-2) 12px); animation: pulse 900ms steps(2) infinite; }
     @keyframes pulse { 50% { opacity: .55; } }
     @media (prefers-reduced-motion: reduce) { .loading { animation: none; } }
@@ -32,12 +32,14 @@ export class PlayerPortraitComponent {
   protected readonly src = signal('');
 
   constructor() {
-    effect(() => {
+    effect((onCleanup) => {
+      let active = true;
+      onCleanup(() => { active = false; });
       const player = this.player();
       const team = this.team() ?? this.gameState.game()?.teams.find((candidate) => candidate.players.some((member) => member.id === player.id));
       this.src.set('');
       void this.portraits.portrait(player, team).then((src) => {
-        if (this.player().id === player.id) this.src.set(src);
+        if (active && this.player().id === player.id) this.src.set(src);
       });
     });
   }
