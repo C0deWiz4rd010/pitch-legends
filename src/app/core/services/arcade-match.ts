@@ -26,7 +26,8 @@ import {
 import { Team } from '../../models/team.model';
 import { Tactics } from '../../models/tactics.model';
 import { Difficulty } from '../../models/game.model';
-import { playerName } from '../ratings';
+import { playerName, groupForPosition } from '../ratings';
+import { tacticalIntent } from '../football/tactical-intent';
 import { clamp, Rng, round } from '../util';
 import { createInjury, isPlayerAvailable } from '../injury-engine';
 import { accelerateTowards, turnTowards } from '../football/movement';
@@ -617,8 +618,8 @@ export class ArcadeMatch {
         player = team.players
           .filter((candidate) => isPlayerAvailable(candidate) && !used.has(candidate.id))
           .sort((a, b) => {
-            const aFit = a.position === slot.position ? 20 : a.positionGroup === (slot.position === 'GK' ? 'GK' : a.positionGroup) ? 5 : 0;
-            const bFit = b.position === slot.position ? 20 : b.positionGroup === (slot.position === 'GK' ? 'GK' : b.positionGroup) ? 5 : 0;
+            const aFit = a.position === slot.position ? 20 : a.positionGroup === groupForPosition(slot.position) ? 5 : 0;
+            const bFit = b.position === slot.position ? 20 : b.positionGroup === groupForPosition(slot.position) ? 5 : 0;
             return b.overall + bFit - (a.overall + aFit);
           })[0];
       }
@@ -755,7 +756,9 @@ export class ArcadeMatch {
       this.chooseAiIntent(actor);
       const base = this.config.difficulty === 'easy' ? 0.3 : this.config.difficulty === 'hard' ? 0.11 : 0.18;
       const spread = this.config.difficulty === 'easy' ? 0.2 : this.config.difficulty === 'hard' ? 0.09 : 0.12;
-      actor.decisionCooldown = base + this.rng.float(0, spread);
+      const tempo = this.teamOf(actor.side).tactics.tempo;
+      const tempoFactor = tempo === 'fast' ? 0.78 : tempo === 'slow' ? 1.3 : 1;
+      actor.decisionCooldown = (base + this.rng.float(0, spread)) * tempoFactor;
     }
     const dx = actor.intentX - actor.x;
     const dy = actor.intentY - actor.y;
@@ -773,23 +776,34 @@ export class ArcadeMatch {
     this.setAction(actor, 'formation');
     if (owner?.player.id === actor.player.id) {
       this.setAction(actor, 'carry');
-      actor.intentX = clamp(actor.x + direction * 9, 1, FIELD_LENGTH - 1);
-      actor.intentY = clamp(actor.y + this.rng.float(-4, 4), 2, FIELD_WIDTH - 2);
       const goalDistance = direction > 0 ? FIELD_LENGTH - actor.x : actor.x;
-      const pressured = this.closestOpponent(actor) < 4;
-      const shootingLane = Math.abs(actor.y - FIELD_WIDTH / 2) < 21;
-      const shotProbabilityBase = goalDistance < 23
-        ? 0.26 + actor.player.attributes.shooting / 320
-        : goalDistance < 32
-          ? 0.18 + actor.player.attributes.shooting / 700
-          : 0.035 + actor.player.attributes.shooting / 1600;
-      const shotProbability = shotProbabilityBase * 0.47;
-      if (goalDistance < 50 && shootingLane && this.rng.bool(shotProbability)) {
-        this.shoot(actor, this.rng.float(0.55, 1), 0, this.rng.float(-0.45, 0.45), false, false);
-      } else if ((pressured || this.rng.bool(0.28)) && actor.player.positionGroup !== 'GK') {
-        this.pass(actor, this.rng.bool(0.18), false, this.rng.float(0.35, 0.8), direction, this.rng.float(-0.5, 0.5));
-      } else if (actor.player.positionGroup === 'GK') {
-        this.pass(actor, false, this.rng.bool(0.4), 0.8, direction, this.rng.float(-0.4, 0.4));
+      const pressureDistance = this.closestOpponent(actor);
+      const pressured = pressureDistance < 4;
+      const shootingLane = Math.abs(actor.y - FIELD_WIDTH / 2) < 18;
+      const openLane = [-0.65, 0, 0.65].map(lateral => {
+        const target = { x: clamp(actor.x + direction * 8,1,104), y:clamp(actor.y + lateral * 8,2,66) };
+        const clearance = Math.min(...this.actors.filter(other=>other.active && other.side!==actor.side).map(other=>distance(other,target)));
+        return { ...target, score: clearance - Math.abs(target.y-34)*0.09 };
+      }).sort((a,b)=>b.score-a.score)[0];
+      actor.intentX = openLane.x;
+      actor.intentY = openLane.y;
+      const shotProbability = goalDistance < 20 ? .29 : goalDistance < 30 ? .17 : .045;
+      const captain = team.tactics.captainId === actor.player.id;
+      const patience = team.tactics.tempo === 'slow' ? .16 : team.tactics.tempo === 'fast' ? .40 : .26;
+      if (actor.player.positionGroup === 'GK') {
+        const long = team.tactics.buildUp === 'long-ball' || pressureDistance < 6;
+        this.pass(actor, false, long, long ? .85 : .40, direction, this.rng.float(-.4,.4));
+        this.setAction(actor, long ? 'keeper-kick' : 'keeper-throw');
+      } else if (goalDistance < 39 && shootingLane && this.rng.bool(shotProbability)) {
+        const keeper = this.actors.find(other=>other.active && other.side!==actor.side && other.player.positionGroup==='GK');
+        const farCorner = keeper && keeper.y > 34 ? -.70 : .70;
+        const accuracy = this.config.difficulty === 'easy' ? .45 : this.config.difficulty === 'hard' ? .10 : .25;
+        this.shoot(actor, this.rng.float(.50,.93), direction, clamp(farCorner+this.rng.float(-accuracy,accuracy),-1,1), goalDistance > 18 && actor.player.attributes.shooting > 72, goalDistance < 14);
+      } else if (pressured || this.rng.bool(patience+(captain?.03:0))) {
+        const cross = goalDistance < 26 && Math.abs(actor.y-34) > 16;
+        const through = team.tactics.counterAttack && this.rng.bool(.25);
+        const long = cross || team.tactics.buildUp === 'long-ball' && this.rng.bool(.3);
+        this.pass(actor, through, long, long?.76:team.tactics.passing==='short'?.38:.60, direction, cross ? (34-actor.y)/25 : this.rng.float(-.4,.4));
       }
       return;
     }
@@ -814,25 +828,17 @@ export class ArcadeMatch {
       return;
     }
 
-    if (!owner || owner.side !== actor.side) {
-      const pressers = this.actors
-        .filter((candidate) => candidate.active && candidate.side === actor.side && candidate.player.positionGroup !== 'GK')
-        .sort((a, b) => distance(a, this.ball) - distance(b, this.ball));
-      const maxPressers = team.tactics.pressing === 'low' ? 1 : 2;
-      if (pressers.slice(0, maxPressers).includes(actor)) {
-        this.setAction(actor, 'press');
-        actor.intentX = this.ball.x + this.ball.vx * 0.25;
-        actor.intentY = this.ball.y + this.ball.vy * 0.25;
-        return;
-      }
+    if (!owner && actor.player.id === this.intendedReceiverId) {
+      const horizon = clamp(distance(actor,this.ball)/this.maxSpeed(actor,false),0,.35);
+      actor.intentX = clamp(this.ball.x + this.ball.vx*horizon,1,104);
+      actor.intentY = clamp(this.ball.y + this.ball.vy*horizon,1,67);
+      this.setAction(actor,'receive');
+      return;
     }
-
-    const mentalityShift = team.tactics.mentality === 'ultra-attacking' ? 8 : team.tactics.mentality === 'attacking' ? 4 : team.tactics.mentality === 'defensive' ? -3 : team.tactics.mentality === 'ultra-defensive' ? -6 : 0;
-    const width = team.tactics.width === 'wide' ? 1.12 : team.tactics.width === 'narrow' ? 0.78 : 1;
-    const transition = owner ? clamp((owner.x - FIELD_LENGTH / 2) * 0.16, -7, 7) : 0;
-    actor.intentX = clamp(actor.homeX + direction * mentalityShift + transition, 1, FIELD_LENGTH - 1);
-    actor.intentY = clamp(FIELD_WIDTH / 2 + (actor.homeY - FIELD_WIDTH / 2) * width + (this.ball.y - FIELD_WIDTH / 2) * 0.08, 1.5, FIELD_WIDTH - 1.5);
-    if (owner?.side === actor.side && team.tactics.counterAttack && actor.player.positionGroup === 'ATT') actor.intentX += direction * 5;
+    const intent = tacticalIntent(actor, owner, this.ball, this.actors, team, direction);
+    this.setAction(actor, intent.action);
+    actor.intentX = intent.x;
+    actor.intentY = intent.y;
     if (this.football.oneTwoRunnerId === actor.player.id && this.tick < this.football.oneTwoUntilTick) {
       actor.intentX = clamp(actor.x + direction * 12, 1, FIELD_LENGTH - 1);
       actor.intentY = clamp(actor.y + (actor.y < FIELD_WIDTH / 2 ? -1 : 1) * 3, 2, FIELD_WIDTH - 2);
@@ -960,12 +966,15 @@ export class ArcadeMatch {
     const manual = this.isHumanControlled(actor) && this.config.assist === 'manual';
     const manualX = Math.abs(aimX) > 0.04 ? aimX : direction * 0.04;
     const aimedY = manual ? actor.y + aimY / manualX * (goalX - actor.x) : goalCentre + inputZone;
-    const targetY = aimedY + this.rng.gaussian(0, baseError * assistFactor);
+    // Shot dispersion uses a real standard deviation; the general generator's
+    // bounded averaging helper otherwise put virtually every attempt on target.
+    const normal = Math.sqrt(-2 * Math.log(Math.max(1e-9, this.rng.next()))) * Math.cos(2 * Math.PI * this.rng.next());
+    const targetY = aimedY + normal * (baseError + Math.max(0,distanceToGoal-12)*0.025) * assistFactor * 1.5;
     const dx = goalX - actor.x;
     const dy = targetY - actor.y;
     const length = Math.hypot(dx, dy) || 1;
     const speed = 19 + power * 14 + actor.player.attributes.shooting * 0.035;
-    const xG = clamp((1 - distanceToGoal / 42) * 0.62 + angleQuality * 0.18 + actor.player.attributes.shooting / 500 - pressure * 0.12, 0.015, 0.86);
+    const xG = clamp(0.65 * Math.exp(-distanceToGoal / 13) * angleQuality + actor.player.attributes.shooting / 1800 - pressure * 0.025, 0.015, 0.75);
     const stats = this.stats(actor.side);
     stats.shots++;
     stats.xG = round(stats.xG + xG, 2);
@@ -976,7 +985,7 @@ export class ArcadeMatch {
     this.intendedReceiverId = null;
     this.releaseBall(actor, dx / length * speed, dy / length * speed, vz, finesse ? -direction * 5 : 0);
     this.setAction(actor, chip ? 'chip-shot' : finesse ? 'finesse-shot' : low ? 'low-shot' : 'shot');
-    this.events.push({ minute: this.footballMinute, type: 'shot', side: actor.side, playerId: actor.player.id, params: { player: playerName(actor.player), xG } });
+    this.events.push({ minute: this.footballMinute, type: 'shot', side: actor.side, playerId: actor.player.id, params: { player: playerName(actor.player), xG, distance: round(distanceToGoal,1) } });
   }
 
   private performSkill(actor: ArcadeActor, dx: number, dy: number): void {
@@ -1163,7 +1172,7 @@ export class ArcadeMatch {
     const reaction = keeper.player.attributes.goalkeeping / 100;
     const speed = Math.hypot(this.ball.vx, this.ball.vy);
     const reachDistance = distance(keeper, this.ball);
-    const blockChance = clamp(0.68 + reaction * 0.32 - speed * 0.007 - reachDistance * 0.15, 0.18, 0.96);
+    const blockChance = clamp(0.84 + reaction * 0.24 - speed * 0.0015 - reachDistance * 0.025, 0.45, 0.98);
     if (reachDistance > 0.4 && !this.rng.bool(blockChance)) return;
     const difficulty = speed / 95 + Math.max(0, this.ball.z - 1.2) * 0.1;
     const catchBall = distance(keeper, this.ball) < 1.15 && this.rng.bool(clamp(0.45 + reaction * 0.5 - difficulty, 0.15, 0.92));

@@ -17,9 +17,9 @@ Dieser Bericht dokumentiert tatsächliche Änderungen und Prüfungen. Ein Eintra
 | 0 – Ausgangsbasis | Veröffentlicht | `f3b393b`; Entwicklungs-404 in `a2c89df` behoben; Pages-Lauf 33967406375 erfolgreich |
 | 1 – Steuerung | Veröffentlicht; Vorabeingaben/Wechselschutz folgen in Phase 3 | `a2c89df`, 23 Gameplay-/Inputtests, Build und Gameplay-E2E |
 | 2 – 3D-Trainingsplatz | Veröffentlicht | `6ace9bc`; Pages-Lauf 33968766580 erfolgreich |
-| 3 – Ballgefühl | Implementiert; Veröffentlichung läuft | `40c70a1`, 25 gezielte Tests und Build bestanden; finale Balance offen |
-| 4 – Spieler/Animation | Implementiert; erweiterte Kontaktabnahme bleibt in QA | 90 Tests im Gesamtlauf + neuer Kontakttest; 19 Browserprüfungen und Build bestanden |
-| 5 – KI | Offen | |
+| 3 – Ballgefühl | Veröffentlicht; finale Balance offen | `40c70a1`, Pages-Lauf 33985582898 erfolgreich |
+| 4 – Spieler/Animation | Veröffentlicht; erweiterte Kontaktabnahme bleibt in QA | `f5e6a76`, Pages-Lauf 33985835952 erfolgreich |
+| 5 – KI | Implementiert; Veröffentlichung läuft | 25 gezielte Tests, Build und 3D-E2E bestanden; finale Balance offen |
 | 6 – Vollständige Partien | Offen | |
 | 7 – Präsentation | Offen | |
 | 8 – Spielmodi | Offen | |
@@ -69,3 +69,13 @@ Dieser Bericht dokumentiert tatsächliche Änderungen und Prüfungen. Ein Eintra
 - Sämtliche Modelle und Bewegungen sind eigene prozedurale Implementierungen. Die im Plan erwähnte Quaternius-Bibliothek wurde nicht benötigt oder importiert; dadurch keine zusätzlichen Assetdownloads, Formatanpassungen oder Lizenzdateien.
 - Vollständiger Testlauf: 90 Unit-Tests und 19 Chromium-Browserprüfungen bestanden. Nach dem letzten Kontaktabstand-Fix zusätzlich sieben gezielte 3D-Tests bestanden (insgesamt jetzt 91). Produktionsbuild bestanden. Screenshots der Werkstatt und des Matchs visuell geprüft.
 - Reale Mobilgeräte, alle extremen Kontaktposen und subjektive Langzeit-Spielspaßbewertung bleiben Teil der abschließenden QA; sie werden nicht aus grünen Automatiktests abgeleitet.
+
+## Phase 5 – Koordinierte Mannschaften
+
+- Gemeinsame Raumaufteilung unterscheidet Ballbesitz, freie Pässe und Verteidigung. Mitspieler behalten während eines fliegenden Passes ihre Angriffsaufgaben; Empfänger laufen zum Abfangpunkt.
+- Pressing benennt einen ersten Angreifer und versetzte absichernde Mitspieler. Breite, Abwehrhöhe, Mentalität, Tempo, Spielaufbau, Passstil, Gegenstoß und Abseitsfalle beeinflussen Entscheidungen und Laufziele.
+- Einzelanweisungen begrenzen Positionswechsel und steuern Vorstöße, Pressing und Deckung. Außen-/inverser Verteidiger, Anker, Spielmacher, Flügel, falsche Neun und Zielspieler haben unterschiedliche Laufziele.
+- Ballführer prüfen freie Dribbelkorridore, Druck, Flankenmöglichkeiten und Torwartposition. Ersatzaufstellungen bewerten nun tatsächlich die Positionsgruppe statt jeden Feldspieler als passend zu behandeln.
+- Echte Normalverteilung für Schussabweichung behebt die zuvor unrealistisch enge Streuung. xG ist als Diagnosewert nachvollziehbar nach Distanz, Winkel und Druck abgestimmt; räumliche Torwartparaden bleiben erforderlich.
+- Fünf neue Verhaltenstests prüfen Abwehrlinie/Breite, abgestimmte Pressingpositionen, Positionsbindung, inverse Außenverteidiger und gespiegelte Laufwege nach Seitenwechsel. Zusammen mit bestehenden Kontakt-/Determinismustests 25 bestanden; Produktionsbuild und 3D-Browserprüfung bestanden.
+- Letzte explorative 30-Partien-Serie: 4,27 Tore, 12,2 Schüsse/Team, 75,1 % Passquote, 465,52 ms/Partie. Chancenbildung und Passquote sind gegenüber der ersten KI-Fassung wiederhergestellt. **Torhäufigkeit und Heim-Siegquote noch außerhalb der alten Balanceprüfgrenzen**; keine bestandene 500-Partien-Abnahme behauptet.

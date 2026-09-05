@@ -15,6 +15,12 @@ let passAttempts = 0;
 let passCompletions = 0;
 let draws = 0;
 let homeWins = 0;
+let onTarget = 0;
+let saves = 0;
+let xG = 0;
+let offsides = 0;
+let shotDistance = 0;
+let recordedShots = 0;
 
 for (let index = 0; index < count; index++) {
   const config: MatchConfig = {
@@ -24,6 +30,11 @@ for (let index = 0; index < count; index++) {
     camera: { zoom: 1, lookAhead: 0.18, shake: false, reducedMotion: true },
   };
   const result = new ArcadeMatch(home, away, config).result();
+  for (const event of result.events) if (event.type === 'shot' && typeof event.params?.['distance'] === 'number') { shotDistance += event.params['distance']; recordedShots++; }
+  onTarget += result.homeStats.shotsOnTarget + result.awayStats.shotsOnTarget;
+  saves += result.homeStats.saves + result.awayStats.saves;
+  xG += result.homeStats.xG + result.awayStats.xG;
+  offsides += result.homeStats.offsides + result.awayStats.offsides;
   goals += result.homeScore + result.awayScore;
   shots += result.homeStats.shots + result.awayStats.shots;
   passAccuracy += result.homeStats.passAccuracy + result.awayStats.passAccuracy;
@@ -36,6 +47,11 @@ for (let index = 0; index < count; index++) {
 const report = {
   seeds: count,
   averageGoals: round(goals / count),
+  averageShotDistance: round(shotDistance / Math.max(1, recordedShots)),
+  averageOnTarget: round(onTarget / count),
+  averageSaves: round(saves / count),
+  averageXG: round(xG / count),
+  averageOffsides: round(offsides / count),
   averageShotsPerTeam: round(shots / count / 2),
   averagePassAccuracy: round(passAccuracy / count / 2),
   averagePassAttemptsPerTeam: round(passAttempts / count / 2),
