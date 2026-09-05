@@ -475,7 +475,12 @@ export class MatchPage implements OnDestroy {
         this.fixedAccumulator -= MATCH_TICK;
         steps++;
       }
-      if (this.fixedAccumulator > 0.25) this.pauseFor('Performance-Schutz: Die Simulation liegt mehr als 250 ms zurück.');
+      if (this.fixedAccumulator > 0.25) {
+        // A delayed GPU frame must not strand the player in a pause menu.
+        // Discard wall-clock debt, keeping every simulated tick at exactly 60 Hz.
+        this.fixedAccumulator %= MATCH_TICK;
+        if (this.renderer && 'setQuality' in this.renderer) this.renderer.setQuality('low');
+      }
       this.syncMatch(timestamp);
       this.lastSimulationCost = performance.now() - simulationStarted;
     }
