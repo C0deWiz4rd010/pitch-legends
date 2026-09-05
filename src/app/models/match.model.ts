@@ -312,7 +312,7 @@ export interface MatchCheckpoint {
   runtime: {
     football?: {
       selectionUntilTick: number;
-      queuedAction: { kind: 'pass' | 'through' | 'lob' | 'shoot'; expiresTick: number; power: number; aimX: number; aimY: number; finesse: boolean; low: boolean } | null;
+      queuedAction: { kind: 'pass' | 'through' | 'lob' | 'shoot'; expiresTick: number; power: number; aimX: number; aimY: number; finesse: boolean; low: boolean; chip?: boolean } | null;
       offsideCandidates: string[];
       oneTwoRunnerId: string | null;
       oneTwoUntilTick: number;
@@ -324,7 +324,7 @@ export interface MatchCheckpoint {
     possessionAwaySeconds: number;
     passAttempts: Record<Side, number>;
     passCompletions: Record<Side, number>;
-    lastPasser: { id: string; side: Side; at: number } | null;
+    lastPasser: { id: string; side: Side; at: number; received?: boolean } | null;
     pendingOffsideTargetId: string | null;
     intendedReceiverId: string | null;
     activeShot: { shooterId: string; side: Side; xG: number; targetY: number; checkedKeeper: boolean } | null;
