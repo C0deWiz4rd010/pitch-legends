@@ -36,6 +36,7 @@ yarn-error.log
 /connect.lock
 /coverage
 /test-results
+/public/build-info.json
 /playwright-report
 /libpeerconnection.log
 testem.log

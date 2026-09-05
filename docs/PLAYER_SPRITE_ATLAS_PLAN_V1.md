@@ -1,3 +1,5 @@
+> Historisches Dokument. Der aktuelle verbindliche Plan ist [Pitch Legends 2.0](PITCH_LEGENDS_2_0_MASTERPLAN.md).
+
 # Player Sprite Atlas V1 – Art-Bible und Integrationsplan
 
 ## 1. Ziel

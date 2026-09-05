@@ -1,3 +1,5 @@
+> Historisches Dokument. Der aktuelle verbindliche Plan ist [Pitch Legends 2.0](PITCH_LEGENDS_2_0_MASTERPLAN.md).
+
 # Pitch Legends — Project Plan (A → Z)
 
 A browser-based **football manager RPG** built with Angular 22. This document is the

@@ -1,3 +1,5 @@
+> Historisches Dokument. Der aktuelle verbindliche Plan ist [Pitch Legends 2.0](PITCH_LEGENDS_2_0_MASTERPLAN.md).
+
 # Top-down Player Sprite System V2 – detaillierter Nutzungs- und Implementierungsplan
 
 ## 1. Zielbild

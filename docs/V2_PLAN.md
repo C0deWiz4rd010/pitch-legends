@@ -1,3 +1,5 @@
+> Historisches Dokument. Der aktuelle verbindliche Plan ist [Pitch Legends 2.0](PITCH_LEGENDS_2_0_MASTERPLAN.md).
+
 # Pitch Legends V2 – 32-Bit Arcade Football RPG
 
 ## Zusammenfassung

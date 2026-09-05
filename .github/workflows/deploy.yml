@@ -2,8 +2,17 @@ name: Deploy to GitHub Pages
 
 on:
   push:
-    branches: [develop, main]
+    branches: [develop]
   workflow_dispatch:
+    inputs:
+      ref:
+        description: 'Exact commit or release tag to publish (also used for rollback)'
+        required: false
+        type: string
+      expected_sha:
+        description: 'Optional full SHA that the ref must resolve to'
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -20,6 +29,14 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+
+      - name: Verify deployment revision
+        env:
+          EXPECTED_SHA: ${{ inputs.expected_sha }}
+        run: |
+          if [ -n "$EXPECTED_SHA" ]; then test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"; fi
 
       - name: Setup Node.js
         uses: actions/setup-node@v6
@@ -48,6 +65,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.ref || github.sha }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v6
@@ -59,7 +78,9 @@ jobs:
         run: npm ci
 
       - name: Build (production)
-        run: npm run build -- --configuration production --base-href /pitch-legends/
+        run: |
+          node tools/write-build-info.mjs
+          npm run build -- --configuration production --base-href /pitch-legends/
 
       - name: SPA fallback (404.html)
         run: cp dist/pitch-legends/browser/index.html dist/pitch-legends/browser/404.html
@@ -78,8 +99,15 @@ jobs:
         with:
           name: github-pages
           path: ${{ runner.temp }}/artifact.tar
-          retention-days: 1
+          retention-days: 30
           if-no-files-found: error
+
+      - name: Preserve versioned release artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: pitch-legends-${{ github.run_id }}
+          path: dist/pitch-legends/browser
+          retention-days: 30
 
   deploy:
     needs: build

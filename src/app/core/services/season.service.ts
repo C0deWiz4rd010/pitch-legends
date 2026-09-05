@@ -36,7 +36,9 @@ export class SeasonService {
   /** Commit the watched player result, simulate the rest of the week, then advance. */
   async commitWeek(playerResult: MatchResult): Promise<boolean> {
     const current = this.gs.game();
-    if (!current) return false;
+    if (!current || !playerResult.played ||
+      ![playerResult.homeTeamId, playerResult.awayTeamId].includes(current.clubId) ||
+      ![playerResult.homeScore, playerResult.awayScore].every((score) => Number.isInteger(score) && score >= 0)) return false;
     const pendingFixture = current.league.fixtures.find(
       (fixture) =>
         fixture.week === current.league.currentWeek &&
@@ -46,9 +48,11 @@ export class SeasonService {
     if (
       !pendingFixture ||
       pendingFixture.played ||
+      (playerResult.fixtureId && playerResult.fixtureId !== pendingFixture.id) ||
       current.results.some((result) => result.id === playerResult.id || (!!playerResult.fixtureId && result.fixtureId === playerResult.fixtureId))
     ) return false;
-    playerResult.fixtureId ??= pendingFixture.id;
+    // The caller may still display this result while worker simulations finish.
+    const committedResult = { ...playerResult, fixtureId: pendingFixture.id, week: pendingFixture.week };
     const week = current.league.currentWeek;
     const otherFixtures = current.league.fixtures.filter((fixture) => fixture.week === week && !fixture.played && fixture.id !== pendingFixture.id);
     const otherResults = await Promise.all(otherFixtures.map((fixture) => {
@@ -56,21 +60,26 @@ export class SeasonService {
       const away = current.teams.find((team) => team.id === fixture.awayTeamId)!;
       return this.engine.simulateAsync(home, away, week, undefined, fixture.id);
     }));
+    // A concurrent click, imported career or new season must not consume this result.
+    const latest = this.gs.game();
+    if (!latest || latest.league.id !== current.league.id || latest.createdAt !== current.createdAt ||
+      latest.league.season !== current.league.season || latest.league.currentWeek !== week ||
+      latest.league.fixtures.find((fixture) => fixture.id === pendingFixture.id)?.played !== false) return false;
     let committed = false;
     this.gs.mutate((draft) => {
       // Mark & apply the player's fixture first.
       const playerFixture = draft.league.fixtures.find(
         (f) =>
-          f.week === week &&
+          f.id === pendingFixture.id &&
           !f.played &&
           f.homeTeamId === playerResult.homeTeamId &&
           f.awayTeamId === playerResult.awayTeamId,
       );
       if (!playerFixture) return;
-      playerFixture.homeScore = playerResult.homeScore;
-      playerFixture.awayScore = playerResult.awayScore;
+      playerFixture.homeScore = committedResult.homeScore;
+      playerFixture.awayScore = committedResult.awayScore;
       playerFixture.played = true;
-      this.applyResult(draft, playerResult, true);
+      this.applyResult(draft, committedResult, true);
 
       for (const result of otherResults) {
         const fixture = draft.league.fixtures.find((candidate) => candidate.id === result.fixtureId && !candidate.played);
@@ -267,6 +276,7 @@ export class SeasonService {
 
   /** Advance the season into a new one when all fixtures are played. */
   startNextSeason(): void {
+    if (!this.gs.seasonOver()) return;
     this.gs.mutate((draft) => {
       this.resolveLeagueObjective(draft);
       draft.league.season++;
@@ -276,6 +286,7 @@ export class SeasonService {
       draft.transfers.season = draft.league.season;
       draft.transfers.week = 1;
       draft.league.fixtures.forEach((f) => {
+        f.id = `fx-${draft.league.id}-s${draft.league.season}-w${f.week}-${f.homeTeamId}-${f.awayTeamId}`;
         f.played = false;
         f.homeScore = null;
         f.awayScore = null;
@@ -299,6 +310,7 @@ export class SeasonService {
       }
       this.promoteYouth(draft);
       processTransferWeek(draft);
+      prepareTravelEvent(draft);
       this.pushNews(draft, 'flag', 'news.season.title', 'news.season.body', {
         season: draft.league.season,
       });

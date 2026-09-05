@@ -1,3 +1,5 @@
+> Historisches Dokument. Der aktuelle verbindliche Plan ist [Pitch Legends 2.0](PITCH_LEGENDS_2_0_MASTERPLAN.md).
+
 # Grafiksystem V3 – Implementierung in Pitch Legends 1.4.2
 
 ## Gewählte Art Direction

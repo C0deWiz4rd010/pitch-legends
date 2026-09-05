@@ -27,6 +27,7 @@ export class App {
   protected readonly controlHelp = inject(ControlHelpService);
   protected readonly menuOpen = signal(false);
   protected readonly version = APP_VERSION;
+  protected readonly revision = signal('');
 
   protected readonly nav: NavItem[] = [
     { path: '', labelKey: 'nav.dashboard', icon: '⌂' },
@@ -43,6 +44,11 @@ export class App {
   constructor() {
     // Resume an existing career automatically so a page reload persists state.
     if (this.gs.hasStoredSave()) this.gs.loadFromStorage();
+    void fetch(new URL('build-info.json', document.baseURI))
+      .then((response) => response.ok ? response.json() : null)
+      .then((build: { revision?: string } | null) => {
+        if (build?.revision && /^[a-f0-9]{40}$/.test(build.revision)) this.revision.set(build.revision.slice(0, 8));
+      }).catch(() => { /* Development and offline-first startup need no build metadata. */ });
   }
 
   protected coins(): string {
