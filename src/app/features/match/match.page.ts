@@ -500,7 +500,7 @@ export class MatchPage implements OnDestroy {
       if (canvas) {
         canvas.dataset['performance'] = JSON.stringify(this.metrics.summary());
         const actor = this.arcade.actors.find(player => player.player.id === this.arcade!.selectedPlayerId);
-        canvas.dataset['matchState'] = JSON.stringify({ tick: this.arcade.tick, rule: this.arcade.rule.phase, controlledId: actor?.player.id, x: actor?.x, y: actor?.y, facingX: actor?.facingX, facingY: actor?.facingY, activePlayers: this.arcade.actors.filter(player => player.active).length });
+        canvas.dataset['matchState'] = JSON.stringify({ tick: this.arcade.tick, rule: this.arcade.rule.phase, controlledId: actor?.player.id, x: actor?.x, y: actor?.y, vx: actor?.vx, vy: actor?.vy, facingX: actor?.facingX, facingY: actor?.facingY, activePlayers: this.arcade.actors.filter(player => player.active).length });
         if (this.renderer && 'diagnostics' in this.renderer) canvas.dataset['graphics'] = JSON.stringify(this.renderer.diagnostics());
       }
     }

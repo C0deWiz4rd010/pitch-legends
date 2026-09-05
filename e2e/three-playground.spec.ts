@@ -16,12 +16,17 @@ test('standalone 3D football renders and accepts movement without creating a car
   const before = JSON.parse((await pitch.getAttribute('data-match-state'))!);
   await page.keyboard.down('KeyD');
   await page.keyboard.down('ShiftLeft');
-  await page.waitForTimeout(1600);
+  // Passing may select a different receiver. Verify actual controlled velocity,
+  // rather than comparing the positions of two different footballers.
+  await expect.poll(async () => {
+    const state = JSON.parse((await pitch.getAttribute('data-match-state'))!);
+    return state.tick > before.tick + 10 && state.vx > 1;
+  }, { timeout: 15_000 }).toBe(true);
   await page.keyboard.up('ShiftLeft');
   await page.keyboard.up('KeyD');
   const after = JSON.parse((await pitch.getAttribute('data-match-state'))!);
   expect(after.tick).toBeGreaterThan(before.tick);
-  expect(after.x).toBeGreaterThan(before.x);
+  expect(after.vx).toBeGreaterThan(1);
   const graphics = JSON.parse((await pitch.getAttribute('data-graphics'))!);
   expect(graphics.drawCalls).toBeGreaterThan(20);
   expect(graphics.drawCalls).toBeLessThan(250);
