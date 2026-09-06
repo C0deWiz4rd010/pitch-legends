@@ -19,8 +19,8 @@ Dieser Bericht dokumentiert tatsächliche Änderungen und Prüfungen. Ein Eintra
 | 2 – 3D-Trainingsplatz | Veröffentlicht | `6ace9bc`; Pages-Lauf 33968766580 erfolgreich |
 | 3 – Ballgefühl | Veröffentlicht; finale Balance offen | `40c70a1`, Pages-Lauf 33985582898 erfolgreich |
 | 4 – Spieler/Animation | Veröffentlicht; erweiterte Kontaktabnahme bleibt in QA | `f5e6a76`, Pages-Lauf 33985835952 erfolgreich |
-| 5 – KI | Implementiert; Veröffentlichung läuft | 25 gezielte Tests, Build und 3D-E2E bestanden; finale Balance offen |
-| 6 – Vollständige Partien | Offen | |
+| 5 – KI | Veröffentlicht; finale Balance offen | `07c4ada`, Pages-Lauf 33986421455 erfolgreich |
+| 6 – Vollständige Partien | Geprüft; Veröffentlichung läuft | 3D in Karriere, neun neue Regel-/Wiederaufnahmetests bestanden |
 | 7 – Präsentation | Offen | |
 | 8 – Spielmodi | Offen | |
 | 9 – Karriere | Offen | |
@@ -51,7 +51,7 @@ Dieser Bericht dokumentiert tatsächliche Änderungen und Prüfungen. Ein Eintra
 
 - Einzelne Dribbelimpulse mit kontinuierlicher Integration ersetzen die starre Ballanbindung. Sprints legen weiter vor; Tricks verändern Impulse und versetzen Spieler nicht.
 - Ballannahme nur in Fuß-/Körperreichweite, abhängig von Höhe, Geschwindigkeit, Attributen und Wetter. Die bisherige 4,2-m-Annahmehilfe entfällt.
-- Manuelle Zielrichtung bleibt frei; ausgewogene und starke Assistenz verwenden begrenzte Winkel. Pässe ber?cksichtigen Laufwege, Passkorridore und taktische Distanzen.
+- Manuelle Zielrichtung bleibt frei; ausgewogene und starke Assistenz verwenden begrenzte Winkel. Pässe berücksichtigen Laufwege, Passkorridore und taktische Distanzen.
 - 180-ms-Vorabeingaben für direkte Pässe/Schüsse, Sprint+Pass für anschließenden Doppelpasslauf; flache, angeschnittene und gelupfte Abschlüsse sowie Kopfballkontakte.
 - Physik-Unterteilung auf höchstens 8 cm verhindert Pfosten-/Latten-Tunneling. Erst ein vollständiger Torlinienübertritt zählt. Torhüter müssen die Ballposition tatsächlich erreichen; erstes Winkelspiel und räumliche Paraden vorgezogen.
 - Abseitspositionen werden bei der Passabgabe festgehalten. Manueller Spielerwechsel bleibt für 600 ms gegen automatische Rückwechsel geschützt. Neue Laufzeitdaten werden im Checkpoint mitgespeichert und im Determinismusvergleich berücksichtigt.
@@ -79,3 +79,17 @@ Dieser Bericht dokumentiert tatsächliche Änderungen und Prüfungen. Ein Eintra
 - Echte Normalverteilung für Schussabweichung behebt die zuvor unrealistisch enge Streuung. xG ist als Diagnosewert nachvollziehbar nach Distanz, Winkel und Druck abgestimmt; räumliche Torwartparaden bleiben erforderlich.
 - Fünf neue Verhaltenstests prüfen Abwehrlinie/Breite, abgestimmte Pressingpositionen, Positionsbindung, inverse Außenverteidiger und gespiegelte Laufwege nach Seitenwechsel. Zusammen mit bestehenden Kontakt-/Determinismustests 25 bestanden; Produktionsbuild und 3D-Browserprüfung bestanden.
 - Letzte explorative 30-Partien-Serie: 4,27 Tore, 12,2 Schüsse/Team, 75,1 % Passquote, 465,52 ms/Partie. Chancenbildung und Passquote sind gegenüber der ersten KI-Fassung wiederhergestellt. **Torhäufigkeit und Heim-Siegquote noch außerhalb der alten Balanceprüfgrenzen**; keine bestandene 500-Partien-Abnahme behauptet.
+
+## Phase 6 – Gemeinsame 3D-Partien und faire Fortsetzung (2026-09-06)
+
+- Nutzerfeedback: Die öffentliche Karriere sah noch wie zuvor aus, weil die 3D-Vorschau bisher auf `/play` beschränkt war. Der 3D-Renderer wird jetzt in sämtlichen Livepartien verwendet; der alte Pixel-Matchrenderer ist entfernt.
+- Perspektivische Arcade-Kamera mit näherer Standardansicht, wählbarer TV-/Taktikübersicht, dunklerem Rasen und abgestimmtem Licht. Die Spielfläche nutzt auf Desktop den gesamten Viewport. Spielstand, Minikarte, Spielerauswahl und Werkzeugleiste sind überlagert und voneinander getrennt positioniert.
+- Figuren außerhalb der Kamera werden weder animiert noch gezeichnet. Niedrige Qualität blendet die Zuschauermenge aus. Kontextverlust pausiert die Partie; der Renderer bereitet seine Ressourcen nach Wiederherstellung erneut vor.
+- Standards berücksichtigen kurze gepufferte Eingaben, Aufladung, nominierte Schützen, Aufstellung und Mindestabstände. Unbeaufsichtigte Standards werden nach drei Sekunden ausgeführt. Einwürfe starten aus Handhöhe; Elfmeter vom korrekten Punkt.
+- Direkte Abseitsausnahmen für Einwurf, Ecke und Abstoß; erneute Berührung durch denselben Schützen führt zum indirekten Freistoß. Direkte Tore aus Einwürfen/indirekten Freistößen zählen nicht; direkte Eigentore bei Standards ergeben Ecke.
+- Ballgewinn durch Tackling setzt tatsächliche Ballreichweite und passende Höhe voraus. Ausgewechselte Spieler können nicht wieder eingewechselt werden. Checkpoints übernehmen auch Formation, taktische Änderungen, Spielerbindung und bereits ausgewechselte Identitäten.
+- Neun neue Tests prüfen Standards, Abseitsausnahmen, Doppelberührung, direkte Einwurftore, Elfmeteraufstellung, zeitliche Freigabe und identische Fortsetzung nach Auswechslung. Gesamtstand: 105 Unit-Tests; 104 im vollständigen Lauf bestanden, der korrigierte Testaufbau anschließend mit allen neun Regeltests bestanden.
+- Produktionsbuild ohne Budgetwarnung bestanden. Erste vier Chromium-Prüfungen für Karriere-3D, Schnellspiel, Bildabstände und mobiles Querformat bestanden. Nach visueller Screenshotprüfung wurden Spielstandzentrierung und HUD-Überdeckung korrigiert; vollständige Browserabnahme: 18 Tests direkt bestanden, Karriere-3D nach Korrektur einer Heim-/Auswärts-Koordinatenannahme ebenfalls bestanden (19 insgesamt). Screenshot unter `docs/screenshots/career-3d-2026-09-06.png`.
+- Keine Behauptung eines fertigen Releases 2.0: Phasen 7–12 und finale Balance-/Geräteabnahmen bleiben offen.
+
+Regelquellen: [IFAB Abseits](https://theifab.com/laws/latest/offside/), [Freistöße](https://www.theifab.com/laws/latest/free-kicks/), [Eckstoß](https://www.theifab.com/laws/latest/the-corner-kick/), [Strafstoß](https://theifab.com/laws/latest/the-penalty-kick/).

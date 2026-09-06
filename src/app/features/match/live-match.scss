@@ -1,0 +1,22 @@
+/* The live match is a full game surface; management returns at half/full time. */
+:host(.live-match) { --font-display: 'IBM Plex Mono', monospace; }
+.arcade-badge { margin-left:10px; padding:4px 8px; background:#c8fc5f; color:#122920; border-radius:4px; font:800 10px system-ui; letter-spacing:.1em; }
+@media (pointer:fine) {
+  :host(.live-match) { width:100%; height:100dvh; position:relative; overflow:hidden; }
+  :host(.live-match) .match-shell { display:block; }
+  :host(.live-match) .ticker { display:none; }
+  :host(.live-match) .canvas-wrap { width:100%; height:100dvh; min-height:0; aspect-ratio:auto; border:0; box-shadow:none; }
+  :host(.live-match) .practice-bar { position:absolute; inset:0 0 auto; z-index:7; height:44px; box-sizing:border-box; padding:10px 20px; background:linear-gradient(#071a26ec,#071a2680); font:11px system-ui; }
+  :host(.live-match) .scoreboard { position:absolute; z-index:6; left:50%; top:55px; translate:-50% 0; width:360px; padding:8px 14px; margin:0; min-height:54px; border:1px solid #ffffff24; border-radius:8px; background:#092536ee; box-shadow:0 5px 24px #03101855; }
+  :host(.live-match) .sb-score { gap:12px; }
+  :host(.live-match) .sb-score span { font:800 30px system-ui; color:#f6f8e9; }
+  :host(.live-match) .sb-score b { font:700 10px system-ui; background:transparent; color:#c8fc5f; padding:3px; }
+  :host(.live-match) .sb-team { gap:7px; font:800 12px system-ui; letter-spacing:.06em; }
+  :host(.live-match) .crest.sm { border:0; box-shadow:none; width:30px; height:30px; }
+  :host(.live-match) .match-toolbar { position:absolute; z-index:7; bottom:0; left:0; right:0; margin:0; padding:9px 16px; justify-content:center; background:linear-gradient(transparent,#071a26f5 25%); gap:8px; }
+  :host(.live-match) .match-toolbar button { box-shadow:none; border:1px solid #648a9280; border-radius:5px; background:#092536df; color:#d8eee9; min-height:34px; font:700 10px system-ui; padding:8px 12px; letter-spacing:.04em; }
+  :host(.live-match) .match-toolbar button:hover { border-color:#c8fc5f; color:#c8fc5f; }
+  :host(.live-match) .auto-chip { bottom:65px; border-radius:5px; font:700 10px system-ui; box-shadow:none; }
+  :host(.live-match) .quick-wheel, :host(.live-match) .sub-panel { position:absolute; bottom:60px; right:16px; z-index:10; max-width:450px; background:#092536f5; }
+}
+@media(pointer:coarse) { :host(.live-match) .practice-bar { display:none; } }

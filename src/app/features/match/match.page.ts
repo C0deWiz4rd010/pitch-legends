@@ -36,7 +36,6 @@ import { ratingColor } from '../../shared/rating-color';
 import { playerName } from '../../core/ratings';
 import { I18nService } from '../../core/services/i18n.service';
 import { ARCADE_MATCH_TUNING, ArcadeMatch, MATCH_TICK } from '../../core/services/arcade-match';
-import { ArcadePitchRenderer } from './arcade-renderer';
 import { AudioService } from '../../core/services/audio.service';
 import { ControlHelpService } from '../../core/services/control-help.service';
 import { CONTROL_INPUT_MAP, MOVEMENT_KEYS } from '../../data/control-bindings';
@@ -68,11 +67,11 @@ const EMPTY_MATCH_VIEW: MatchViewState = {
 
 @Component({
   selector: 'app-match',
-  host: { '[class.practice-mode]': 'practice' },
+  host: { '[class.practice-mode]': 'practice', '[class.live-match]': "phase() === 'match'" },
   imports: [RouterLink, DecimalPipe, ClubCrestComponent, MiniKitComponent, ManagerPortraitComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './match.page.html',
-  styleUrl: './match.page.scss',
+  styleUrls: ['./match.page.scss', './live-match.scss'],
 })
 export class MatchPage implements OnDestroy {
   protected readonly gs = inject(GameStateService);
@@ -117,6 +116,7 @@ export class MatchPage implements OnDestroy {
   protected readonly inputDevice = signal<InputDevice>('keyboard');
   protected readonly autoEnabled = signal(false);
   protected readonly fullscreenActive = signal(false);
+  protected readonly cameraView = signal<'ARCADE'|'TV'|'TAKTIK'>('ARCADE');
   protected readonly matchView = signal<MatchViewState>(EMPTY_MATCH_VIEW);
   protected readonly committing = signal(false);
   protected readonly showSubs = signal(false);
@@ -136,7 +136,7 @@ export class MatchPage implements OnDestroy {
   });
 
   private arcade: ArcadeMatch | null = null;
-  private renderer: ArcadePitchRenderer | ThreePitchRenderer | null = null;
+  private renderer: ThreePitchRenderer | null = null;
   private raf = 0;
   private lastTs = 0;
   private fixedAccumulator = 0;
@@ -345,7 +345,7 @@ export class MatchPage implements OnDestroy {
       playerLockId: lockId,
       weather: this.practice ? 'clear' : this.expectedWeather(),
       inputDevice: this.selectedMode() === 'coach' ? 'ai' : this.inputDevice(),
-      camera: { zoom: this.practice ? 1.25 : 1, lookAhead: 0.18, shake: settings?.cameraShake ?? true, reducedMotion: settings?.reducedMotion ?? false },
+      camera: { zoom: 1, lookAhead: 0.18, shake: settings?.cameraShake ?? true, reducedMotion: settings?.reducedMotion ?? false },
     }, this.gs.manager()?.perks.tactics ?? 0);
     this.autoEnabled.set(this.arcade.controllerMode === 'auto');
     this.prevHome = this.arcade.homeScore;
@@ -419,13 +419,14 @@ export class MatchPage implements OnDestroy {
     if (!this.arcade || this.startingRenderer || this.disposed) return;
     this.startingRenderer = true;
     const match = this.arcade;
-    if (this.practice) {
+    {
       this.graphicsLoading.set(true);
       try {
         const { ThreePitchRenderer } = await import('./three-pitch.renderer');
         if (this.disposed || this.arcade !== match || !canvas.isConnected) return;
         const renderer = this.zone.runOutsideAngular(() => new ThreePitchRenderer(canvas));
         this.renderer = renderer;
+        canvas.addEventListener('webglcontextlost', () => this.pauseFor('Grafik unterbrochen. Nach der Wiederherstellung kannst du weiterspielen.'), { once: true });
         await renderer.prepare(match);
         if (this.disposed || this.arcade !== match || this.renderer !== renderer) return;
       } catch {
@@ -435,7 +436,7 @@ export class MatchPage implements OnDestroy {
         return;
       }
       this.graphicsLoading.set(false);
-    } else this.renderer = new ArcadePitchRenderer(canvas);
+    }
     this.startingRenderer = false;
     this.lastTs = 0;
     this.fixedAccumulator = 0;
@@ -500,7 +501,7 @@ export class MatchPage implements OnDestroy {
       if (canvas) {
         canvas.dataset['performance'] = JSON.stringify(this.metrics.summary());
         const actor = this.arcade.actors.find(player => player.player.id === this.arcade!.selectedPlayerId);
-        canvas.dataset['matchState'] = JSON.stringify({ tick: this.arcade.tick, rule: this.arcade.rule.phase, controlledId: actor?.player.id, x: actor?.x, y: actor?.y, vx: actor?.vx, vy: actor?.vy, facingX: actor?.facingX, facingY: actor?.facingY, activePlayers: this.arcade.actors.filter(player => player.active).length });
+        canvas.dataset['matchState'] = JSON.stringify({ tick: this.arcade.tick, attackDirection: this.arcade.currentAttackDirection, rule: this.arcade.rule.phase, controlledId: actor?.player.id, x: actor?.x, y: actor?.y, vx: actor?.vx, vy: actor?.vy, facingX: actor?.facingX, facingY: actor?.facingY, activePlayers: this.arcade.actors.filter(player => player.active).length });
         if (this.renderer && 'diagnostics' in this.renderer) canvas.dataset['graphics'] = JSON.stringify(this.renderer.diagnostics());
       }
     }
@@ -635,6 +636,12 @@ export class MatchPage implements OnDestroy {
     this.matchView.set(this.projectMatchView());
     this.performanceMessage.set(message);
     this.saveCheckpoint();
+  }
+
+  protected cycleCamera(): void {
+    const view = this.cameraView() === 'ARCADE' ? 'TV' : this.cameraView() === 'TV' ? 'TAKTIK' : 'ARCADE';
+    this.cameraView.set(view);
+    if (this.arcade) this.arcade.config.camera.zoom = view === 'ARCADE' ? 1 : view === 'TV' ? .82 : .64;
   }
 
   protected cycleSpeed(): void {

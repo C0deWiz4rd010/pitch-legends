@@ -341,6 +341,9 @@ export class ArcadeMatch {
   }
 
   simulateToEnd(): void {
+    this.config.mode = 'instant';
+    this.config.controllerMode = 'auto';
+    this.football.queuedAction = null;
     let guard = 0;
     while (!this.finished && guard < 150000) {
       if (this.phase === 'halftime') this.resumeSecondHalf();
@@ -406,7 +409,7 @@ export class ArcadeMatch {
 
   bench(): Player[] {
     const onPitch = new Set(this.actors.filter((actor) => actor.side === this.controlledSide && actor.active).map((actor) => actor.player.id));
-    return this.controlledTeam.players.filter((player) => !onPitch.has(player.id) && isPlayerAvailable(player));
+    return this.controlledTeam.players.filter((player) => !onPitch.has(player.id) && !this.football.subbedOutIds?.includes(player.id) && isPlayerAvailable(player));
   }
 
   makeSub(outId: string, inId: string): boolean {
@@ -419,6 +422,10 @@ export class ArcadeMatch {
       if (this.substitutionWindows >= 3) return false;
       this.substitutionWindows++;
     }
+    (this.football.subbedOutIds ??= []).push(outId);
+    const slot = this.controlledTeam.formation.slots.find(slot => slot.playerId === outId);
+    if (slot) slot.playerId = inId;
+    if (this.config.playerLockId === outId) this.config.playerLockId = inId;
     this.lastSubAt = this.elapsed;
     this.subsUsed++;
     const outgoing = actor.player;
@@ -520,6 +527,7 @@ export class ArcadeMatch {
       contributions: structuredClone(this.contributions),
       safeSnapshot: structuredClone(this.safeSnapshot),
       runtime: {
+        teamState: structuredClone({ home: {formation:this.home.formation,tactics:this.home.tactics}, away: {formation:this.away.formation,tactics:this.away.tactics} }),
         football: structuredClone(this.football),
         previousInput: { ...this.previousInput },
         actionHeld: { ...this.actionHeld },
@@ -545,6 +553,10 @@ export class ArcadeMatch {
 
   restore(checkpoint: MatchCheckpoint): boolean {
     if (checkpoint.version !== 2 || checkpoint.matchId !== this.matchId) return false;
+    if (checkpoint.runtime.teamState) for (const side of ['home','away'] as const) {
+      Object.assign(this.teamOf(side), structuredClone(checkpoint.runtime.teamState[side]));
+    }
+    this.config.playerLockId = checkpoint.config.playerLockId;
     const players = [...this.home.players, ...this.away.players];
     for (let index = 0; index < checkpoint.actors.length; index++) {
       const saved = checkpoint.actors[index];
@@ -1051,10 +1063,14 @@ export class ArcadeMatch {
     const approach = (relativeX * actor.facingX + relativeY * actor.facingY) / Math.max(0.1, Math.hypot(relativeX, relativeY));
     const speed = Math.hypot(actor.vx - owner.vx, actor.vy - owner.vy);
     const winChance = clamp(0.28 + actor.player.attributes.defending / 170 - owner.player.attributes.dribbling / 260 + approach * 0.12 + (sliding ? 0.08 : 0), 0.12, 0.82);
-    if (this.rng.bool(winChance)) {
+    const ballReach = distance(actor, this.ball) <= (sliding ? 1.9 : 1.15) && this.ball.z < .65;
+    if (ballReach && this.rng.bool(winChance)) {
+      if (!this.legalRestartTouch(actor)) return;
       this.ball.ownerId = actor.player.id;
       this.ball.lastTouch = actor.side;
       this.ball.lastTouchPlayerId = actor.player.id;
+      this.ball.controlledTouch = 0;
+      actor.contact = {tick:this.tick,x:this.ball.x,y:this.ball.y,z:this.ball.z,kind:'foot',foot:'right'};
       this.stats(actor.side).tacklesWon++;
       this.ratings[actor.player.id] = clamp((this.ratings[actor.player.id] ?? 6.5) + 0.09, 1, 10);
       return;
@@ -1156,6 +1172,7 @@ export class ArcadeMatch {
         if (this.activeShot) this.activeShot.checkedKeeper = false;
       }
       if (!this.ball.ownerId) this.handlePostsAndKeeper();
+      if (this.rule.phase !== 'playing' && this.rule.phase !== 'advantage') return;
       if (this.handleBoundary()) return;
     }
     if (!this.ball.ownerId) this.tryBallControl();
@@ -1174,6 +1191,7 @@ export class ArcadeMatch {
     const reachDistance = distance(keeper, this.ball);
     const blockChance = clamp(0.84 + reaction * 0.24 - speed * 0.0015 - reachDistance * 0.025, 0.45, 0.98);
     if (reachDistance > 0.4 && !this.rng.bool(blockChance)) return;
+    if (!this.legalRestartTouch(keeper)) return;
     const difficulty = speed / 95 + Math.max(0, this.ball.z - 1.2) * 0.1;
     const catchBall = distance(keeper, this.ball) < 1.15 && this.rng.bool(clamp(0.45 + reaction * 0.5 - difficulty, 0.15, 0.92));
     if (shot && shot.side !== keeper.side) {
@@ -1199,7 +1217,7 @@ export class ArcadeMatch {
     }
     this.activeShot = null;
     this.intendedReceiverId = null;
-    this.football.offsideCandidates = [];
+    if (catchBall) this.football.offsideCandidates = [];
   }
 
   private inOwnPenaltyArea(actor: ArcadeActor): boolean {
@@ -1211,6 +1229,14 @@ export class ArcadeMatch {
     if (this.ball.x < -BALL_RADIUS || this.ball.x > FIELD_LENGTH + BALL_RADIUS) {
       const inGoal = Math.abs(this.ball.y - FIELD_WIDTH / 2) <= GOAL_WIDTH / 2 - BALL_RADIUS && this.ball.z <= GOAL_HEIGHT - BALL_RADIUS;
       if (inGoal) {
+        const scoringSide = this.ball.x > FIELD_LENGTH ? this.sideAttackingDirection(1) : this.sideAttackingDirection(-1);
+        const restart = this.football.restartRelease;
+        if (restart && (scoringSide !== restart.side || restart.phase==='throwIn' || restart.indirect)) {
+          const own = scoringSide !== restart.side;
+          const endX=this.ball.x<0?0:FIELD_LENGTH;
+          this.setRestart(own?'corner':'goalKick',own?scoringSide:this.opposite(scoringSide),own?endX:endX===0?5.5:99.5,own?0:34);
+          return true;
+        }
         this.scoreGoal(this.ball.x > FIELD_LENGTH ? this.sideAttackingDirection(1) : this.sideAttackingDirection(-1));
         return true;
       }
@@ -1250,6 +1276,7 @@ export class ArcadeMatch {
       }
     }
     if (!candidate) return;
+    if (!this.legalRestartTouch(candidate)) return;
     if (this.pendingOffsideTargetId === candidate.player.id || this.football.offsideCandidates.includes(candidate.player.id)) {
       this.stats(candidate.side).offsides++;
       this.events.push({ minute: this.footballMinute, type: 'foul', side: candidate.side, playerId: candidate.player.id, messageKey: 'match.offside', params: { player: playerName(candidate.player) } });
@@ -1319,6 +1346,7 @@ export class ArcadeMatch {
     const goalDistance = Math.abs(goalX - actor.x);
     const attempt = queued?.kind === 'shoot' || (!this.isHumanControlled(actor) && goalDistance < 18);
     if (!attempt) return;
+    if (!this.legalRestartTouch(actor)) return;
     if (this.football.offsideCandidates.includes(actor.player.id)) {
       this.stats(actor.side).offsides++;
       this.setRestart('freeKick', this.opposite(actor.side), actor.x, actor.y, true);
@@ -1382,6 +1410,8 @@ export class ArcadeMatch {
   private setRestart(phase: RuleState['phase'], side: Side, x: number, y: number, indirect = false): void {
     this.football.queuedAction = null;
     this.football.offsideCandidates = [];
+    this.football.restartRelease = null;
+    if (phase === 'penalty') { x = this.attackDirection(side) > 0 ? 94 : 11; y = 34; }
     this.rule = this.newRule(phase, side, x, y, indirect);
     this.phase = 'stoppage';
     this.ball.ownerId = null;
@@ -1406,33 +1436,110 @@ export class ArcadeMatch {
   }
 
   private updateRestart(dt: number, input: MatchCommand): void {
-    this.rule.elapsed += dt;
     if (this.rule.phase === 'halftime' || this.rule.phase === 'fulltime') return;
-    const minimum = this.config.mode === 'instant' ? 0.05 : 0.42;
-    const forced = this.rule.elapsed >= (this.rule.phase === 'throwIn' ? 5 : 1.35);
-    const humanRestart = this.rule.restartSide === this.controlledSide && this.config.controllerMode === 'human';
-    const pressed = input.pass || input.through || input.lob || input.shoot;
-    if (this.rule.elapsed < minimum || (humanRestart && !pressed && !forced)) return;
+    const phase = this.rule.phase;
     const side = this.rule.restartSide ?? 'home';
-    const restartSpot = { x: this.rule.spotX, y: this.rule.spotY };
-    const taker = this.actors
-      .filter((actor) => actor.active && actor.side === side)
-      .sort((a, b) => distance(a, restartSpot) - distance(b, restartSpot))[0];
+    const team = this.teamOf(side);
+    const nominated = phase === 'penalty' ? team.tactics.penaltyTakerId : phase === 'corner' ? team.tactics.cornerTakerId : phase === 'freeKick' ? team.tactics.freeKickTakerId : null;
+    const candidates = this.actors.filter(actor => actor.active && actor.side === side);
+    const taker = candidates.find(actor => actor.player.id === nominated)
+      ?? (phase === 'goalKick' ? candidates.find(actor => actor.player.positionGroup === 'GK') : undefined)
+      ?? candidates.filter(actor=>actor.player.positionGroup!=='GK').sort((a,b)=>distance(a,this.ball)-distance(b,this.ball))[0]
+      ?? candidates[0];
     if (!taker) return;
-    taker.x = clamp(this.rule.spotX, 1, FIELD_LENGTH - 1);
-    taker.y = clamp(this.rule.spotY, 1, FIELD_WIDTH - 1);
-    taker.facingX = this.attackDirection(side);
-    taker.facingY = 0;
+    if (this.rule.elapsed === 0) {
+      this.arrangeRestart(taker);
+      this.actionHeld = {pass:0,through:0,lob:0,shoot:0};
+    }
+    this.rule.elapsed += dt;
+    const human = side === this.controlledSide && this.config.controllerMode === 'human';
+    if (human) for (const kind of ['pass','through','lob','shoot'] as const) {
+      if (input[kind]) this.actionHeld[kind] = Math.min(.9,this.actionHeld[kind]+dt);
+      if (!input[kind] && this.previousInput[kind] && this.actionHeld[kind] > 0) {
+        this.football.queuedAction = { kind, power:this.charge(this.actionHeld[kind],.9),
+          aimX:input.aimX*this.currentAttackDirection,aimY:input.aimY,finesse:input.skill,low:this.actionHeld[kind]<.14,expiresTick:this.tick+180 };
+      }
+    }
+    const forced = this.rule.elapsed >= 3;
+    if (this.rule.elapsed < .42 || (human && !this.football.queuedAction && !forced)) return;
+    const command = this.football.queuedAction;
+    const indirect = this.rule.indirect;
+    const direction = this.attackDirection(side);
     this.ball.ownerId = taker.player.id;
     this.ball.lastTouch = side;
     this.ball.lastTouchPlayerId = taker.player.id;
-    const wasPenalty = this.rule.phase === 'penalty';
-    this.rule = this.newRule('playing', null, taker.x, taker.y);
+    this.ball.controlledTouch = 0;
+    this.rule = this.newRule('playing',null,this.ball.x,this.ball.y);
     this.phase = this.halftimeReached ? 'secondHalf' : 'firstHalf';
-    if (wasPenalty) this.shoot(taker, 0.72, this.attackDirection(side), input.aimY || this.rng.float(-0.75, 0.75), false, false);
+    const aimX = command && Math.hypot(command.aimX,command.aimY)>.1 ? command.aimX : phase==='kickoff'?-direction:direction;
+    const aimY = command?.aimY ?? 0;
+    if (phase === 'penalty' || command?.kind === 'shoot' && phase !== 'throwIn' && !indirect) {
+      this.shoot(taker,command?.power ?? .72,direction,command?.aimY ?? this.rng.float(-.75,.75),command?.finesse ?? false,command?.low ?? false);
+    } else {
+      const lob = phase === 'corner' || command?.kind === 'lob';
+      this.pass(taker,command?.kind==='through',lob,command?.power ?? (lob?.75:.4),aimX,aimY);
+      if (phase === 'throwIn') {
+        this.ball.z = 1.65;
+        this.ball.vz = 2.6;
+        if (taker.contact) taker.contact.kind = 'hand';
+        this.setAction(taker,'keeper-throw');
+      }
+    }
+    if (['corner','goalKick','throwIn'].includes(phase)) {
+      this.football.offsideCandidates = [];
+      this.pendingOffsideTargetId = null;
+    }
+    this.football.restartRelease = {phase,side,takerId:taker.player.id,indirect};
+    this.football.queuedAction = null;
+    this.actionHeld = {pass:0,through:0,lob:0,shoot:0};
+  }
+
+  private arrangeRestart(taker: ArcadeActor): void {
+    const rule = this.rule;
+    const direction = this.attackDirection(taker.side);
+    taker.x = clamp(rule.spotX - direction*.45,.4,104.6);
+    taker.y = clamp(rule.spotY,.4,67.6);
+    taker.vx = taker.vy = 0;
+    taker.facingX = direction; taker.facingY = 0;
+    this.ball.x = rule.spotX; this.ball.y = rule.spotY; this.ball.z = BALL_RADIUS;
+    if (taker.side === this.controlledSide && !this.config.playerLockId) this.selectedPlayerId = taker.player.id;
+    for (const actor of this.actors) {
+      if (!actor.active || actor===taker) continue;
+      actor.vx=actor.vy=0;
+      const separation = rule.phase==='throwIn'?2:9.15;
+      if (rule.phase==='kickoff') {
+        actor.x = this.attackDirection(actor.side)>0 ? Math.min(actor.x,51) : Math.max(actor.x,54);
+      }
+      if (rule.phase==='penalty') {
+        if (actor.side!==taker.side && actor.player.positionGroup==='GK') { actor.x=direction>0?104.89:.11; actor.y=34; continue; }
+        actor.x=direction>0?Math.min(actor.x,87):Math.max(actor.x,18);
+      }
+      if (rule.phase==='goalKick' && actor.side!==taker.side && Math.abs(actor.y-34)<20.16) {
+        actor.x=direction>0?Math.max(actor.x,17):Math.min(actor.x,88);
+      }
+      if (actor.side!==taker.side && distance(actor,this.ball)<separation) {
+        const dx=actor.x-this.ball.x || -direction,dy=actor.y-this.ball.y;
+        const length=Math.hypot(dx,dy)||1;
+        actor.x=clamp(this.ball.x+dx/length*separation,.4,104.6);
+        actor.y=clamp(this.ball.y+dy/length*separation,.4,67.6);
+      }
+    }
+  }
+
+  private legalRestartTouch(actor: ArcadeActor): boolean {
+    const restart = this.football.restartRelease;
+    if (!restart) return true;
+    if (restart.takerId === actor.player.id) {
+      this.setRestart('freeKick',this.opposite(actor.side),this.ball.x,this.ball.y,true);
+      return false;
+    }
+    this.football.restartRelease = null;
+    return true;
   }
 
   private resetKickoff(side: Side): void {
+    this.football.restartRelease = null;
+    this.football.queuedAction = null;
     for (const actor of this.actors) {
       if (!actor.active) continue;
       actor.x = actor.homeX;

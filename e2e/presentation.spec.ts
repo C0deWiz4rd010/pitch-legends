@@ -89,7 +89,7 @@ test('player identity loads offline and live AUTO remains reversible', async ({ 
   await page.goto('/');
   await page.setViewportSize({ width: 844, height: 390 });
   await page.getByRole('link', { name: /auto-match/i }).click();
-  await expect(page.locator('canvas')).toBeVisible({ timeout: 15_000 });
+  await expect(page.locator('canvas[aria-label="Live football pitch"]')).toBeVisible({ timeout: 15_000 });
   const auto = page.locator('.auto-chip');
   await expect(auto).toContainText('KI STEUERT');
   await auto.click();

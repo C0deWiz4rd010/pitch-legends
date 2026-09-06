@@ -2,7 +2,7 @@ import { arcadeJogSpeed, arcadeSprintSpeed, ArcadeMatch, MATCH_TICK } from './co
 import { MATCH_CHECKPOINT_KEY, MatchCheckpointService } from './core/services/match-checkpoint.service';
 import { createNewGame } from './data/generators';
 import { EMPTY_MATCH_COMMAND, MatchCommand, MatchConfig } from './models/match.model';
-import { interpolateMatchRenderFrame } from './features/match/arcade-renderer';
+import { interpolateThreeFrame as interpolateMatchRenderFrame } from './features/match/three-render-state';
 
 function config(teamId: string, mode: MatchConfig['mode'] = 'coach', seed = 20260809): MatchConfig {
   return {

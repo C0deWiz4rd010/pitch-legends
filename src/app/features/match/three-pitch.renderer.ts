@@ -25,9 +25,12 @@ export class ThreePitchRenderer {
   private readonly renderer: THREE.WebGLRenderer;
   private readonly scene = new THREE.Scene();
   private readonly stadium = new THREE.Group();
-  private readonly camera = new THREE.OrthographicCamera(-40, 40, 22.5, -22.5, 0.1, 300);
+  private readonly camera = new THREE.PerspectiveCamera(46, 16 / 9, 0.1, 300);
   private readonly sun = new THREE.DirectionalLight('#fff3d3', 3.0);
   private readonly fill = new THREE.HemisphereLight('#d1eeff', '#4a6841', 2.2);
+  private readonly cullFrustum = new THREE.Frustum();
+  private readonly cullMatrix = new THREE.Matrix4();
+  private readonly cullSphere = new THREE.Sphere(new THREE.Vector3(), 2.3);
   private readonly models = new Map<string, ProceduralFootballer>();
   private readonly matrixDummy = new THREE.Object3D();
   private readonly shadow: THREE.InstancedMesh;
@@ -95,7 +98,7 @@ export class ThreePitchRenderer {
     if (/swiftshader|llvmpipe|software/i.test(adapter)) { this.quality = 'low'; this.pixelRatio = .75; }
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.18;
+    this.renderer.toneMappingExposure = 0.98;
     this.renderer.shadowMap.enabled = this.quality === 'high';
     this.renderer.shadowMap.type = THREE.PCFShadowMap;
     this.scene.background = new THREE.Color('#162c36');
@@ -109,7 +112,7 @@ export class ThreePitchRenderer {
     this.sun.shadow.normalBias = 0.065;
     this.sun.shadow.camera.updateProjectionMatrix();
 
-    const shadowMaterial = new THREE.MeshBasicMaterial({ color: '#0d241e', transparent: true, opacity: 0.22, depthWrite: false });
+    const shadowMaterial = new THREE.MeshBasicMaterial({ color: '#071f1d', transparent: true, opacity: 0.30, depthWrite: false });
     this.shadow = new THREE.InstancedMesh(new THREE.CircleGeometry(0.46, 12), shadowMaterial, 32);
     this.shadow.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     this.shadow.frustumCulled = false;
@@ -229,6 +232,8 @@ export class ThreePitchRenderer {
     this.time += dt;
     this.ensureMatch(match);
     this.updateCamera(match, state, dt, !!replay);
+    this.camera.updateMatrixWorld();
+    this.cullFrustum.setFromProjectionMatrix(this.cullMatrix.multiplyMatrices(this.camera.projectionMatrix,this.camera.matrixWorldInverse));
     const mirror = state.attackDirection;
     let index = 0;
     for (const model of this.models.values()) model.mesh.visible = false;
@@ -238,6 +243,8 @@ export class ThreePitchRenderer {
       model.mesh.visible = player.active;
       if (!player.active) continue;
       model.mesh.position.set((player.x - FIELD_LENGTH / 2) * mirror, 0, player.y - FIELD_WIDTH / 2);
+      this.cullSphere.center.copy(model.mesh.position).setY(1);
+      if (!this.cullFrustum.intersectsSphere(this.cullSphere)) { model.mesh.visible = false; continue; }
       model.mesh.rotation.y = Math.atan2(player.facingX * mirror, player.facingY);
       poseFootballer(model, player, state.tick, this.time, match.config.camera.reducedMotion);
       this.matrixDummy.position.copy(model.mesh.position).setY(0.014);
@@ -285,6 +292,7 @@ export class ThreePitchRenderer {
     this.renderer.shadowMap.enabled = quality === 'high';
     this.resize();
     this.canvas.dataset['quality'] = quality;
+    this.stadium.traverse(object => { if (object.name === 'crowd') object.visible = quality !== 'low'; });
   }
 
   destroy(): void {
@@ -318,12 +326,7 @@ export class ThreePitchRenderer {
   }
 
   private updateFrustum(): void {
-    const aspect = this.width / this.height;
-    const viewHeight = this.viewWidth / Math.max(1.1, aspect);
-    this.camera.left = -this.viewWidth / 2;
-    this.camera.right = this.viewWidth / 2;
-    this.camera.top = viewHeight / 2;
-    this.camera.bottom = -viewHeight / 2;
+    this.camera.aspect = this.width / Math.max(1,this.height);
     this.camera.updateProjectionMatrix();
   }
 
@@ -340,8 +343,8 @@ export class ThreePitchRenderer {
     const fastBall = Math.hypot(state.ball.vx, state.ball.vy) > 15;
     const penalty = Math.abs(bx) > 32;
     const kickoff = match.rule.phase === 'kickoff';
-    const baseWidth = replay ? 46 : kickoff ? 84 : penalty ? 58 : fastBall ? 78 : 64;
-    const targetWidth = Math.max(baseWidth, Math.abs(bx - sx) * 1.25 + 25) / THREE.MathUtils.clamp(match.config.camera.zoom || 1, 0.8, 1.3);
+    const baseWidth = replay ? 30 : kickoff ? 58 : penalty ? 40 : fastBall ? 62 : 44;
+    const targetWidth = Math.max(baseWidth, Math.abs(bx - sx) * 1.25 + 25) / THREE.MathUtils.clamp(match.config.camera.zoom || 1, 0.6, 1.4);
     const smooth = 1 - Math.exp(-(match.config.camera.reducedMotion ? 12 : replay ? 5.0 : 6.3) * dt);
     if (this.lastDirection !== mirror) {
       this.cameraX = targetX;
@@ -352,7 +355,8 @@ export class ThreePitchRenderer {
     this.cameraX += (targetX - this.cameraX) * smooth;
     this.cameraZ += (targetZ - this.cameraZ) * smooth;
     this.viewWidth += (targetWidth - this.viewWidth) * (1 - Math.exp(-2.4 * dt));
-    this.camera.position.set(this.cameraX, 52, this.cameraZ + 51);
+    const cameraDistance = this.viewWidth / Math.max(1.1,this.width/this.height) / (2*Math.tan(THREE.MathUtils.degToRad(46/2)));
+    this.camera.position.set(this.cameraX, cameraDistance * .68, this.cameraZ + cameraDistance * .733);
     this.camera.lookAt(this.cameraX, 0, this.cameraZ);
     this.updateFrustum();
   }
@@ -392,8 +396,8 @@ export class ThreePitchRenderer {
     this.scene.background = new THREE.Color(bg);
     this.scene.fog = new THREE.Fog(bg, 125, 240);
     this.sun.color.set(night ? '#d3eaff' : sunset ? '#ffe0a7' : '#fff5df');
-    this.sun.intensity = night ? 2.6 : 3;
-    this.fill.intensity = night ? 1.6 : 2.2;
+    this.sun.intensity = night ? 2.8 : 2.6;
+    this.fill.intensity = night ? 1.2 : 1.5;
     const surround = new THREE.Mesh(new THREE.PlaneGeometry(160, 116), new THREE.MeshStandardMaterial({ color: '#204c38', roughness: 1 }));
     surround.rotation.x = -Math.PI / 2;
     surround.position.y = -0.04;
@@ -559,6 +563,8 @@ export class ThreePitchRenderer {
       heads.setMatrixAt(i, dummy.matrix);
       heads.setColorAt(i, new THREE.Color(['#ecc5a1', '#ca956e', '#925e46', '#543a32'][i % 4]));
     });
+    bodies.name = heads.name = 'crowd';
+    bodies.visible = heads.visible = this.quality !== 'low';
     this.stadium.add(bodies, heads);
   }
 
@@ -634,8 +640,10 @@ export class ThreePitchRenderer {
     const w = this.hud.width, h = this.hud.height;
     ctx.clearRect(0, 0, w, h);
     const s = Math.max(0.72, Math.min(1.1, w / 1000));
+    const touch = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
+    const bottomInset = touch ? 0 : 55;
     const mapW = 150 * s, mapH = mapW * FIELD_WIDTH / FIELD_LENGTH;
-    const mapX = (w - mapW) / 2, mapY = h - mapH - 15 * s;
+    const mapX = (w - mapW) / 2, mapY = h - mapH - 15 * s - bottomInset;
     ctx.fillStyle = 'rgba(9,26,33,.67)';
     ctx.beginPath(); ctx.roundRect(mapX - 9 * s, mapY - 9 * s, mapW + 18 * s, mapH + 18 * s, 6 * s); ctx.fill();
     ctx.strokeStyle = 'rgba(223,240,225,.36)'; ctx.lineWidth = s;
@@ -653,7 +661,7 @@ export class ThreePitchRenderer {
     ctx.beginPath(); ctx.arc(mapX + (state.attackDirection > 0 ? state.ball.x : FIELD_LENGTH - state.ball.x) / FIELD_LENGTH * mapW, mapY + state.ball.y / FIELD_WIDTH * mapH, 2.4 * s, 0, Math.PI * 2); ctx.fill();
     const selected = match.actors.find(actor => actor.player.id === state.controlledPlayerId);
     if (selected) {
-      const left = 18 * s, bottom = h - 25 * s;
+      const left = 18 * s, bottom = touch ? 98 * s : h - 25 * s - bottomInset;
       const label = `${selected.player.kitNumber}  ${selected.player.lastName.toLocaleUpperCase()}`;
       ctx.font = `600 ${14 * s}px system-ui, sans-serif`;
       const labelWidth = Math.max(148 * s, ctx.measureText(label).width + 27 * s);
@@ -666,15 +674,16 @@ export class ThreePitchRenderer {
     }
     if (replay) {
       ctx.font = `700 ${15 * s}px system-ui, sans-serif`; ctx.fillStyle = '#ffde7b';
-      ctx.fillText('●  REPLAY', 22 * s, 37 * s);
+      ctx.fillText('●  REPLAY', 22 * s, touch ? 65 * s : 80);
     }
     if (!replay && match.rule.phase !== 'playing' && match.rule.phase !== 'advantage') {
       const names: Record<string, string> = { kickoff: 'ANSTOSS', freeKick: 'FREISTOSS', corner: 'ECKBALL', throwIn: 'EINWURF', goalKick: 'ABSTOSS', penalty: 'ELFMETER' };
       const label = names[match.rule.phase];
       if (label) {
         ctx.font = `600 ${13 * s}px system-ui, sans-serif`; ctx.textAlign = 'center';
-        ctx.fillStyle = 'rgba(9,26,33,.72)'; ctx.beginPath(); ctx.roundRect(w / 2 - 94 * s, 16 * s, 188 * s, 31 * s, 5 * s); ctx.fill();
-        ctx.fillStyle = '#f5efcf'; ctx.fillText(label, w / 2, 37 * s); ctx.textAlign = 'left';
+        const top = touch ? 48 : 122;
+        ctx.fillStyle = 'rgba(9,26,33,.72)'; ctx.beginPath(); ctx.roundRect(w / 2 - 94 * s, top, 188 * s, 31 * s, 5 * s); ctx.fill();
+        ctx.fillStyle = '#f5efcf'; ctx.fillText(label, w / 2, top + 21 * s); ctx.textAlign = 'left';
       }
     }
   }
@@ -712,7 +721,7 @@ function createPitchTexture(seed: number, wet: boolean): THREE.CanvasTexture {
   if (ctx) {
     const sx = canvas.width / FIELD_LENGTH, sy = canvas.height / FIELD_WIDTH;
     for (let stripe = 0; stripe < 10; stripe++) {
-      ctx.fillStyle = stripe % 2 ? wet ? '#398451' : '#409655' : wet ? '#347a4a' : '#37884d';
+      ctx.fillStyle = stripe % 2 ? wet ? '#246743' : '#2b8048' : wet ? '#205b39' : '#226e3e';
       ctx.fillRect(stripe * canvas.width / 10, 0, canvas.width / 10 + 1, canvas.height);
     }
     // Reproducible, faint blades/wear avoid both a flat plane and noisy shimmer.

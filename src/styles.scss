@@ -307,3 +307,8 @@ textarea {
   app-transfer .market-shell { flex: 1 1 0; height: auto; min-height: 0; max-height: none; }
   app-transfer .offers-board, app-transfer .contracts-board { flex: 1 1 0; min-height: 0; overflow: auto; }
 }
+
+body.match-immersive app-root .layout { grid-template-columns:minmax(0,1fr); }
+body.match-immersive app-root .sidebar, body.match-immersive app-root .topbar { display:none; }
+body.match-immersive app-root .content { padding:0; max-width:none; overflow:hidden; scrollbar-gutter:auto; }
+body.match-immersive app-root .main { min-width:0; }

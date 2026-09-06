@@ -1,5 +1,5 @@
-@if (practice) {
-  <div class="practice-bar"><a routerLink="/">← {{ i18n.locale() === 'de' ? 'Zur Karriere' : 'Career' }}</a><strong>PITCH LEGENDS · PLAYGROUND</strong><span>{{ i18n.locale() === 'de' ? 'WASD bewegen · J passen · L schießen · Shift sprinten' : 'WASD move · J pass · L shoot · Shift sprint' }}</span></div>
+@if (phase() === 'match') {
+  <div class="practice-bar"><a routerLink="/">← {{ i18n.locale() === 'de' ? 'Zur Karriere' : 'Career' }}</a><strong>PITCH LEGENDS <b class="arcade-badge">ARCADE 3D</b></strong><span>{{ i18n.locale() === 'de' ? 'WASD bewegen · J passen · L schießen · Shift sprinten' : 'WASD move · J pass · L shoot · Shift sprint' }}</span></div>
 }
 @if (phase() === 'preview') {
   <header class="page-head fade-up">
@@ -215,6 +215,7 @@
       }
 
       <div class="match-toolbar">
+        <button class="btn btn--ghost btn--sm camera-choice" (click)="cycleCamera()">KAMERA · {{ cameraView() }}</button>
         <button class="btn btn--ghost btn--sm" (click)="togglePlay()">{{ playing() ? 'PAUSE' : 'PLAY' }}</button>
         <button class="btn btn--ghost btn--sm auto-toggle" [class.on]="autoEnabled()" (click)="toggleAuto()">◈ AUTO · {{ autoEnabled() ? 'KI STEUERT' : 'AUS' }}</button>
         <button class="btn btn--ghost btn--sm" (click)="openControls()">? STEUERUNG</button>

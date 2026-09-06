@@ -11,7 +11,7 @@ async function createCareer(page: Page): Promise<void> {
   await expect(page.locator('.match-stage')).toBeVisible();
 }
 
-test('real match accepts the full keyboard flow and keeps smooth frame pacing', async ({ page }) => {
+test('real match accepts the full keyboard flow and keeps smooth frame pacing', async ({ page }, info) => {
   test.setTimeout(60_000);
   const errors: string[] = [];
   page.on('pageerror', (error) => errors.push(error.message));
@@ -23,7 +23,8 @@ test('real match accepts the full keyboard flow and keeps smooth frame pacing', 
   const handbook = page.locator('dialog[open]');
   await handbook.waitFor({ state: 'visible', timeout: 2_000 }).catch(() => undefined);
   if (await handbook.isVisible()) await handbook.getByRole('button', { name: /verstanden|got it/i }).click();
-  await expect(page.locator('canvas')).toBeVisible();
+  await expect(page.locator('canvas[aria-label="Live football pitch"]')).toBeVisible();
+  await expect(page.locator('.graphics-loading')).toHaveCount(0,{timeout:30_000});
   await page.waitForTimeout(500);
 
   await page.evaluate(() => {
@@ -77,6 +78,7 @@ test('real match accepts the full keyboard flow and keeps smooth frame pacing', 
     const percentile = (p: number) => sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * p))] ?? 0;
     return { count: sorted.length, median: percentile(0.5), p95: percentile(0.95), p99: percentile(0.99), longTasks: value.longTasks };
   });
+  await info.attach('frame-pacing.json', {body:JSON.stringify(metrics,null,2),contentType:'application/json'});
   // A shared GitHub runner can quota headless Chromium down to 30 or 20 Hz.
   // Local reference runs remain the strict 60 Hz performance benchmark; CI
   // guards against additional jank and long main-thread work under that quota.

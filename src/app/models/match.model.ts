@@ -1,3 +1,5 @@
+import type { Team } from './team.model';
+
 export type MatchEventType =
   | 'kickoff'
   | 'chance'
@@ -320,13 +322,15 @@ export interface MatchCheckpoint {
   contributions: Record<string, MatchContribution>;
   safeSnapshot: MatchSnapshot;
   runtime: {
+    teamState?: Record<Side, Pick<Team, 'formation' | 'tactics'>>;
     football?: {
       selectionUntilTick: number;
       queuedAction: { kind: 'pass' | 'through' | 'lob' | 'shoot'; expiresTick: number; power: number; aimX: number; aimY: number; finesse: boolean; low: boolean; chip?: boolean } | null;
       offsideCandidates: string[];
       oneTwoRunnerId: string | null;
       oneTwoUntilTick: number;
-      restartRelease?: { phase: RuleState['phase']; side: Side; takerId: string } | null;
+      restartRelease?: { phase: RuleState['phase']; side: Side; takerId: string; indirect?: boolean } | null;
+      subbedOutIds?: string[];
     };
     previousInput: MatchCommand;
     actionHeld: { pass: number; through: number; lob: number; shoot: number };
