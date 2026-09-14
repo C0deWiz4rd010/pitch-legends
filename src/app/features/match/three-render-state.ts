@@ -43,3 +43,11 @@ export function interpolateThreeReplay(previous: MatchSnapshot, current: MatchSn
 }
 
 function mix(a: number, b: number, t: number): number { return a + (b - a) * t; }
+
+/** Reflect world X before posing, so foot contacts also agree after side changes. */
+export function playerInCameraSpace(player:PlayerRuntimeSnapshot, direction:1|-1):PlayerRuntimeSnapshot {
+  if(direction===1) return player;
+  return {...player,x:-player.x,vx:-player.vx,facingX:-player.facingX,
+    actionTarget:player.actionTarget?{...player.actionTarget,x:-player.actionTarget.x}:undefined,
+    contact:player.contact?{...player.contact,x:-player.contact.x}:undefined};
+}

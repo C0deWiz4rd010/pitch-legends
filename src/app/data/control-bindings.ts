@@ -30,12 +30,12 @@ export const CONTROL_BINDINGS: readonly ControlBinding[] = [
   },
   {
     action: 'switch', chapter: 'move', title: { de: 'Spieler wechseln', en: 'Switch player' },
-    description: { de: 'Leertaste/LB wählt den Spieler mit der besten Abfangzeit. Mit Richtung wird die Auswahl gezielter.', en: 'Space/LB picks the player with the best intercept time. Aim to make the selection more specific.' },
+    description: { de: 'Leertaste/LB wechselt zwischen drei passenden Feldspielern. Richtung hilft bei der Auswahl. Deine Wahl bleibt 1,5 Sekunden geschützt. Spielerwahl „Ruhig“ folgt erst gesichertem Ballbesitz; „Manuell“ überlässt dir die Wechsel.', en: 'Space/LB cycles three suitable outfield players. Aim to guide the choice. Your selection is protected for 1.5 seconds. Quiet switching follows secure possession; Manual leaves switching to you.' },
     keyboard: [{ label: 'SPACE' }], gamepad: [{ label: 'LB' }], touch: [{ label: 'SW', tone: 'blue' }],
   },
   {
     action: 'pass', chapter: 'pass', title: { de: 'Kurzpass / Stellungstackling', en: 'Short pass / standing tackle' },
-    description: { de: 'J kurz drücken für einen sicheren Pass. J bis 0,8 Sekunden halten lädt die Passkraft. Ohne Ball führt J ein Stellungstackling aus.', en: 'Tap J for a safe pass. Hold it up to 0.8 seconds for power. Without the ball J performs a standing tackle.' },
+    description: { de: 'J/A halten und loslassen zum Passen; nach 0,8 Sekunden ist die Kraft voll. Sprint + Pass startet einen Doppelpasslauf. Kurz vor der Annahme loslassen ermöglicht direktes Weiterspielen. Gegen den Ball führt J/A ein Stellungstackling aus.', en: 'Hold and release J/A to pass; power is full after 0.8 seconds. Sprint + pass starts a give-and-go run. Release just before receiving to play first time. Against the ball J/A performs a standing tackle.' },
     keyboard: [{ label: 'J', asset: `${ASSET}key-j.png` }], gamepad: [{ label: 'A', asset: `${ASSET}gamepad-a.png` }], touch: [{ label: 'A', tone: 'green' }],
   },
   {
@@ -50,7 +50,7 @@ export const CONTROL_BINDINGS: readonly ControlBinding[] = [
   },
   {
     action: 'shoot', chapter: 'attack', title: { de: 'Schuss / Befreiung', en: 'Shoot / clearance' },
-    description: { de: 'L/B lädt den Schuss. Richtung und Druckdauer bestimmen Zielzone und Kraft.', en: 'L/B charges the shot. Direction and hold time define target zone and power.' },
+    description: { de: 'L/B halten, zielen und loslassen. Kurzes Antippen schießt flach, nach 0,9 Sekunden ist die Kraft voll. I/RB beim Loslassen halten für einen angeschnittenen Schuss; U/X für einen Lupfer.', en: 'Hold L/B, aim and release. A quick tap shoots low; full power takes 0.9 seconds. Hold I/RB on release for a finesse shot, or U/X for a chip.' },
     keyboard: [{ label: 'L', asset: `${ASSET}key-l.png` }], gamepad: [{ label: 'B', asset: `${ASSET}gamepad-b.png` }], touch: [{ label: 'B', tone: 'red' }],
   },
   {
@@ -65,7 +65,7 @@ export const CONTROL_BINDINGS: readonly ControlBinding[] = [
   },
   {
     action: 'keeper', chapter: 'defend', title: { de: 'Torwart', en: 'Goalkeeper' },
-    description: { de: 'K/Y ruft den Torwart heraus. Nach einer Parade bestimmst du mit Richtung und Pass-/Lobtaste die Spieleröffnung.', en: 'K/Y rushes the keeper. After a save, aim and use pass/lob to distribute.' },
+    description: { de: 'K/Y halten ruft den Torwart heraus. Er fängt oder wehrt erreichbare Bälle ab, sammelt gefangene Bälle und eröffnet selbstständig. Die automatische Spielerwahl springt nicht auf den Torwart.', en: 'Hold K/Y to rush the keeper. He catches or parries reachable balls, gathers catches and distributes automatically. Automatic player switching does not select the goalkeeper.' },
     keyboard: [{ label: 'K', asset: `${ASSET}key-k.png` }], gamepad: [{ label: 'Y', asset: `${ASSET}gamepad-y.png` }], touch: [{ label: 'Y', tone: 'yellow' }],
   },
   {

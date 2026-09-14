@@ -27,6 +27,7 @@ import { createAppearanceRecipe, createProceduralFootballer, poseFootballer, Pro
         <label>Trikot <select aria-label="Trikot" [ngModel]="awayKit()" (ngModelChange)="awayKit.set($event)"><option [ngValue]="false">Harbour · Heim</option><option [ngValue]="true">Sunset · Auswärts</option></select></label>
         <label>Bewegung <select aria-label="Bewegung" [ngModel]="action()" (ngModelChange)="action.set($event)">@for (clip of clips; track clip.value) { <option [value]="clip.value">{{ clip.label }}</option> }</select></label>
         <label>Tempo <select aria-label="Tempo" [ngModel]="timeScale()" (ngModelChange)="timeScale.set(+$event)"><option [ngValue]="1">Normal</option><option [ngValue]="0.25">Zeitlupe · ¼</option><option [ngValue]="0.1">Kontaktstudie · ¹⁄₁₀</option></select></label>
+        <label>Bewegungsablauf · {{ cursor().toFixed(2) }} s <input aria-label="Bewegungsablauf" type="range" min="0" max="2.19" step=".01" [ngModel]="cursor()" (ngModelChange)="seek(+$event)" /></label>
         <details><summary>Animationswerkzeuge</summary><label><input type="checkbox" [ngModel]="skeletonVisible()" (ngModelChange)="skeletonVisible.set($event)" /> Skelett zeigen</label><label><input type="checkbox" [ngModel]="contactsVisible()" (ngModelChange)="contactsVisible.set($event)" /> Kontaktpunkt zeigen</label><p>Rezept v{{ recipe().version }} · Seed {{ recipe().seed }}</p></details>
         <div class="gallery-head"><h2>Identitäten</h2><button [disabled]="galleryPage() === 0" (click)="galleryPage.set(galleryPage() - 1)" aria-label="Vorherige Identitäten">←</button><span>{{ galleryPage() + 1 }} / 8</span><button [disabled]="galleryPage() === 7" (click)="galleryPage.set(galleryPage() + 1)" aria-label="Nächste Identitäten">→</button></div>
         <div class="gallery">@for (entry of gallery(); track entry.seed) { <button [class.active]="entry.seed === seed()" (click)="selectSeed(entry.seed)" [attr.aria-label]="'Spieler ' + (entry.seed + 1)">@if (entry.src) { <img [src]="entry.src" alt="" /> }<span>{{ entry.seed + 1 }}</span></button> }</div>
@@ -57,6 +58,7 @@ export class PlayerLabPage implements AfterViewInit, OnDestroy {
   readonly rotation = signal(-20);
   readonly paused = signal(false);
   readonly timeScale = signal(1);
+  readonly cursor = signal(0);
   readonly action = signal<PlayerActionState>('jog');
   readonly skeletonVisible = signal(false);
   readonly contactsVisible = signal(false);
@@ -75,6 +77,7 @@ export class PlayerLabPage implements AfterViewInit, OnDestroy {
     { value:'standing-tackle',label:'Zweikampf' }, { value:'slide',label:'Grätsche' }, { value:'stumble',label:'Stolpern / Aufstehen' },
     { value:'keeper-ready',label:'Torwart · bereit' }, { value:'keeper-catch',label:'Torwart · fangen' },
     { value:'keeper-dive',label:'Torwart · hechten' }, { value:'celebrate',label:'Torjubel' },
+    { value:'keeper-parry',label:'Torwart · abwehren' }, { value:'keeper-throw',label:'Torwart · abwerfen' },
   ];
   private renderer?: THREE.WebGLRenderer;
   private readonly scene = new THREE.Scene();
@@ -138,6 +141,10 @@ export class PlayerLabPage implements AfterViewInit, OnDestroy {
     this.model=createProceduralFootballer(this.player().visuals,this.kit(),this.player().kitNumber,this.action().startsWith('keeper-'),this.player().foot === 'Left');
     this.scene.add(this.model.mesh);this.skeleton=new THREE.SkeletonHelper(this.model.mesh);this.scene.add(this.skeleton);
   }
+  seek(seconds:number):void {
+    this.paused.set(true);this.elapsed=Math.max(0,Math.min(2.19,seconds));this.cursor.set(this.elapsed);
+    this.distance=this.elapsed*(this.action()==='sprint'?7.8:this.action()==='jog'?4:0);
+  }
   private frame(time: number): void {
     if (this.disposed || !this.model || !this.renderer) return;
     const dt=Math.min(.05,this.last?(time-this.last)/1000:0);this.last=time;
@@ -145,15 +152,19 @@ export class PlayerLabPage implements AfterViewInit, OnDestroy {
     const action=this.action();const speed=action==='sprint'?7.8:action==='jog'?4:0;
     if (!this.paused()) this.distance+=speed*dt*this.timeScale();
     const tick=this.elapsed*60,started=Math.floor(this.elapsed/2.2)*132;
+    if(Math.floor((this.elapsed%2.2)*10)!==Math.floor(this.cursor()*10)) this.cursor.set(this.elapsed%2.2);
     const state:PlayerRuntimeSnapshot={id:'preview',side:'home',x:0,y:0,homeX:0,homeY:0,vx:0,vy:speed,facingX:0,facingY:1,fitness:100,active:true,card:'none',action,actionStartedTick:started,decisionCooldown:0,skillCooldown:0,tackleCooldown:0,intentX:0,intentY:0,animationDistance:this.distance};
     const kick = ['pass','lob','shot','finesse-shot'].includes(action);
     if (kick) state.contact = { tick: started, x: 0, y: .56, z: .11, kind: 'foot', foot: this.player().foot === 'Left' ? 'left' : 'right' };
+    const keeper=action.startsWith('keeper-');
+    if(keeper) state.actionTarget={x:action==='keeper-dive'?1.05:0,y:.35,z:action==='keeper-dive'?.60:1.10};
     poseFootballer(this.model,state,tick,this.elapsed);
     this.model.mesh.rotation.y=this.rotation()*Math.PI/180;
-    this.skeleton!.visible=this.skeletonVisible();this.marker.visible=this.contactsVisible();this.marker.position.set(0,.11,.56).applyAxisAngle(new THREE.Vector3(0,1,0),this.model.mesh.rotation.y);
+    this.skeleton!.visible=this.skeletonVisible();this.marker.visible=this.contactsVisible();this.marker.position.set(state.actionTarget?.x??0,state.actionTarget?.z??.11,state.actionTarget?.y??.56).applyAxisAngle(new THREE.Vector3(0,1,0),this.model.mesh.rotation.y);
     const age=(tick-started)/60;
     this.ball.visible = !kick || age < .5;
     this.ball.position.set(0,.11,.56+(kick?Math.min(.5,age)*3:0)).applyAxisAngle(new THREE.Vector3(0,1,0),this.model.mesh.rotation.y);
+    if(keeper) this.ball.position.set(state.actionTarget!.x,state.actionTarget!.z,state.actionTarget!.y).applyAxisAngle(new THREE.Vector3(0,1,0),this.model.mesh.rotation.y);
     this.renderer.render(this.scene,this.camera);
     this.raf=requestAnimationFrame(t=>this.frame(t));
   }

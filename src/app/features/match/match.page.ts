@@ -24,6 +24,8 @@ import {
   MatchCommand,
   MatchEvent,
   MatchMode,
+  MatchConfig,
+  MatchPhase,
   MatchRenderState,
   MatchResult,
   MatchViewState,
@@ -92,7 +94,7 @@ export class MatchPage implements OnDestroy {
   private readonly inputBuffer = new TickInputBuffer();
   private readonly metrics = new MatchMetrics();
   protected readonly i18n = inject(I18nService);
-  private readonly audio = inject(AudioService);
+  protected readonly audio = inject(AudioService);
   private readonly travel = inject(TravelService);
   protected readonly controlHelp = inject(ControlHelpService);
   protected readonly ratingColor = ratingColor;
@@ -117,10 +119,12 @@ export class MatchPage implements OnDestroy {
   protected readonly autoEnabled = signal(false);
   protected readonly fullscreenActive = signal(false);
   protected readonly cameraView = signal<'ARCADE'|'TV'|'TAKTIK'>('ARCADE');
+  protected readonly switchPolicy = signal<NonNullable<MatchConfig['autoSwitch']>>('receivers');
   protected readonly matchView = signal<MatchViewState>(EMPTY_MATCH_VIEW);
   protected readonly committing = signal(false);
   protected readonly showSubs = signal(false);
   protected readonly showTactics = signal(false);
+  protected readonly showAudio = signal(false);
   protected readonly subOutId = signal('');
   protected readonly subInId = signal('');
   protected readonly touchX = signal(0);
@@ -213,6 +217,8 @@ export class MatchPage implements OnDestroy {
   });
 
   private readonly keyDown = (event: KeyboardEvent) => {
+    if (this.controlHelp.visible()) return;
+    if((event.target as HTMLElement | null)?.closest('input,textarea,select,[contenteditable="true"]')) return;
     if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].includes(event.code)) event.preventDefault();
     if (event.code === 'Escape' && this.phase() === 'match' && !event.repeat) {
       event.preventDefault();
@@ -250,6 +256,8 @@ export class MatchPage implements OnDestroy {
     document.addEventListener('fullscreenchange', this.fullscreenChange);
     effect(() => {
       this.document.body.classList.toggle('match-immersive', this.phase() === 'match');
+      if(this.phase()==='match' && this.playing()) this.audio.startCrowd();
+      else this.audio.stopCrowd();
     });
     effect(() => {
       const fixture = this.gs.nextFixture();
@@ -263,6 +271,8 @@ export class MatchPage implements OnDestroy {
       const helpVisible = this.controlHelp.visible();
       if (this.phase() !== 'match' || !this.arcade) return;
       if (helpVisible && this.playing()) {
+        this.resetInputs();
+        this.fixedAccumulator = 0;
         this.pausedForHelp = true;
         this.playing.set(false);
         this.arcade.setPaused(true);
@@ -342,6 +352,7 @@ export class MatchPage implements OnDestroy {
       seed: this.stableSeed(fixture.id),
       difficulty: settings?.difficulty ?? 'normal',
       assist: this.assist(),
+      autoSwitch: this.switchPolicy(),
       playerLockId: lockId,
       weather: this.practice ? 'clear' : this.expectedWeather(),
       inputDevice: this.selectedMode() === 'coach' ? 'ai' : this.inputDevice(),
@@ -453,12 +464,13 @@ export class MatchPage implements OnDestroy {
     if (this.arcade.phase === 'goalReplay') {
       this.replayElapsed += renderDelta;
       const frames = this.arcade.replaySnapshots();
-      const cursor = Math.min(frames.length - 1, this.replayElapsed / 3.4 * Math.max(0, frames.length - 1));
+      const duration = Math.max(1, (frames.length-1) / 60 / .65);
+      const cursor = Math.min(frames.length - 1, this.replayElapsed / duration * Math.max(0, frames.length - 1));
       const index = Math.max(0, Math.floor(cursor));
       const current = this.currentRenderState ?? this.arcade.renderState();
       const replay = frames.length ? interpolateThreeReplay(frames[index], frames[Math.min(frames.length - 1, index + 1)], cursor - index) : undefined;
       this.renderer?.render(this.arcade, { previous: current, current, alpha: 1, deltaSeconds: renderDelta }, replay);
-      if (this.replayElapsed >= 3.4) this.skipReplay();
+      if (this.replayElapsed >= duration) this.skipReplay();
       this.raf = requestAnimationFrame((time) => this.loop(time));
       return;
     }
@@ -473,6 +485,9 @@ export class MatchPage implements OnDestroy {
         this.previousRenderState = this.currentRenderState ?? this.arcade.renderState();
         this.arcade.step(MATCH_TICK, this.inputBuffer.consume(input, timestamp));
         this.currentRenderState = this.arcade.renderState();
+        for(const actor of this.arcade.actors) if(actor.contact?.tick===this.arcade.tick) {
+          this.audio.contact(actor.contact,Math.hypot(this.arcade.ball.vx,this.arcade.ball.vy));
+        }
         this.fixedAccumulator -= MATCH_TICK;
         steps++;
       }
@@ -484,6 +499,10 @@ export class MatchPage implements OnDestroy {
       }
       this.syncMatch(timestamp);
       this.lastSimulationCost = performance.now() - simulationStarted;
+    }
+    if((this.arcade.phase as MatchPhase)==='goalReplay') {
+      this.raf=requestAnimationFrame(time=>this.loop(time));
+      return;
     }
     const current = this.currentRenderState ?? this.arcade.renderState();
     const previous = this.previousRenderState ?? current;
@@ -518,6 +537,8 @@ export class MatchPage implements OnDestroy {
 
   private syncMatch(timestamp: number, forceView = false): void {
     if (!this.arcade) return;
+    const goalDistance=Math.min(this.arcade.ball.x,105-this.arcade.ball.x);
+    this.audio.setCrowdIntensity(this.arcade.phase==='goalReplay'?1:.1+Math.max(0,30-goalDistance)/50);
     const eventChanged = this.arcade.events.length !== this.matchView().eventRevision;
     if (eventChanged) this.revealed.set([...this.arcade.events]);
     for (const event of this.arcade.events.slice(this.lastAudioEvent)) this.audio.matchEvent(event);
@@ -551,6 +572,8 @@ export class MatchPage implements OnDestroy {
   }
 
   private initializeMatchProjection(): void {
+    this.audio.resetContacts();
+    this.switchPolicy.set(this.arcade?.config.autoSwitch ?? 'receivers');
     if (!this.arcade) return;
     const state = this.arcade.renderState();
     this.previousRenderState = state;
@@ -593,6 +616,7 @@ export class MatchPage implements OnDestroy {
 
   private enterHalftime(): void {
     if (!this.arcade) return;
+    this.controlHelp.flushProgress();
     cancelAnimationFrame(this.raf);
     this.raf = 0;
     this.renderer?.destroy();
@@ -622,11 +646,12 @@ export class MatchPage implements OnDestroy {
     this.resetInputs();
     this.arcade.setPaused(!this.playing());
     this.matchView.set(this.projectMatchView());
-    if (!this.playing()) this.saveCheckpoint();
+    if (!this.playing()) { this.controlHelp.flushProgress(); this.saveCheckpoint(); }
     else this.performanceMessage.set('');
   }
 
   private pauseFor(message: string): void {
+    this.controlHelp.flushProgress();
     this.resetInputs();
     this.fixedAccumulator = 0;
     this.lastTs = 0;
@@ -680,6 +705,7 @@ export class MatchPage implements OnDestroy {
 
   private finish(): void {
     if (!this.arcade) return;
+    this.controlHelp.flushProgress();
     cancelAnimationFrame(this.raf);
     const result = this.arcade.result();
     result.week = this.gs.nextFixture()?.week ?? result.week;
@@ -924,6 +950,7 @@ export class MatchPage implements OnDestroy {
     this.committing.set(false);
     this.phase.set('preview');
     this.audio.stopMusic();
+    this.audio.stopCrowd();
   }
 
   private destroyRenderer(): void {
@@ -949,6 +976,7 @@ export class MatchPage implements OnDestroy {
   }
 
   ngOnDestroy(): void {
+    this.controlHelp.flushProgress();
     this.disposed = true;
     if (this.introTimer) clearTimeout(this.introTimer);
     cancelAnimationFrame(this.raf);
@@ -962,6 +990,14 @@ export class MatchPage implements OnDestroy {
     this.document.body.classList.remove('match-immersive');
     void this.exitImmersiveMode();
     this.audio.stopMusic();
+    this.audio.stopCrowd();
+  }
+
+  protected cycleSwitchPolicy():void {
+    const policies=['receivers','assisted','manual'] as const;
+    const next=policies[(policies.indexOf(this.switchPolicy())+1)%policies.length];
+    this.switchPolicy.set(next);
+    if(this.arcade) this.arcade.config.autoSwitch=next;
   }
 }
 

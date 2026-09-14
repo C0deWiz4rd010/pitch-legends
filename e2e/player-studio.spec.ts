@@ -17,6 +17,13 @@ test('procedural studio shares portraits and changes identity, kits and animatio
   await page.getByLabel('Bewegung',{exact:true}).selectOption('shot');
   await page.getByLabel('Tempo',{exact:true}).selectOption({label:'Zeitlupe · ¼'});
   await page.screenshot({path:info.outputPath('player-studio.png')});
+  await page.getByLabel('Bewegung',{exact:true}).selectOption('keeper-dive');
+  await page.getByLabel('Bewegungsablauf',{exact:true}).fill('0.24');
+  await expect(page.getByRole('button',{name:'▶ Abspielen'})).toBeVisible();
+  await page.screenshot({path:info.outputPath('goalkeeper-dive.png')});
+  await page.getByLabel('Bewegung',{exact:true}).selectOption('keeper-catch');
+  await page.getByLabel('Bewegungsablauf',{exact:true}).fill('0.25');
+  await page.screenshot({path:info.outputPath('goalkeeper-catch.png')});
   await page.getByLabel('Trikot',{exact:true}).selectOption({label:'Sunset · Auswärts'});
   await expect(page.getByLabel('Spieler-Seed')).toHaveValue('7');
   await page.getByRole('link',{name:/auf den platz/i}).click();

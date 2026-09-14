@@ -4,7 +4,9 @@ import { resolveMatchKits, MatchKitSelection } from '../../core/kit-visuals';
 import { hash32 } from '../../core/visual-identity';
 import { MatchRenderFrame, MatchRenderState, MatchSnapshot } from '../../models/match.model';
 import { createProceduralFootballer, poseFootballer, ProceduralFootballer } from './three-player.factory';
-import { interpolateThreeFrame } from './three-render-state';
+import { interpolateThreeFrame, playerInCameraSpace } from './three-render-state';
+import { usesSoftwareGraphics } from './graphics-capabilities';
+import { advanceBroadcastCamera } from './broadcast-camera';
 
 type VisualState = MatchRenderState | MatchSnapshot;
 export type PitchQuality = 'high' | 'balanced' | 'low';
@@ -54,6 +56,7 @@ export class ThreePitchRenderer {
   private readonly confettiVelocity = new Float32Array(160 * 3);
   private readonly weather: THREE.LineSegments;
   private quality: PitchQuality;
+  private readonly software: boolean;
   private pixelRatio: number;
   private width = 1280;
   private height = 720;
@@ -66,6 +69,7 @@ export class ThreePitchRenderer {
   private cameraZ = 0;
   private viewWidth = 91;
   private lastDirection = 1;
+  private cameraInitialized=false;
   private contextLost = false;
   private disposed = false;
   private lastHud = -1;
@@ -91,11 +95,9 @@ export class ThreePitchRenderer {
     const mobile = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
     this.quality = mobile ? 'balanced' : 'high';
     this.pixelRatio = Math.min(window.devicePixelRatio || 1, mobile ? 1.35 : 1.75);
-    this.renderer = new THREE.WebGLRenderer({ canvas, alpha: false, antialias: true, powerPreference: 'high-performance' });
-    const gl = this.renderer.getContext();
-    const debugRenderer = gl.getExtension('WEBGL_debug_renderer_info');
-    const adapter = debugRenderer ? String(gl.getParameter(debugRenderer.UNMASKED_RENDERER_WEBGL)) : '';
-    if (/swiftshader|llvmpipe|software/i.test(adapter)) { this.quality = 'low'; this.pixelRatio = .75; }
+    this.software=usesSoftwareGraphics();
+    this.renderer = new THREE.WebGLRenderer({ canvas, alpha: false, antialias: !this.software, powerPreference: 'high-performance' });
+    if (this.software) { this.quality = 'low'; this.pixelRatio = .35; }
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 0.98;
@@ -205,12 +207,23 @@ export class ThreePitchRenderer {
     this.updateCamera(match, match.renderState(), 1, false);
     await this.renderer.compileAsync(this.scene, this.camera);
     if (this.disposed) return;
+    // Upload every rig and stadium mesh before play, including ones outside the opening view.
+    const warmTarget=new THREE.WebGLRenderTarget(8,8);
+    const warmCamera=new THREE.OrthographicCamera(-90,90,75,-75,.1,250);
+    warmCamera.position.set(0,130,0);warmCamera.lookAt(0,0,0);
+    const culling=new Map<THREE.Object3D,boolean>();
+    this.scene.traverse(object=>{culling.set(object,object.frustumCulled);object.frustumCulled=false;});
+    try {this.renderer.setRenderTarget(warmTarget);this.renderer.render(this.scene,warmCamera);}
+    finally {this.renderer.setRenderTarget(null);warmTarget.dispose();culling.forEach((value,object)=>object.frustumCulled=value);}
     // Upload geometry, bone textures and shadow targets before the match clock starts.
     const state = match.renderState();
     this.render(match, { previous: state, current: state, alpha: 1, deltaSeconds: 1 / 60 });
     await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
     if (this.disposed) return;
     this.render(match, { previous: state, current: state, alpha: 1, deltaSeconds: 1 / 60 });
+    // A software driver can still be compiling/rasterizing after render() returns.
+    // Finish that one-time work behind the loading screen, never inside live play.
+    if(this.software) this.renderer.getContext().finish();
     await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
   }
 
@@ -246,7 +259,7 @@ export class ThreePitchRenderer {
       this.cullSphere.center.copy(model.mesh.position).setY(1);
       if (!this.cullFrustum.intersectsSphere(this.cullSphere)) { model.mesh.visible = false; continue; }
       model.mesh.rotation.y = Math.atan2(player.facingX * mirror, player.facingY);
-      poseFootballer(model, player, state.tick, this.time, match.config.camera.reducedMotion);
+      poseFootballer(model, playerInCameraSpace(player,mirror), state.tick, this.time, match.config.camera.reducedMotion,player.id===state.controlledPlayerId&&!replay?match.actionPower:0);
       this.matrixDummy.position.copy(model.mesh.position).setY(0.014);
       this.matrixDummy.rotation.set(-Math.PI / 2, 0, 0);
       this.matrixDummy.scale.set(1.0, 0.66, 1);
@@ -288,7 +301,7 @@ export class ThreePitchRenderer {
 
   setQuality(quality: PitchQuality): void {
     this.quality = quality;
-    this.pixelRatio = Math.min(window.devicePixelRatio || 1, quality === 'high' ? 1.75 : quality === 'balanced' ? 1.25 : 0.85);
+    this.pixelRatio = Math.min(window.devicePixelRatio || 1, this.software ? .35 : quality === 'high' ? 1.75 : quality === 'balanced' ? 1.25 : 0.85);
     this.renderer.shadowMap.enabled = quality === 'high';
     this.resize();
     this.canvas.dataset['quality'] = quality;
@@ -337,24 +350,21 @@ export class ThreePitchRenderer {
     const bz = state.ball.y - FIELD_WIDTH / 2;
     const sx = selected ? (selected.x - FIELD_LENGTH / 2) * mirror : bx;
     const sz = selected ? selected.y - FIELD_WIDTH / 2 : bz;
-    const lead = Math.min(0.30, match.config.camera.lookAhead ?? 0.18);
-    const targetX = THREE.MathUtils.clamp(bx * 0.78 + sx * 0.22 + state.ball.vx * mirror * lead, -43, 43);
-    const targetZ = THREE.MathUtils.clamp(bz * 0.78 + sz * 0.22 + state.ball.vy * lead * 0.65, -24, 24);
-    const fastBall = Math.hypot(state.ball.vx, state.ball.vy) > 15;
-    const penalty = Math.abs(bx) > 32;
-    const kickoff = match.rule.phase === 'kickoff';
-    const baseWidth = replay ? 30 : kickoff ? 58 : penalty ? 40 : fastBall ? 62 : 44;
+    const lead = Math.min(0.12, match.config.camera.lookAhead ?? 0.12);
+    const targetX = THREE.MathUtils.clamp(bx * 0.55 + sx * 0.45 + state.ball.vx * mirror * lead, -43, 43);
+    const targetZ = THREE.MathUtils.clamp(bz * 0.55 + sz * 0.45 + state.ball.vy * lead * 0.5, -24, 24);
+    const baseWidth = replay && !match.config.camera.reducedMotion ? 34 : 48;
     const targetWidth = Math.max(baseWidth, Math.abs(bx - sx) * 1.25 + 25) / THREE.MathUtils.clamp(match.config.camera.zoom || 1, 0.6, 1.4);
-    const smooth = 1 - Math.exp(-(match.config.camera.reducedMotion ? 12 : replay ? 5.0 : 6.3) * dt);
-    if (this.lastDirection !== mirror) {
+    if (!this.cameraInitialized || this.lastDirection !== mirror) {
       this.cameraX = targetX;
       this.cameraZ = targetZ;
+      this.viewWidth=targetWidth;
+      this.cameraInitialized=true;
       this.trailPoints.length = 0;
       this.lastDirection = mirror;
     }
-    this.cameraX += (targetX - this.cameraX) * smooth;
-    this.cameraZ += (targetZ - this.cameraZ) * smooth;
-    this.viewWidth += (targetWidth - this.viewWidth) * (1 - Math.exp(-2.4 * dt));
+    const next=advanceBroadcastCamera({x:this.cameraX,z:this.cameraZ,width:this.viewWidth},{x:targetX,z:targetZ,width:targetWidth},dt,replay);
+    this.cameraX=next.x;this.cameraZ=next.z;this.viewWidth=next.width;
     const cameraDistance = this.viewWidth / Math.max(1.1,this.width/this.height) / (2*Math.tan(THREE.MathUtils.degToRad(46/2)));
     this.camera.position.set(this.cameraX, cameraDistance * .68, this.cameraZ + cameraDistance * .733);
     this.camera.lookAt(this.cameraX, 0, this.cameraZ);
@@ -364,6 +374,7 @@ export class ThreePitchRenderer {
   private ensureMatch(match: ArcadeMatch): void {
     if (this.matchId !== match.matchId) {
       this.matchId = match.matchId;
+      this.cameraInitialized=false;
       this.kits = resolveMatchKits(match.home, match.away);
       for (const model of this.models.values()) model.destroy();
       this.models.clear();
@@ -382,7 +393,7 @@ export class ThreePitchRenderer {
       const kit = actor.player.positionGroup === 'GK'
         ? actor.side === 'home' ? this.kits!.homeGoalkeeper : this.kits!.awayGoalkeeper
         : actor.side === 'home' ? this.kits!.home : this.kits!.away;
-      const model = createProceduralFootballer(actor.player.visuals, kit, actor.player.kitNumber, actor.player.positionGroup === 'GK', actor.player.foot === 'Left');
+      const model = createProceduralFootballer(actor.player.visuals, kit, actor.player.kitNumber, actor.player.positionGroup === 'GK', actor.player.foot === 'Left',this.software);
       this.models.set(actor.player.id, model);
       this.scene.add(model.mesh);
     }
@@ -404,8 +415,8 @@ export class ThreePitchRenderer {
     surround.receiveShadow = true;
     this.stadium.add(surround);
     const pitchTexture = createPitchTexture(match.home.visuals.seed, match.config.weather !== 'clear');
-    pitchTexture.anisotropy = Math.min(8, this.renderer.capabilities.getMaxAnisotropy());
-    const pitch = new THREE.Mesh(new THREE.PlaneGeometry(FIELD_LENGTH, FIELD_WIDTH), new THREE.MeshStandardMaterial({ map: pitchTexture, roughness: 0.94, metalness: 0, color: '#ffffff' }));
+    pitchTexture.anisotropy = this.software?1:Math.min(8, this.renderer.capabilities.getMaxAnisotropy());
+    const pitch = new THREE.Mesh(new THREE.PlaneGeometry(FIELD_LENGTH, FIELD_WIDTH), this.software?new THREE.MeshBasicMaterial({map:pitchTexture,color:'#74ab83'}):new THREE.MeshStandardMaterial({ map: pitchTexture, roughness: 0.94, metalness: 0, color: '#ffffff' }));
     pitch.rotation.x = -Math.PI / 2;
     pitch.receiveShadow = true;
     this.stadium.add(pitch);

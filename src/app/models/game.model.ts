@@ -113,6 +113,7 @@ export interface GameSettings {
   matchDuration: MatchDuration;
   musicVolume: number;
   sfxVolume: number;
+  crowdVolume?: number;
   assistPreset: AssistPreset;
   cameraShake: boolean;
   reducedMotion: boolean;
@@ -128,6 +129,7 @@ export function defaultSettings(): GameSettings {
     matchDuration: 3,
     musicVolume: 0.35,
     sfxVolume: 0.65,
+    crowdVolume: 0.45,
     assistPreset: 'balanced',
     cameraShake: true,
     reducedMotion: false,

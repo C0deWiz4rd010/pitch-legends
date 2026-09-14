@@ -83,7 +83,7 @@ test('player identity loads offline and live AUTO remains reversible', async ({ 
   await page.goto('/squad');
   await page.locator('.pcard').first().click();
   const portrait = page.locator('.player-visuals img').first();
-  await expect(portrait).toHaveAttribute('src', /^data:image\/(?:png|svg\+xml)/);
+  await expect(portrait).toHaveAttribute('src', /^data:image\/(?:png|svg\+xml)/, {timeout:30_000});
   expect(await portrait.evaluate((image: HTMLImageElement) => image.complete && image.naturalWidth > 0)).toBe(true);
 
   await page.goto('/');

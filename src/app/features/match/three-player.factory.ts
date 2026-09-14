@@ -41,7 +41,7 @@ type Joint = 'hips' | 'spine' | 'chest' | 'head' | 'leftThigh' | 'leftShin' | 'l
 
 /** All body parts share one draw call and one skeleton; no per-part materials. */
 export interface ProceduralFootballer {
-  mesh: THREE.SkinnedMesh<THREE.BufferGeometry, THREE.MeshStandardMaterial>;
+  mesh: THREE.SkinnedMesh<THREE.BufferGeometry, THREE.MeshStandardMaterial | THREE.MeshLambertMaterial>;
   joints: Record<Joint, THREE.Bone>;
   recipe: PlayerAppearanceRecipe;
   hipHeight: number;
@@ -90,7 +90,7 @@ class SkinGeometry {
 }
 
 /** Seeded low-poly human, in metres, looking along local +Z. */
-export function createProceduralFootballer(identity: PlayerVisualIdentity, kit: KitDesign, kitNumber = 10, goalkeeper = false, leftFooted = false): ProceduralFootballer {
+export function createProceduralFootballer(identity: PlayerVisualIdentity, kit: KitDesign, kitNumber = 10, goalkeeper = false, leftFooted = false, compact = false): ProceduralFootballer {
   const recipe = createAppearanceRecipe(identity);
   const scale = recipe.height / 1.82;
   const hip = 0.94 * scale;
@@ -126,13 +126,13 @@ export function createProceduralFootballer(identity: PlayerVisualIdentity, kit: 
     bone(`${side}Hand`, `${side}Forearm`, sign * 0.03, -0.23 * scale, 0);
   }
   const sphere = (joint: Joint, color: string, x: number, y: number, z: number, sx: number, sy: number, sz: number, detail = 8) => {
-    data.add(new THREE.SphereGeometry(1, detail, 6), color, indices[joint], bind[joint].clone().add(new THREE.Vector3(x, y, z)), new THREE.Vector3(sx, sy, sz));
+    data.add(new THREE.SphereGeometry(1, compact?6:detail, compact?4:6), color, indices[joint], bind[joint].clone().add(new THREE.Vector3(x, y, z)), new THREE.Vector3(sx, sy, sz));
   };
   const box = (joint: Joint, color: string, x: number, y: number, z: number, sx: number, sy: number, sz: number, angle = 0) => {
     data.add(new THREE.BoxGeometry(sx, sy, sz), color, indices[joint], bind[joint].clone().add(new THREE.Vector3(x, y, z)), undefined, new THREE.Euler(0, 0, angle));
   };
   const cylinder = (joint: Joint, color: string, x: number, y: number, z: number, top: number, bottom: number, height: number, depth = 1) => {
-    data.add(new THREE.CylinderGeometry(top, bottom, height, 8), color, indices[joint], bind[joint].clone().add(new THREE.Vector3(x, y, z)), new THREE.Vector3(1, 1, depth));
+    data.add(new THREE.CylinderGeometry(top, bottom, height, compact?6:8), color, indices[joint], bind[joint].clone().add(new THREE.Vector3(x, y, z)), new THREE.Vector3(1, 1, depth));
   };
   // Athletic shoulders, tapered jersey and shorts; visible joints are rounded.
   cylinder('spine', kit.shirt, 0, 0.095, 0, shoulder * 0.57, shoulder * 0.43, 0.355 * scale, 0.60);
@@ -245,7 +245,7 @@ export function createProceduralFootballer(identity: PlayerVisualIdentity, kit: 
     }
   }
   const geometry = data.finish();
-  const material = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.87, metalness: 0, flatShading: false });
+  const material = compact?new THREE.MeshLambertMaterial({vertexColors:true}):new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.87, metalness: 0, flatShading: false });
   const mesh = new THREE.SkinnedMesh(geometry, material);
   mesh.name = `footballer-${recipe.seed}`;
   mesh.add(joints.hips);
@@ -284,32 +284,34 @@ export function placeFoot(model: ProceduralFootballer, side: 'left' | 'right', x
 }
 
 /** Continuous, distance-driven locomotion and simulation-timed action poses. */
-export function poseFootballer(model: ProceduralFootballer, state: PlayerRuntimeSnapshot, tick: number, time: number, reducedMotion = false): void {
+export function poseFootballer(model: ProceduralFootballer, state: PlayerRuntimeSnapshot, tick: number, time: number, reducedMotion = false, chargePower = 0): void {
   const j = model.joints;
   const speed = Math.hypot(state.vx, state.vy);
   const run = THREE.MathUtils.clamp(speed / 7.8, 0, 1);
-  const cycle = (state.animationDistance ?? 0) / 2.5;
+  const stride=3;
+  const cycle = (state.animationDistance ?? 0) / stride;
   const phase = cycle * TAU;
   const age = Math.max(0, (tick - state.actionStartedTick) / 60);
   const breath = reducedMotion ? 0 : Math.sin(time * 2.2 + model.recipe.seed % 11) * 0.005;
   for (const joint of Object.values(j)) joint.rotation.set(0, 0, 0);
   const moving = Math.min(1, speed / 0.8);
   const maximumReach = model.thighLength + model.shinLength - 0.014;
-  const stanceHalf = 2.5 * 0.25 / 2;
+  const stanceHalf = stride * 0.25 / 2;
   const hipDrop = model.hipHeight - (0.11 + Math.sqrt(maximumReach * maximumReach - stanceHalf * stanceHalf));
-  j.hips.position.y = model.hipHeight - hipDrop * moving + breath;
+  j.hips.position.set(0,model.hipHeight - hipDrop * moving + breath,0);
   j.spine.rotation.x = 0.13 * run;
   j.spine.rotation.y = Math.sin(phase) * 0.08 * run;
   j.chest.rotation.y = -Math.sin(phase) * 0.12 * run;
   j.head.rotation.x = -0.08 * run;
   const forwardVelocity = speed > 0.01 ? (state.vx * state.facingX + state.vy * state.facingY) / speed : 1;
   const sideVelocity = speed > 0.01 ? (state.vx * state.facingY - state.vy * state.facingX) / speed : 0;
+  j.spine.rotation.z=-sideVelocity*run*.18;
   for (const side of ['left', 'right'] as const) {
     const t = ((cycle + (side === 'left' ? 0 : 0.5)) % 1 + 1) % 1;
     const sign = side === 'left' ? 1 : -1;
     // During stance, d(forward)/d(distance) = -1: the foot stays on the turf.
     const swing = Math.max(0, (t - 0.25) / 0.75);
-    const travel = t < 0.25 ? stanceHalf - t * 2.5 : -stanceHalf * Math.cos(swing * Math.PI);
+    const travel = t < 0.25 ? stanceHalf - t * stride : -stanceHalf * Math.cos(swing * Math.PI);
     const lift = t < 0.25 ? 0 : Math.sin(swing * Math.PI) * (0.07 + run * 0.19);
     placeFoot(model, side, sign * 0.108 + travel * sideVelocity * moving,
       0.11 + lift * moving, travel * forwardVelocity * moving);
@@ -318,18 +320,25 @@ export function poseFootballer(model: ProceduralFootballer, state: PlayerRuntime
     j[`${side}Forearm`].rotation.x = -0.22 - run * 0.78;
   }
   const kick = ['pass', 'through-pass', 'lob', 'shot', 'low-shot', 'finesse-shot', 'chip-shot', 'keeper-kick'].includes(state.action);
-  if (kick && age < 0.42) {
-    // The contact starts at the authoritative action tick, followed by a full follow-through.
+  if (kick && age < 0.50) {
     const strength = ['pass', 'through-pass'].includes(state.action) ? 0.75 : 1;
-    const envelope = Math.sin(Math.min(1, age / 0.42) * Math.PI) * strength;
-    const side = model.footedness > 0 ? 'right' : 'left';
-    j[`${side}Thigh`].rotation.x = -0.62 - envelope * 0.62;
-    j[`${side}Shin`].rotation.x = 0.30 * (1 - envelope);
-    j[`${side}Foot`].rotation.x = 0.27;
-    j.spine.rotation.x = 0.16 * envelope;
-    j.chest.rotation.y = -model.footedness * envelope * 0.28;
-    j.leftArm.rotation.z = 0.35 + envelope * 0.35;
-    j.rightArm.rotation.z = -0.35 - envelope * 0.35;
+    const weight=1-THREE.MathUtils.smoothstep(age,.17,.50);
+    const extension=Math.sin(Math.min(1,age/.36)*Math.PI)*strength;
+    const side=model.footedness>0?'right':'left';
+    const thigh=j[`${side}Thigh`],shin=j[`${side}Shin`],foot=j[`${side}Foot`];
+    thigh.rotation.x=THREE.MathUtils.lerp(thigh.rotation.x,-.62-extension*.66,weight);
+    shin.rotation.x=THREE.MathUtils.lerp(shin.rotation.x,.24*(1-extension),weight);
+    foot.rotation.x=THREE.MathUtils.lerp(foot.rotation.x,.22,weight);
+    j.spine.rotation.x+=.18*extension*weight;
+    j.chest.rotation.y-=model.footedness*extension*.32*weight;
+    j.leftArm.rotation.z+=.55*weight;j.rightArm.rotation.z-=.55*weight;
+  } else if(chargePower>.01) {
+    const power=Math.min(1,chargePower),side=model.footedness>0?'right':'left';
+    j[`${side}Thigh`].rotation.x+=power*.50;
+    j[`${side}Shin`].rotation.x+=power*.65;
+    j.chest.rotation.y+=model.footedness*power*.28;
+    j.spine.rotation.x-=power*.09;
+    j.leftArm.rotation.z+=power*.35;j.rightArm.rotation.z-=power*.35;
   }
   if (state.action === 'receive' || state.action === 'close-control' || state.action === 'ball-roll' || state.action === 'drag-back') {
     j.rightThigh.rotation.x -= Math.sin(Math.min(age * 6, 1) * Math.PI) * 0.38;
@@ -359,25 +368,43 @@ export function poseFootballer(model: ProceduralFootballer, state: PlayerRuntime
     j.rightArm.rotation.z = -0.68;
   }
   if (state.action.startsWith('keeper-') && !['keeper-kick', 'keeper-rush'].includes(state.action)) {
-    j.hips.position.y -= 0.07;
-    j.leftArm.rotation.z = 0.40;
-    j.rightArm.rotation.z = -0.40;
-    j.leftForearm.rotation.x = -0.95;
-    j.rightForearm.rotation.x = -0.95;
-    j.leftThigh.rotation.z = 0.14;
-    j.rightThigh.rotation.z = -0.14;
-    if (state.action === 'keeper-catch' || state.action === 'keeper-parry' || state.action === 'keeper-throw') {
-      j.leftArm.rotation.x = -1.05;
-      j.rightArm.rotation.x = -1.05;
-      j.leftForearm.rotation.x = -0.25;
-      j.rightForearm.rotation.x = -0.25;
+    const baseHeight=j.hips.position.y;
+    j.hips.position.y-=.12;
+    j.spine.rotation.x=.16;
+    j.leftArm.rotation.z=.27;j.rightArm.rotation.z=-.27;
+    j.leftArm.rotation.x=j.rightArm.rotation.x=-.55;
+    j.leftForearm.rotation.x=j.rightForearm.rotation.x=-.95;
+    if(speed<.5) {
+      placeFoot(model,'left',.19,.11,.03);
+      placeFoot(model,'right',-.19,.11,.03);
     }
-    if (state.action === 'keeper-dive') {
-      const envelope = Math.sin(Math.min(age / 0.85, 1) * Math.PI);
-      j.hips.rotation.z = (state.vy >= 0 ? 1 : -1) * envelope * 1.18;
-      j.hips.position.y -= envelope * 0.22;
-      j.leftArm.rotation.z = 2.3 * envelope;
-      j.rightArm.rotation.z = -2.3 * envelope;
+    const source=state.actionTarget ?? (state.contact?.kind==='hand'?state.contact:undefined);
+    const dx=(source?.x ?? state.x)-state.x,dy=(source?.y ?? state.y+.35)-state.y;
+    const target=new THREE.Vector3(dx*state.facingY-dy*state.facingX,source?.z ?? 1.1,dx*state.facingX+dy*state.facingY);
+    if(state.action==='keeper-dive') {
+      const extent=THREE.MathUtils.smoothstep(age,0,.20)*(1-THREE.MathUtils.smoothstep(age,.52,1.10));
+      const sign=Math.sign(target.x)||1;
+      j.hips.position.x=target.x*.35*extent;
+      j.hips.position.y=THREE.MathUtils.lerp(baseHeight,Math.max(.36,target.y*.55),extent);
+      j.hips.rotation.z=-sign*1.22*extent;
+      j.spine.rotation.x=.10;
+      j.leftThigh.rotation.x=-.20*extent;j.rightThigh.rotation.x=-.35*extent;
+      j.leftShin.rotation.x=.45*extent;j.rightShin.rotation.x=.60*extent;
+      pointHand(model,'left',target.clone().add(new THREE.Vector3(.07,0,0)),extent);
+      pointHand(model,'right',target.clone().add(new THREE.Vector3(-.07,0,0)),extent);
+    } else if(state.action==='keeper-catch') {
+      const gather=THREE.MathUtils.smoothstep(age,0,.22);
+      target.lerp(new THREE.Vector3(0,1.10,.35),gather);
+      pointHand(model,'left',target.clone().add(new THREE.Vector3(.08,0,-.025)),1);
+      pointHand(model,'right',target.clone().add(new THREE.Vector3(-.08,0,-.025)),1);
+    } else if(state.action==='keeper-parry') {
+      const weight=1-THREE.MathUtils.smoothstep(age,.12,.65);
+      pointHand(model,'left',target.clone().add(new THREE.Vector3(.08,0,0)),weight);
+      pointHand(model,'right',target.clone().add(new THREE.Vector3(-.08,0,0)),weight);
+    } else if(state.action==='keeper-throw') {
+      const weight=1-THREE.MathUtils.smoothstep(age,.15,.45);
+      j.rightArm.rotation.x=-1.3*weight;j.rightForearm.rotation.x=-.25*weight;
+      j.chest.rotation.y=-.32*weight;
     }
   }
   const contact = state.contact;
@@ -403,4 +430,25 @@ export function poseFootballer(model: ProceduralFootballer, state: PlayerRuntime
     j.rightForearm.rotation.x = -0.2;
     if (!reducedMotion) j.hips.position.y += Math.abs(Math.sin(age * 6)) * 0.10;
   }
+}
+
+/** Two-link arm aiming preserves elbow length and solves in the current chest frame. */
+function pointHand(model:ProceduralFootballer,side:'left'|'right',target:THREE.Vector3,weight:number):void {
+  const arm=model.joints[`${side}Arm`],elbow=model.joints[`${side}Forearm`],hand=model.joints[`${side}Hand`];
+  const oldArm=arm.quaternion.clone(),oldElbow=elbow.quaternion.clone();
+  model.mesh.updateMatrixWorld(true);
+  const origin=arm.getWorldPosition(new THREE.Vector3()),destination=model.mesh.localToWorld(target.clone());
+  const delta=destination.clone().sub(origin),upper=elbow.position.length(),lower=hand.position.length();
+  const distance=THREE.MathUtils.clamp(delta.length(),.001,upper+lower-.001),direction=delta.normalize();
+  const pole=new THREE.Vector3(side==='left'?1:-1,-1,-.4).transformDirection(model.mesh.matrixWorld);
+  const bend=pole.addScaledVector(direction,-pole.dot(direction)).normalize();
+  const cosine=THREE.MathUtils.clamp((upper*upper+distance*distance-lower*lower)/(2*upper*distance),-1,1);
+  const elbowTarget=origin.clone().addScaledVector(direction,upper*cosine).addScaledVector(bend,upper*Math.sqrt(1-cosine*cosine));
+  const aim=(bone:THREE.Bone,child:THREE.Bone,world:THREE.Vector3)=>{
+    const local=bone.parent!.worldToLocal(world.clone()).sub(bone.position).normalize();
+    bone.quaternion.setFromUnitVectors(child.position.clone().normalize(),local);
+    model.mesh.updateMatrixWorld(true);
+  };
+  aim(arm,elbow,elbowTarget);aim(elbow,hand,destination);
+  arm.quaternion.copy(oldArm.slerp(arm.quaternion,weight));elbow.quaternion.copy(oldElbow.slerp(elbow.quaternion,weight));
 }

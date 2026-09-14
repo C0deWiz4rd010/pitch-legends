@@ -216,9 +216,11 @@
 
       <div class="match-toolbar">
         <button class="btn btn--ghost btn--sm camera-choice" (click)="cycleCamera()">KAMERA · {{ cameraView() }}</button>
+        <button class="btn btn--ghost btn--sm" (click)="cycleSwitchPolicy()">SPIELERWAHL · {{ switchPolicy()==='receivers'?'RUHIG':switchPolicy()==='manual'?'MANUELL':'AUTO' }}</button>
         <button class="btn btn--ghost btn--sm" (click)="togglePlay()">{{ playing() ? 'PAUSE' : 'PLAY' }}</button>
         <button class="btn btn--ghost btn--sm auto-toggle" [class.on]="autoEnabled()" (click)="toggleAuto()">◈ AUTO · {{ autoEnabled() ? 'KI STEUERT' : 'AUS' }}</button>
         <button class="btn btn--ghost btn--sm" (click)="openControls()">? STEUERUNG</button>
+        <button class="btn btn--ghost btn--sm" [attr.aria-expanded]="showAudio()" (click)="showAudio.set(!showAudio())">AUDIO</button>
         @if (selectedMode() === 'coach' && autoEnabled()) { <button class="btn btn--ghost btn--sm" (click)="cycleSpeed()">{{ speed() }}× SPEED</button> }
         <button class="btn btn--ghost btn--sm" [class.on]="showTactics()" (click)="showTactics.set(!showTactics())">Q · TAKTIK</button>
         <button class="btn btn--ghost btn--sm" [class.on]="showSubs()" (click)="showSubs.set(!showSubs())">WECHSEL {{ subsRemaining() }}</button>
@@ -232,6 +234,15 @@
           <div><span>PRESSING</span>@for (value of pressings; track value) { <button [class.active]="currentPressing() === value" (click)="setPressing(value)">{{ value }}</button> }</div>
           <div><span>BREITE</span>@for (value of widths; track value) { <button [class.active]="currentWidth() === value" (click)="setWidth(value)">{{ value }}</button> }<button (click)="toggleCounter()">KONTER ↔</button></div>
         </div>
+      }
+      @if (showAudio()) {
+        <section class="audio-panel" aria-label="Audio">
+          <button class="btn btn--ghost btn--sm" (click)="showAudio.set(false)">{{ i18n.locale()==='de'?'Schließen':'Close' }}</button>
+          <label><input type="checkbox" [checked]="audio.settings().soundEnabled" (change)="audio.toggleSound()" /> {{ i18n.locale()==='de'?'Sound aktivieren':'Enable sound' }}</label>
+          <label>{{ i18n.locale()==='de'?'Musik':'Music' }}<input aria-label="Music" type="range" min="0" max="1" step=".05" [value]="audio.settings().musicVolume" (input)="audio.setVolume('musicVolume',+$any($event.target).value)" /></label>
+          <label>{{ i18n.locale()==='de'?'Effekte':'Effects' }}<input aria-label="Effects" type="range" min="0" max="1" step=".05" [value]="audio.settings().sfxVolume" (input)="audio.setVolume('sfxVolume',+$any($event.target).value)" /></label>
+          <label>{{ i18n.locale()==='de'?'Publikum':'Crowd' }}<input aria-label="Crowd" type="range" min="0" max="1" step=".05" [value]="audio.settings().crowdVolume ?? .45" (input)="audio.setVolume('crowdVolume',+$any($event.target).value)" /></label>
+        </section>
       }
       @if (showSubs()) {
         <div class="sub-panel card">

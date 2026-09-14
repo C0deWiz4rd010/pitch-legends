@@ -2,6 +2,8 @@
 
 Verbindlicher Masterplan vom 5. September 2026. Die Umsetzung und Prüfbelege werden in `IMPLEMENTATION_2_0_LOG.md` festgehalten. Dieser Plan ersetzt die früheren PLAN-/V2-/Gameplay-/Grafik-Roadmaps als aktuelle Arbeitsgrundlage; diese bleiben historische Dokumente.
 
+Ergänzung vom 14. September: [Asset-/Animationsqualität und gezielter Agent-Einsatz](ASSET_ANIMATION_QUALITY_PLAN.md). Die geprüfte Entscheidung priorisiert Skelett-, Kontakt- und Gelenkqualität vor neuen Rasterassets; Aseprite wird zunächst nicht in die Spielerproduktion eingeführt.
+
 Aus Pitch Legends wird ein direkt zugängliches Fußballspiel mit taktischer Tiefe, stilisierten 3D-Spielern und einer langfristig funktionierenden Karriere. Gameplay, Ballgefühl und Animation bestimmen die Reihenfolge. Jede abgeschlossene Phase wird geprüft, mit verständlichen Conventional Commits auf `develop` gepusht und auf GitHub Pages veröffentlicht.
 
 ## Ausgangspunkt und verbindliche Entscheidungen
@@ -255,3 +257,8 @@ Spielspaß wird regelmäßig überprüft. Ein bestandener Build oder eine hohe d
 - https://threejs.org/docs/pages/AnimationMixer.html
 - https://quaternius.com/packs/universalanimationlibrary.html
 - https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/trigger-a-workflow
+
+
+## Prioritätskorrektur vom 6. September 2026
+
+Nach der sichtbaren 3D-Umstellung priorisiert der Nutzer ausdrücklich weitere Gameplay-/Animationsarbeit: ruhigere Kamera, beständigere Spielerwahl, glaubhafte Torwart- und Aktionsabläufe. Diese Rückmeldungen werden als zusätzlicher Abnahmeblock vor Phase 8 behandelt. Das Handbuch erhält danach die tatsächliche neue Steuerung und eine moderne interaktive Darstellung. Die Phasen 8–12 bleiben beauftragt; sie werden zugunsten dieser Gameplay-Abnahme zurückgestellt.

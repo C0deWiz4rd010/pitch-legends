@@ -1,5 +1,9 @@
 import { expect, Page, test } from '@playwright/test';
 
+// Measure the game without trace screenshot/readback instrumentation. Failure
+// screenshots and the attached numerical report remain available.
+test.use({trace:'off'});
+
 async function createCareer(page: Page): Promise<void> {
   await page.goto('/');
   await page.evaluate(() => localStorage.clear());
@@ -26,9 +30,11 @@ test('real match accepts the full keyboard flow and keeps smooth frame pacing', 
   await expect(page.locator('canvas[aria-label="Live football pitch"]')).toBeVisible();
   await expect(page.locator('.graphics-loading')).toHaveCount(0,{timeout:30_000});
   await page.waitForTimeout(500);
+  const profiler=process.env['PROFILE_MATCH']?await page.context().newCDPSession(page):null;
+  if(profiler){await profiler.send('Profiler.enable');await profiler.send('Profiler.start');}
 
   await page.evaluate(() => {
-    const metrics = { frames: [] as number[], longTasks: [] as number[], last: 0, active: true };
+    const metrics = { frames: [] as number[], longTasks: [] as number[], stalls: [] as {duration:number;stage:string}[], stage:'movement', last: 0, active: true };
     (window as any).__matchQaMetrics = metrics;
     const sample = (time: number) => {
       if (!metrics.active) return;
@@ -39,7 +45,7 @@ test('real match accepts the full keyboard flow and keeps smooth frame pacing', 
     requestAnimationFrame(sample);
     if ('PerformanceObserver' in window) {
       const observer = new PerformanceObserver((list) => {
-        for (const entry of list.getEntries()) if (entry.duration > 50) metrics.longTasks.push(entry.duration);
+        for (const entry of list.getEntries()) if (entry.duration > 50) {metrics.longTasks.push(entry.duration);metrics.stalls.push({duration:entry.duration,stage:metrics.stage});}
       });
       try { observer.observe({ type: 'longtask', buffered: false }); } catch { /* unsupported browser */ }
       (window as any).__matchQaObserver = observer;
@@ -52,33 +58,39 @@ test('real match accepts the full keyboard flow and keeps smooth frame pacing', 
   await page.keyboard.up('ShiftLeft');
   await page.keyboard.up('KeyD');
   for (const key of ['KeyJ', 'KeyK', 'KeyU', 'KeyL', 'Space']) {
+    await page.evaluate(stage=>(window as any).__matchQaMetrics.stage=stage,key);
     await page.keyboard.press(key);
     await page.waitForTimeout(140);
   }
   await page.keyboard.press('KeyQ');
   await expect(page.locator('.quick-wheel')).toBeVisible();
   await page.keyboard.press('KeyQ');
+  await page.evaluate(()=>(window as any).__matchQaMetrics.stage='pause');
   await page.keyboard.press('Escape');
   await expect(page.locator('.pause-layer')).toBeVisible();
   await page.getByRole('button', { name: /weiterspielen/i }).click();
   const auto = page.locator('.auto-chip');
+  await page.evaluate(()=>(window as any).__matchQaMetrics.stage='auto');
   await auto.click();
   await expect(auto).toContainText(/ki steuert/i);
   await page.waitForTimeout(900);
   await auto.click();
   await expect(auto).toContainText(/aus/i);
+  await page.evaluate(()=>(window as any).__matchQaMetrics.stage='free play');
   await page.waitForTimeout(2_500);
   await expect(page.locator('.sb-score')).not.toContainText("0' ·", { timeout: 10_000 });
 
   const metrics = await page.evaluate(() => {
-    const value = (window as any).__matchQaMetrics as { frames: number[]; longTasks: number[]; active: boolean };
+    const value = (window as any).__matchQaMetrics as { frames: number[]; longTasks: number[]; stalls:unknown[]; active: boolean };
     value.active = false;
     (window as any).__matchQaObserver?.disconnect();
     const sorted = value.frames.slice(5).sort((a, b) => a - b);
     const percentile = (p: number) => sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * p))] ?? 0;
-    return { count: sorted.length, median: percentile(0.5), p95: percentile(0.95), p99: percentile(0.99), longTasks: value.longTasks };
+    return { count: sorted.length, median: percentile(0.5), p95: percentile(0.95), p99: percentile(0.99), longTasks: value.longTasks,stalls:value.stalls };
   });
   await info.attach('frame-pacing.json', {body:JSON.stringify(metrics,null,2),contentType:'application/json'});
+  console.log('Match frame pacing:',JSON.stringify(metrics));
+  if(profiler){const {profile}=await profiler.send('Profiler.stop');console.log('CPU profile:',JSON.stringify(profile.nodes.filter(node=>(node.hitCount??0)>0).sort((a,b)=>(b.hitCount??0)-(a.hitCount??0)).slice(0,15).map(node=>({name:node.callFrame.functionName,url:node.callFrame.url,hits:node.hitCount}))));}
   // A shared GitHub runner can quota headless Chromium down to 30 or 20 Hz.
   // Local reference runs remain the strict 60 Hz performance benchmark; CI
   // guards against additional jank and long main-thread work under that quota.

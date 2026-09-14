@@ -64,7 +64,7 @@ export class SettingsPage {
     this.gs.mutate((draft) => (draft.settings.reducedMotion = !draft.settings.reducedMotion));
   }
 
-  protected setVolume(kind: 'musicVolume' | 'sfxVolume', event: Event): void {
+  protected setVolume(kind: 'musicVolume' | 'sfxVolume' | 'crowdVolume', event: Event): void {
     const value = Number((event.target as HTMLInputElement).value);
     this.gs.mutate((draft) => (draft.settings[kind] = Math.max(0, Math.min(1, value))));
     if (kind === 'sfxVolume') this.audio.click();

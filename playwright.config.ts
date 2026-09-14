@@ -14,7 +14,7 @@ export default defineConfig({
     baseURL: 'http://127.0.0.1:4200',
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
-    launchOptions: executablePath ? { executablePath } : undefined,
+    launchOptions: { executablePath, ...(process.env['PLAYWRIGHT_SOFTWARE_GL'] ? {args:['--use-gl=angle','--use-angle=swiftshader','--enable-unsafe-swiftshader']} : {}) },
   },
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
   webServer: {

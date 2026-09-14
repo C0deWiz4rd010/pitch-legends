@@ -20,8 +20,8 @@ Dieser Bericht dokumentiert tatsächliche Änderungen und Prüfungen. Ein Eintra
 | 3 – Ballgefühl | Veröffentlicht; finale Balance offen | `40c70a1`, Pages-Lauf 33985582898 erfolgreich |
 | 4 – Spieler/Animation | Veröffentlicht; erweiterte Kontaktabnahme bleibt in QA | `f5e6a76`, Pages-Lauf 33985835952 erfolgreich |
 | 5 – KI | Veröffentlicht; finale Balance offen | `07c4ada`, Pages-Lauf 33986421455 erfolgreich |
-| 6 – Vollständige Partien | Geprüft; Veröffentlichung läuft | 3D in Karriere, neun neue Regel-/Wiederaufnahmetests bestanden |
-| 7 – Präsentation | Offen | |
+| 6 – Vollständige Partien | Gepusht; Pages-Nachprüfung offen | `dd1adab`; CI 34024994728 scheiterte an Software-WebGL und schmaler AUTO-Schaltfläche |
+| 7 – Präsentation | In Arbeit; Gameplay-Feedback vorgezogen | Ruhige Kamera, Spielerwahl, Torwartabläufe, Audio und Replays |
 | 8 – Spielmodi | Offen | |
 | 9 – Karriere | Offen | |
 | 10 – Plattform | Offen | |
@@ -93,3 +93,29 @@ Dieser Bericht dokumentiert tatsächliche Änderungen und Prüfungen. Ein Eintra
 - Keine Behauptung eines fertigen Releases 2.0: Phasen 7–12 und finale Balance-/Geräteabnahmen bleiben offen.
 
 Regelquellen: [IFAB Abseits](https://theifab.com/laws/latest/offside/), [Freistöße](https://www.theifab.com/laws/latest/free-kicks/), [Eckstoß](https://www.theifab.com/laws/latest/the-corner-kick/), [Strafstoß](https://theifab.com/laws/latest/the-penalty-kick/).
+
+## Gameplay-Schwerpunkt nach Nutzerfeedback – 2026-09-06
+
+Die neue Darstellung wird als deutlich besser bewertet. Vorrang haben jetzt Animationen, Torwartverhalten, eine ruhigere Kamera und weniger automatische Spielerwechsel. Die interaktive Erneuerung des Handbuchs folgt passend zur finalisierten Steuerung; zusätzliche Karriere-/Spielmodi werden dafür zurückgestellt.
+
+- Kamera: Ruhebereich von 3,2 m horizontal und 2,1 m vertikal, sanfte Nachführung mit höchstens 20 m/s Schwenkgeschwindigkeit. Kleine Dribbelbewegungen ändern den Ausschnitt nicht. Kein sprunghafter Sonderzoom beim Wechsel zwischen schnellem und langsamem Ball. Direkte Initialisierung beim Matchstart verhindert die bisherige lange Einfahrt aus der Totalen.
+- Spielerwahl: Standard „Ruhig“ folgt gesichertem Ballbesitz nach 200 ms statt bei jedem wechselnden Abstand zum freien Ball. Nach einem automatischen Wechsel 750 ms Schutz; manuelle Auswahl bleibt 1,5 Sekunden erhalten. Die Modi „Auto“ und „Manuell“ lassen sich während der Partie wählen. Torhüter werden dabei nicht ungefragt angewählt.
+- Animation: Laufzyklus auf eine natürliche längere Schrittlänge abgestimmt; Körperneigung reagiert auf seitliche Bewegung. Ausholpose während der Aufladung, weich auslaufende Schussnachbewegung, längere Torwartaktionen und Wiederaufstehen.
+- Torwart: antizipiert erreichbare seitliche Abschlüsse, schaut bei Seitwärtsschritten zum Ball und unterbricht Paraden nicht sofort durch neue KI-Bewegungsbefehle. Gefangene Bälle werden sichtbar auf Brusthöhe gesammelt. Zweiarm-IK richtet die Hände am Fangpunkt aus. Abwürfe starten als Handkontakt. Die Werkstatt bietet eine frei verschiebbare Zeitleiste für Kontakt- und Erholungsphasen.
+- Replay: begrenzter Ring mit zwölf Sekunden bei 60 Hz; Torwiederholung enthält die tatsächliche Torlinienüberschreitung vor dem folgenden Anstoß. Letzte sechs Sekunden werden in Zeitlupe wiedergegeben; kein einzelnes Anstoßbild zwischen Tor und Replay.
+- Audio: getrennte Musik-, Effekt- und Publikumskanäle funktionieren auch ohne Karriere. Einmalige Ballkontaktgeräusche aus den Simulationsticks, Pfostenklang, Fanggeräusch und situationsabhängige Zuschauerlautstärke. Stummschalten der Effekte unterdrückt die Musik nicht mehr.
+- Geometrische/Verhaltenstests: beide Fanghände am Ball, kontinuierliche Schussrückführung, Kamerabegrenzung, stabile Spielerwahl, geschützte manuelle Auswahl und gehaltene Torwartbälle geprüft. Vier zusätzliche Audio-/Replaytests und bestehende Regressionen bestanden.
+- Letzter lokaler GPU-Browserlauf: neun Prüfungen bestanden, Median 16,7 ms, p95 17,0 ms, p99 19,1 ms, keine Long Tasks. Das ist ein Desktop-Browserbeleg, keine reale Mobilgeräteabnahme.
+- Software-WebGL: Ausgangsmessung ca. 100–133 ms Median. Korrigierte Auflösungsreduzierung, kein MSAA im Softwareprofil, einfacheres Rasenmaterial, kompaktere Figuren und vollständige GPU-Vorbereitung reduzieren die Bildabstände deutlich. Ein anschließender Diagnoselauf mit CPU-Profiler bestand bei 33,3 ms Median / 50 ms p95 ohne Long Tasks. Das ist kein abschließender Nachweis; die erneute ungeprofilte Messung steht im folgenden Eintrag. GPU-Darstellung behält ihre eigene volle Qualität.
+- Die horizontale Werkzeugleiste bricht auf schmalen Desktopfenstern nicht mehr über die AUTO-Schaltfläche um. Dieser Bedienungstest besteht lokal.
+
+## Fortsetzung und Asset-Entscheidung – 2026-09-14
+
+- [Zusatzplan für Assets und Animation](ASSET_ANIMATION_QUALITY_PLAN.md) nach unabhängiger, rein lesender Agent-Prüfung gespeichert. Aseprite ist vorhanden; derzeit werden keine Spieleratlanten erzeugt. Vorrang haben bestehende 3D-Kontakte und die noch starren Gelenkübergänge. Die vollständige interaktive Neugestaltung des Handbuchs bleibt offen.
+- Lernfortschritt und Gerätewechsel lösen im laufenden Match keine vollständige Karrierekopie samt synchronem Speichern mehr aus. Fortschritt wird sofort angezeigt und an Pause-, Menü-, Halbzeit- oder Endgrenzen gesammelt gespeichert. Zwei Tests prüfen das verzögerte Speichern und die Trennung verschiedener Karrieren.
+- Hilfeöffnung setzt gehaltene Eingaben zurück. Escape im Handbuch wechselt nicht zugleich den Pausenzustand. Der zusätzliche Browsertest prüft Öffnen während des Spiels und aus der Pause.
+- Steuerungstexte erklären drei Wechselkandidaten, 1,5 Sekunden Schutz, ruhige/manuelle Spielerwahl, Doppelpasslauf, direkte Aktionen, Schussvarianten und selbstständige Torwartverteilung. Die tatsächlichen Ladezeiten bleiben 0,8 Sekunden für Pässe und 0,9 Sekunden für Schüsse.
+- Torhüter antizipieren keine oberhalb ihrer modellierten Reichweite liegenden Hechtziele. Die Zeitleistenanzeige der Werkstatt aktualisiert sich auch nach mehreren Schleifen begrenzt statt bei jedem Bild.
+- **117 Unit-Tests bestanden. 20 bestehende Chromium-E2E-Tests vollständig bestanden**, zusätzlicher Hilfe-/Pausentest anschließend bestanden. Lokale normale GPU-Messung: 300 Bildabstände, Median 16,7 ms, p95 16,8 ms, p99 16,9 ms; keine Long Tasks. Fang- und Hechtansicht visuell geprüft; sichtbare starre Gelenkübergänge bleiben ausdrücklich weitere Arbeit.
+- **Unprofilierter Softwarelauf noch nicht vollständig grün:** Median 16,7 ms, p95 33,4 ms, p99 50 ms und eine 53-ms-Blockade während Bewegung. Gegenüber dem Ausgangszustand deutlich schneller, aber die strenge Prüfung schlägt weiterhin an. Keine Testgrenze wurde dafür gelockert. Keine mobile 60-FPS-Abnahme oder fertige Version 2.0 behauptet.
+- Produktionsbuild ohne Budgetwarnungen und Versionssynchronisierung bestanden. Das Gameplay-Paket wird auf `develop` gepusht; Veröffentlichung bleibt bis zum erfolgreichen Pages-Lauf und Abgleich der Build-Revision unbestätigt.

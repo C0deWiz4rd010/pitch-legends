@@ -89,6 +89,7 @@ export interface MatchConfig {
   fixtureId?: string;
   difficulty: 'easy' | 'normal' | 'hard';
   assist: AssistPreset;
+  autoSwitch?: 'receivers' | 'assisted' | 'manual';
   playerLockId: string | null;
   weather: MatchWeather;
   inputDevice: InputDevice;
@@ -217,6 +218,7 @@ export interface FootballContact {
 
 export interface PlayerRuntimeSnapshot {
   contact?: FootballContact;
+  actionTarget?: {x:number;y:number;z:number};
   id: string;
   side: Side;
   x: number;
@@ -325,6 +327,7 @@ export interface MatchCheckpoint {
     teamState?: Record<Side, Pick<Team, 'formation' | 'tactics'>>;
     football?: {
       selectionUntilTick: number;
+      switchCandidate?: {id:string;sinceTick:number} | null;
       queuedAction: { kind: 'pass' | 'through' | 'lob' | 'shoot'; expiresTick: number; power: number; aimX: number; aimY: number; finesse: boolean; low: boolean; chip?: boolean } | null;
       offsideCandidates: string[];
       oneTwoRunnerId: string | null;
