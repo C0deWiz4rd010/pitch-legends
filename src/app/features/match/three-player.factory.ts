@@ -2,6 +2,8 @@ import * as THREE from 'three';
 import { PlayerVisualIdentity, KitDesign } from '../../models/visual.model';
 import { PlayerRuntimeSnapshot } from '../../models/match.model';
 import { hash32 } from '../../core/visual-identity';
+import { blendJointSkin } from './joint-skinning';
+import { createLimbSurface } from './limb-surface';
 
 const SKIN = ['#f5d0a9', '#e9b989', '#d99a68', '#bf7b50', '#9b5c3d', '#75422f', '#573126', '#35221f'];
 const HAIR = ['#17141d', '#2c1b18', '#4b2e24', '#71462b', '#9b673d', '#c89b62', '#d9c6a2', '#702c32'];
@@ -65,13 +67,14 @@ class SkinGeometry {
     const flat = geometry.index ? geometry.toNonIndexed() : geometry;
     const p = flat.getAttribute('position');
     const n = flat.getAttribute('normal');
+    const indices = flat.getAttribute('skinIndex'), weights = flat.getAttribute('skinWeight');
     const shade = new THREE.Color(color);
     for (let i = 0; i < p.count; i++) {
       this.positions.push(p.getX(i), p.getY(i), p.getZ(i));
       this.normals.push(n.getX(i), n.getY(i), n.getZ(i));
       this.colors.push(shade.r, shade.g, shade.b);
-      this.skinIndices.push(bone, 0, 0, 0);
-      this.skinWeights.push(1, 0, 0, 0);
+      this.skinIndices.push(indices ? indices.getX(i) : bone, indices ? indices.getY(i) : 0, 0, 0);
+      this.skinWeights.push(weights ? weights.getX(i) : 1, weights ? weights.getY(i) : 0, 0, 0);
     }
     flat.dispose();
     if (flat !== geometry) geometry.dispose();
@@ -135,7 +138,7 @@ export function createProceduralFootballer(identity: PlayerVisualIdentity, kit: 
     data.add(new THREE.CylinderGeometry(top, bottom, height, compact?6:8), color, indices[joint], bind[joint].clone().add(new THREE.Vector3(x, y, z)), new THREE.Vector3(1, 1, depth));
   };
   // Athletic shoulders, tapered jersey and shorts; visible joints are rounded.
-  cylinder('spine', kit.shirt, 0, 0.095, 0, shoulder * 0.57, shoulder * 0.43, 0.355 * scale, 0.60);
+  cylinder('spine', kit.shirt, 0, 0.095, 0, shoulder * 0.57, shoulder * 0.43, 0.385 * scale, 0.60);
   sphere('chest', kit.shirt, 0, 0.047, 0, shoulder * 0.57, 0.095, shoulder * 0.35);
   cylinder('hips', kit.shorts, 0, -0.02, 0, shoulder * 0.46, shoulder * 0.48, 0.165, 0.66);
   cylinder('head', recipe.skin, 0, -0.15, 0, 0.066, 0.077, 0.13);
@@ -199,9 +202,8 @@ export function createProceduralFootballer(identity: PlayerVisualIdentity, kit: 
     if (identity.bootStyle % 3 === 0) box(foot, kit.trim, sign * 0.063, -0.02, 0.069, 0.007, 0.024, 0.14);
     sphere(arm, kit.shirt, 0, -0.020, 0, 0.099 * width, 0.10, 0.091);
     cylinder(arm, kit.sleeve === 'raglan' ? kit.secondary : kit.shirt, sign * 0.02, -0.088, 0, 0.095 * width, 0.08 * width, 0.16);
-    cylinder(arm, identity.longSleeves || goalkeeper ? kit.shirt : recipe.skin, sign * 0.036, -0.188, 0, 0.072, 0.060, 0.15);
-    sphere(forearm, identity.longSleeves || goalkeeper ? kit.shirt : recipe.skin, 0, 0, 0, 0.064, 0.064, 0.064);
-    cylinder(forearm, identity.longSleeves || goalkeeper ? kit.shirt : recipe.skin, sign * 0.015, -0.108, 0, 0.059, 0.043, 0.22);
+    data.add(createLimbSurface(bind[arm].clone().lerp(bind[forearm], .42), bind[forearm], bind[hand], indices[arm], indices[forearm], width, compact),
+      identity.longSleeves || goalkeeper ? kit.shirt : recipe.skin, indices[arm], new THREE.Vector3());
     if (kit.sleeve === 'cuff') cylinder(arm, kit.trim, sign * 0.025, -0.149, 0, 0.083, 0.083, 0.028);
     if (identity.wristTape === side || identity.wristTape === 'both') cylinder(hand, '#e9f0ed', 0, 0.035, 0, 0.052, 0.052, 0.043);
     sphere(hand, goalkeeper ? ['#f5f1d7', '#e1ff70', '#4ccbd4'][identity.goalkeeperGloves % 3] : recipe.skin, 0, -0.029, 0.009, goalkeeper ? 0.068 : 0.048, 0.074, goalkeeper ? 0.053 : 0.037);
@@ -245,6 +247,14 @@ export function createProceduralFootballer(identity: PlayerVisualIdentity, kit: 
     }
   }
   const geometry = data.finish();
+  const blend = (parent: Joint, child: Joint, length: number, radius: number) =>
+    blendJointSkin(geometry, indices[parent], indices[child], bind[parent], bind[child], length * scale, radius);
+  blend('hips', 'spine', .10, shoulder);
+  blend('spine', 'chest', .08, shoulder);
+  for (const side of ['left', 'right'] as const) {
+    blend('chest', `${side}Arm`, .09, .12);
+    blend(`${side}Thigh`, `${side}Shin`, .105, .11);
+  }
   const material = compact?new THREE.MeshLambertMaterial({vertexColors:true}):new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.87, metalness: 0, flatShading: false });
   const mesh = new THREE.SkinnedMesh(geometry, material);
   mesh.name = `footballer-${recipe.seed}`;

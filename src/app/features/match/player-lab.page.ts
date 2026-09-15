@@ -140,6 +140,9 @@ export class PlayerLabPage implements AfterViewInit, OnDestroy {
     this.model?.destroy();
     if (this.skeleton) {this.scene.remove(this.skeleton);this.skeleton.dispose();}
     this.model=createProceduralFootballer(this.player().visuals,this.kit(),this.player().kitNumber,this.action().startsWith('keeper-'),this.player().foot === 'Left');
+    const diving=this.action()==='keeper-dive';
+    this.camera.position.set(0,1.65,diving?5.4:4.7);
+    this.camera.lookAt(diving?.18:0,diving?.75:1,0);
     this.scene.add(this.model.mesh);this.skeleton=new THREE.SkeletonHelper(this.model.mesh);this.scene.add(this.skeleton);
   }
   seek(seconds:number):void {

@@ -20,8 +20,8 @@ Dieser Bericht dokumentiert tatsächliche Änderungen und Prüfungen. Ein Eintra
 | 3 – Ballgefühl | Veröffentlicht; finale Balance offen | `40c70a1`, Pages-Lauf 33985582898 erfolgreich |
 | 4 – Spieler/Animation | Veröffentlicht; erweiterte Kontaktabnahme bleibt in QA | `f5e6a76`, Pages-Lauf 33985835952 erfolgreich |
 | 5 – KI | Veröffentlicht; finale Balance offen | `07c4ada`, Pages-Lauf 33986421455 erfolgreich |
-| 6 – Vollständige Partien | Gepusht; Pages-Nachprüfung offen | `dd1adab`; CI 34024994728 scheiterte an Software-WebGL und schmaler AUTO-Schaltfläche |
-| 7 – Präsentation | In Arbeit; Gameplay-Feedback vorgezogen | Ruhige Kamera, Spielerwahl, Torwartabläufe, Audio und Replays |
+| 6 – Vollständige Partien | Veröffentlicht | In `d382ecc` enthalten; Pages-Lauf 34994242278 erfolgreich, öffentliche Revision geprüft |
+| 7 – Präsentation | Gameplay-Paket veröffentlicht; weitere Animationsabnahme läuft | `d382ecc`: ruhige Kamera, Spielerwahl, Torwartabläufe, Audio und Replays; Gelenküberarbeitung folgt |
 | 8 – Spielmodi | Offen | |
 | 9 – Karriere | Offen | |
 | 10 – Plattform | Offen | |
@@ -131,3 +131,11 @@ Die neue Darstellung wird als deutlich besser bewertet. Vorrang haben jetzt Anim
 - Software-Portraits verwenden 128 statt 256 Pixel, kompaktere Geometrie und kein MSAA. Hardware-Portraits behalten ihr Qualitätsprofil. Die Software-Matchdarstellung wird auf 30 Zeichnungen pro Sekunde begrenzt, damit sie den Treiber nicht dauerhaft überlastet; Simulation und Eingabeverarbeitung bleiben bei 60 Hz. Diagnosefeld `targetFps` unterscheidet dieses Profil von Hardwaredarstellung.
 - Sieben neue Tests für Abbruch, gemeinsam benötigte Bilder, Cachewechsel, Kontextfreigabe und akkumulierte Renderzeit bestanden. Browser- und Produktionsabnahme dieses Folgepakets läuft; neue Veröffentlichung noch nicht bestätigt.
 - Produktionsbuild bestanden. **Alle 21 Browserprüfungen mit erzwungenem Software-Rendering bestanden**, einschließlich der zuvor gescheiterten Kader-/Transferansichten. Ungeprofilte Messung: 292 Browser-Bildabstände, Median 16,7 ms, p95 16,8 ms, p99 33,4 ms, keine Long Tasks. Diese Abstände messen die Browser-/Eingabeschleife; das Softwareprofil zeichnet weiterhin höchstens 30 3D-Bilder/s. Kein Testlimit oder Funktionskriterium wurde gelockert.
+- **`d382ecc106e1a1ef2d4ae9061fd56dc2f973422b` veröffentlicht.** CI/Pages `34994242278` erfolgreich, öffentliche `build-info.json` am 15. September auf genau diese Revision geprüft. Die CI-Performanceprüfung benötigte zwei Wiederholungen wegen einzelner 51-/70-ms-Blockaden; der dritte Lauf bestand ohne Long Tasks. Damit ist die Veröffentlichung bestätigt, aber nicht völlige Reproduzierbarkeit jeder Softwaremessung behauptet.
+
+### Zusammenhängende Gelenke und bessere Nahansicht
+
+- Gemeinsame Gewichte an Rumpf, Schultern und Knien; etwas längerer Trikotrumpf schließt den bisherigen Abstand zur Hüfte. Erste Sichtprüfung erkannte trotz grüner Gewichtstests Lücken an stark gebeugten Ellbogen.
+- Die getrennten Arm-/Ellbogenstücke wurden daraufhin durch eine zusammenhängende, über zwei Knochen verformte Oberfläche ersetzt. Ein Topologietest prüft, dass offene Kanten ausschließlich an den verdeckten Ärmel-/Handgelenkenden liegen. Keine zusätzlichen Meshes oder Materialien pro Figur.
+- Die Werkstatt rahmt Hechtposen weiter und tiefer, sodass Kopf, Ball und Hände nicht am rechten Rand abgeschnitten werden. Neue Sichtbelege: [Fangen](screenshots/keeper-catch-2026-09-15.png), [Hechten](screenshots/keeper-dive-2026-09-15.png). Feine Trikot-/Oberarmübergänge und eine vollständige 128-Varianten-Abnahme bleiben offen.
+- 16 gezielte Geometrie-, Kontakt- und Steuerungstests bestanden; Produktionsbuild bestanden. Werkstatt-Browsertest bestanden und Screenshots geprüft. GPU-Zwischenmessung ohne Blockaden bei 16,7 ms Median / 17,1 ms p95; nach dem endgültigen Armumbau Softwaremessung ohne Long Tasks bei 16,7 ms Median / 16,8 ms p95 / 33,4 ms p99 für die Browserschleife, weiterhin 30 FPS als Software-Zeichenziel. Abschließende CI-Veröffentlichung dieses Animationspakets steht noch aus.
