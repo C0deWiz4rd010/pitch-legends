@@ -1,6 +1,7 @@
 import { defineConfig, devices } from '@playwright/test';
 
 const executablePath = process.env['PLAYWRIGHT_CHROMIUM_EXECUTABLE'];
+const production = process.env['PLAYWRIGHT_PRODUCTION'] === '1';
 
 export default defineConfig({
   testDir: './e2e',
@@ -18,9 +19,9 @@ export default defineConfig({
   },
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
   webServer: {
-    command: 'npm start -- --host 127.0.0.1 --port 4200',
+    command: production ? 'node tools/serve-production.mjs' : 'npm start -- --host 127.0.0.1 --port 4200',
     url: 'http://127.0.0.1:4200',
-    reuseExistingServer: !process.env['CI'],
+    reuseExistingServer: !process.env['CI'] && !production,
     timeout: 120_000,
   },
 });

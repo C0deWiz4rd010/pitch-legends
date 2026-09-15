@@ -40,6 +40,7 @@ import { I18nService } from '../../core/services/i18n.service';
 import { ARCADE_MATCH_TUNING, ArcadeMatch, MATCH_TICK } from '../../core/services/arcade-match';
 import { AudioService } from '../../core/services/audio.service';
 import { ControlHelpService } from '../../core/services/control-help.service';
+import { PortraitService } from '../../core/services/portrait.service';
 import { CONTROL_INPUT_MAP, MOVEMENT_KEYS } from '../../data/control-bindings';
 import { ClubCrestComponent } from '../../shared/components/club-crest.component';
 import { MiniKitComponent } from '../../shared/components/mini-kit.component';
@@ -97,6 +98,7 @@ export class MatchPage implements OnDestroy {
   protected readonly audio = inject(AudioService);
   private readonly travel = inject(TravelService);
   protected readonly controlHelp = inject(ControlHelpService);
+  private readonly portraits = inject(PortraitService);
   protected readonly ratingColor = ratingColor;
   protected readonly playerName = playerName;
   protected readonly homeManager = computed(() => this.homeTeam() ? this.gs.managerForTeam(this.homeTeam()!.id) ?? null : null);
@@ -433,6 +435,7 @@ export class MatchPage implements OnDestroy {
     {
       this.graphicsLoading.set(true);
       try {
+        await this.portraits.releaseGraphics();
         const { ThreePitchRenderer } = await import('./three-pitch.renderer');
         if (this.disposed || this.arcade !== match || !canvas.isConnected) return;
         const renderer = this.zone.runOutsideAngular(() => new ThreePitchRenderer(canvas));

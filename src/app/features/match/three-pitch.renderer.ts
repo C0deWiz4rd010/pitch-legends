@@ -7,6 +7,7 @@ import { createProceduralFootballer, poseFootballer, ProceduralFootballer } from
 import { interpolateThreeFrame, playerInCameraSpace } from './three-render-state';
 import { usesSoftwareGraphics } from './graphics-capabilities';
 import { advanceBroadcastCamera } from './broadcast-camera';
+import { RenderCadence } from './render-cadence';
 
 type VisualState = MatchRenderState | MatchSnapshot;
 export type PitchQuality = 'high' | 'balanced' | 'low';
@@ -20,6 +21,7 @@ export interface PitchRenderDiagnostics {
   textures: number;
   renderMilliseconds: number;
   contextLost: boolean;
+  targetFps: number;
 }
 
 /** GPU rendering is a consumer of the 60 Hz simulation, never a physics owner. */
@@ -57,6 +59,7 @@ export class ThreePitchRenderer {
   private readonly weather: THREE.LineSegments;
   private quality: PitchQuality;
   private readonly software: boolean;
+  private readonly cadence: RenderCadence;
   private pixelRatio: number;
   private width = 1280;
   private height = 720;
@@ -96,6 +99,7 @@ export class ThreePitchRenderer {
     this.quality = mobile ? 'balanced' : 'high';
     this.pixelRatio = Math.min(window.devicePixelRatio || 1, mobile ? 1.35 : 1.75);
     this.software=usesSoftwareGraphics();
+    this.cadence=new RenderCadence(this.software ? 1 / 30 : 0);
     this.renderer = new THREE.WebGLRenderer({ canvas, alpha: false, antialias: !this.software, powerPreference: 'high-performance' });
     if (this.software) { this.quality = 'low'; this.pixelRatio = .35; }
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -240,7 +244,8 @@ export class ThreePitchRenderer {
   render(match: ArcadeMatch, frame?: MatchRenderFrame, replay?: MatchSnapshot): void {
     if (this.disposed || this.contextLost) return;
     const started = performance.now();
-    const dt = Math.min(0.05, Math.max(0.001, frame?.deltaSeconds ?? 1 / 60));
+    const dt = this.cadence.consume(Math.min(0.05, Math.max(0.001, frame?.deltaSeconds ?? 1 / 60)));
+    if (!dt) return;
     const state = replay ?? (frame ? interpolateThreeFrame(frame) : match.renderState());
     this.time += dt;
     this.ensureMatch(match);
@@ -296,7 +301,7 @@ export class ThreePitchRenderer {
     return { renderer: 'three-webgl2', quality: this.quality, resolutionScale: this.pixelRatio,
       drawCalls: this.renderer.info.render.calls, triangles: this.renderer.info.render.triangles,
       geometries: this.renderer.info.memory.geometries, textures: this.renderer.info.memory.textures,
-      renderMilliseconds: this.renderMilliseconds, contextLost: this.contextLost };
+      renderMilliseconds: this.renderMilliseconds, contextLost: this.contextLost, targetFps: this.software ? 30 : 60 };
   }
 
   setQuality(quality: PitchQuality): void {

@@ -95,18 +95,19 @@ export class PlayerLabPage implements AfterViewInit, OnDestroy {
   constructor() {
     effect((cleanup) => {
       const player = this.player(), kit = this.kit();
-      let active = true; cleanup(() => { active = false; });
+      const request=new AbortController();
+      let active = true; cleanup(() => { active = false; request.abort(); });
       if (this.renderer) this.replaceModel();
-      void this.portraits.figure(player, kit).catch(() => '');
-      void this.portraits.portrait(player, { ...this.teams.home, visuals: { ...this.teams.home.visuals, kits: { ...this.teams.home.visuals.kits, home: kit } } }).then(src => { if (active) this.portrait.set(src); });
+      void this.portraits.portrait(player, { ...this.teams.home, visuals: { ...this.teams.home.visuals, kits: { ...this.teams.home.visuals.kits, home: kit } } }, request.signal).then(src => { if (active) this.portrait.set(src); });
     });
     effect((cleanup) => {
       const offset = this.galleryPage() * 16;
-      let active = true; cleanup(() => { active = false; });
+      const request=new AbortController();
+      let active = true; cleanup(() => { active = false; request.abort(); });
       this.gallery.set(Array.from({length:16},(_,i) => ({seed:offset+i,src:''})));
       for (let i=0;i<16;i++) {
         const seed=offset+i;
-        void this.portraits.portrait(this.playerFor(seed),this.teams.home).then(src => {
+        void this.portraits.portrait(this.playerFor(seed),this.teams.home,request.signal).then(src => {
           if (active) this.gallery.update(rows => rows.map(row => row.seed === seed ? {...row,src} : row));
         });
       }

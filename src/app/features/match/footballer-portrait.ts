@@ -2,19 +2,23 @@ import * as THREE from 'three';
 import { Player } from '../../models/player.model';
 import { KitDesign } from '../../models/visual.model';
 import { createProceduralFootballer } from './three-player.factory';
+import { usesSoftwareGraphics } from './graphics-capabilities';
 
 let renderer: THREE.WebGLRenderer | null = null;
 let releaseTimer: ReturnType<typeof setTimeout> | undefined;
 let pending: Promise<unknown> = Promise.resolve();
 
 /** One temporary GPU context services every portrait; figures use the match factory. */
-export function footballerPortrait(player: Player, kit: KitDesign, full: boolean): Promise<string> {
+export function footballerPortrait(player: Player, kit: KitDesign, full: boolean, needed: () => boolean = () => true): Promise<string> {
   const job = pending.then(async () => {
     await new Promise<void>(resolve => setTimeout(resolve, 0));
+    // Unmounted menus must not keep building models and reading GPU pixels during a match.
+    if (!needed()) return '';
+    const software = usesSoftwareGraphics();
     clearTimeout(releaseTimer);
     if (!renderer) {
-      renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
-      renderer.setSize(256, 256);
+      renderer = new THREE.WebGLRenderer({ alpha: true, antialias: !software });
+      renderer.setSize(software ? 128 : 256, software ? 128 : 256);
       renderer.setPixelRatio(1);
       renderer.outputColorSpace = THREE.SRGBColorSpace;
       renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -29,7 +33,7 @@ export function footballerPortrait(player: Player, kit: KitDesign, full: boolean
     const rim = new THREE.DirectionalLight('#86dbef', 1.8);
     rim.position.set(3, 2, -2);
     scene.add(rim);
-    const model = createProceduralFootballer(player.visuals, kit, player.kitNumber, player.positionGroup === 'GK', player.foot === 'Left');
+    const model = createProceduralFootballer(player.visuals, kit, player.kitNumber, player.positionGroup === 'GK', player.foot === 'Left', software);
     scene.add(model.mesh);
     model.mesh.rotation.y = full ? -0.3 : 0.12;
     const scale = full ? 1.07 : 0.32;

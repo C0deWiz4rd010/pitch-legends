@@ -56,7 +56,14 @@ jobs:
       - name: Install Playwright Chromium
         run: npx playwright install --with-deps chromium
 
+      - name: Build production for browser QA
+        run: |
+          node tools/write-build-info.mjs
+          npm run build -- --configuration production
+
       - name: Browser tests
+        env:
+          PLAYWRIGHT_PRODUCTION: '1'
         run: npm run test:e2e
 
       - name: Preserve browser diagnostics

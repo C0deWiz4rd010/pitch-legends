@@ -34,11 +34,12 @@ export class PlayerPortraitComponent {
   constructor() {
     effect((onCleanup) => {
       let active = true;
-      onCleanup(() => { active = false; });
+      const request = new AbortController();
+      onCleanup(() => { active = false; request.abort(); });
       const player = this.player();
       const team = this.team() ?? this.gameState.game()?.teams.find((candidate) => candidate.players.some((member) => member.id === player.id));
       this.src.set('');
-      void this.portraits.portrait(player, team).then((src) => {
+      void this.portraits.portrait(player, team, request.signal).then((src) => {
         if (active && this.player().id === player.id) this.src.set(src);
       });
     });
