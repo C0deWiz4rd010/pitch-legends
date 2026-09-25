@@ -33,8 +33,8 @@ describe('Gameplay V3 match contracts', () => {
   it('maps pace to the faster arcade sprint and jogging bands', () => {
     expect(arcadeSprintSpeed(40)).toBeCloseTo(6, 5);
     expect(arcadeSprintSpeed(99)).toBeCloseTo(9.4, 5);
-    expect(arcadeJogSpeed(40)).toBeCloseTo(4.92, 2);
-    expect(arcadeJogSpeed(99)).toBeCloseTo(7.71, 2);
+    expect(arcadeJogSpeed(40)).toBeCloseTo(4.08, 2);
+    expect(arcadeJogSpeed(99)).toBeCloseTo(6.39, 2);
     expect(arcadeSprintSpeed(70)).toBeGreaterThan(arcadeSprintSpeed(60));
   });
 

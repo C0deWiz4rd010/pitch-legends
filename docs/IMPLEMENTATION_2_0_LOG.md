@@ -152,3 +152,72 @@ Grundlage: neuer, element-weiser Verbesserungsplan (Fundament → Gameplay → G
 - **CI:** neuer Schritt `npm run typecheck` (App und Specs). Der Performance-Test bleibt lokal und mit `PLAYWRIGHT_STRICT_PERF=1` streng; in CI toleriert er höchstens eine isolierte Blockade unter 80 ms. Median- und Perzentilgrenzen sind unverändert. Einen Prettier-Check habe ich nicht eingeführt: Das gesamte Repo müsste dafür umformatiert werden.
 - **Zurückgestellt:** Das doppelte Wechsel-Panel wird in Phase D3 durch Bankkarten ersetzt. Der Taktik-Perk („schnellere taktische Reaktion“) hat bisher keine Wirkung und kommt in Phase B.
 - **Nachweis:** 141 Unit-Tests (5 neue Vertragstests für Frame-Wiederverwendung, Scratch-Interpolation, Idle-Checkpoint, gebündeltes Autosave, SVG-Fallback). Typecheck und Produktionsbuild ohne Warnungen. Alle 21 Chromium-E2E-Tests gegen den Produktionsbuild bestanden. Frame-Pacing lokal auf GPU: 301 Frames, Median 16,7 ms, p95 17,0 ms, p99 17,1 ms, keine Long Tasks.
+
+## Gesamtverbesserung Phase B – Gameplay (2026-09-25)
+
+- **Bugfixes:**
+  - Eigentore werden als Eigentor verbucht (kein Tor und kein Bonus für den Verteidiger, Einblendung „EIGENTOR“).
+  - Die Schwierigkeit gilt nur noch für die gegnerische KI (`aiLevel`); die eigenen Mitspieler spielen immer auf „normal“.
+  - Der gesteuerte Verteidiger tackelt nie ohne Eingabe; der Test prüft 600 Ticks direkt am Ball.
+  - Der schwache Fuß ist relativ zur Blick- bzw. Angriffsrichtung und kippt nicht mehr zur Halbzeit.
+  - Der Torwart läuft nur heraus, wenn der Ball höchstens 22 m vom eigenen Tor entfernt ist.
+  - Kopfball-Abseits erzeugt Ereignis und Meldung; beim Elfmeter mit Karte werden beide Entscheidungen gemeldet.
+  - Kopfbälle haben echte Streuung, xG aus dem gemeinsamen Modell (`core/football/xg.ts`) und zählen nur als „aufs Tor“, wenn sie wirklich aufs Tor gehen.
+  - Verletzte Spieler bleiben 2,5 s liegen, humpeln danach mit 60 % Tempo und werden von der KI an der nächsten Unterbrechung ausgewechselt.
+- **Laufgefühl:** Beschleunigung 18 statt 28 m/s², Bremsen 30 statt 38, Joggen 68 % statt 82 % des Sprints, Drehrate bei vollem Tempo bis zu 40 % geringer. 90 % Joggtempo weiterhin in unter 280 ms; der Sprint lohnt sich jetzt spürbar (Test: nach 1 s mehr als 30 % schneller).
+- **Aktionen:**
+  - Tackling beim Drücken statt beim Loslassen.
+  - Stellen/Jockey (O/LT): torseitig, Blick zum Ball, gebremst, kleiner Tackling-Bonus.
+  - Steilpass mit Vorhalt von 4–13 m in den Raum; Steil + Lob ergibt einen hohen Steilpass.
+  - Flanken aus der Flankenzone zum besten Läufer im Strafraum: Lob als hohe Flanke, die auf Kopfhöhe ankommt; Steil als scharfe, flache Hereingabe.
+  - Kopfballklärung und Kopfballpass ohne vorgemerkten Schuss.
+  - Brust- und Oberschenkelannahme bei 0,75–1,4 m Ballhöhe.
+  - Kraftschuss (Lob + Skill), Volleys, fußabhängiger Effet mit vorgehaltenem Ziel.
+  - Skill-Moves nach Richtung: Körpertäuschung, Ballrolle, Drag Back, Vorlegen. Das Ergebnis hängt vom Abstand zum Gegner ab statt von einem Zufallswurf.
+  - Abschirmen: Ein Ballführer ohne Sprint mit Gegner im Rücken ist schwerer zu tacklen.
+  - Das Handbuch ist aktualisiert.
+- **Ballphysik** (`integrateBall`):
+  - Magnus-Effekt senkrecht zur Flugrichtung; Effet klingt auch in der Luft ab.
+  - Topspin lässt den Ball absenken, Backspin gibt Auftrieb.
+  - Grasreibung beim Aufprall.
+  - Rollwiderstand aus einem konstanten und einem geschwindigkeitsabhängigen Anteil; nasser Rasen ist schneller und rutschiger.
+- **KI:**
+  - Schussentscheidung über die Schussqualität (xG, blockierte Schussbahn, Torwartposition) statt über einen Zufallswurf pro Entscheidung.
+  - Querlegen, wenn ein Mitspieler deutlich besser steht; Skill-Moves im Eins-gegen-eins.
+  - Echter Hechtsprung mit Seitwärtsbewegung und größerer Reichweite.
+  - Paraden gehen zur Seite; Rückpassregel; Handspiel nur im Strafraum.
+  - Taktik-Perk wirkt (4 % schnellere Reaktion je Stufe).
+  - Wechsel ab Minute 55 bei Erschöpfung; nach einer roten Karte gegen einen Verteidiger rückt der vorderste Stürmer auf dessen Position zurück.
+- **Regeln und Ablauf:**
+  - Nachspielzeit aus Toren, Wechseln, Verletzungen und Karten, angezeigt als „+N“. Der Halbzeit- bzw. Schlusspfiff wartet auf eine ruhige Situation, höchstens 8 s.
+  - Mauer mit 2–5 Spielern im Abstand von 9,15 m; Feldspieler blocken Schüsse.
+  - Die KI schießt Freistöße direkt; Einwürfe mit 8–14 m/s.
+  - Elfmeter mit Nervenstärke („Ice in the Veins“), der Torwart wählt eine Ecke.
+  - Verlängerung (2 × 15 Minuten, spielbar) und deterministisches Elfmeterschießen für K.-o.-Spiele (`MatchConfig.knockout`, `MatchResult.shootout`).
+- **Audio** (weiterhin synthetisch):
+  - Anstoß-, Halbzeit- und dreifacher Schlusspfiff, Doppelpfiff bei Abseits.
+  - Buhrufe bei Karten, Raunen bei Paraden, Pfostentreffern und Großchancen, Netzrauschen beim Tor.
+  - Schüsse klingen härter als Pässe; Dribbelberührungen sind leise.
+  - Fangesänge, solange die Heimelf führt.
+- **Heimvorteil:** Die Engine war nach den Änderungen symmetrisch (37 % Heim- zu 38 % Auswärtssiegen). Der alte Heimvorteil entstand nur durch die Reihenfolge der Spielerliste. Jetzt gibt es einen echten, kleinen Effekt: 12 % weniger Pass- und Schussstreuung, bessere Ballannahme und etwas mehr Erfolg im Zweikampf.
+- **Balance** (300 Spiele):
+
+  | Kennzahl | Wert | Ziel | Vorher |
+  |---|---|---|---|
+  | Tore pro Spiel | 3,38 | 2,2–3,4 | 3,85 |
+  | Schüsse pro Team | 8,9 | 8–18 | |
+  | Schüsse aufs Tor | 65 % | | 74 % |
+  | Passquote | 65,3 % | 65–88 % | |
+  | Unentschieden | 21,3 % | 20–32 % | |
+  | Heimsiege | 45 % | 42–52 % | |
+
+  Das 500-ms-Zeitlimit wird auf diesem Rechner nicht erreicht: 740 ms pro Spiel, der Stand vor Phase B brauchte hier bereits 635 ms. Die Optimierung folgt in Phase H.
+- **Nachweis:**
+  - 164 Unit-Tests, davon 24 neu: `gameplay-fixes`, `gameplay-actions`, `ball-flight`, `match-flow` und Audio. Der Tackling-Regressionstest wurde gegen den zurückgenommenen Fix geprüft und schlägt dann fehl.
+  - Typecheck und Build bestanden; 21 E2E-Tests gegen den Produktionsbuild bestanden (Frame-Pacing 16,7 / 17 / 18 ms, keine Long Tasks).
+  - Gespielte Szene in Chrome ohne Fehler, 971 Frames bei einem Median von 16,7 ms.
+- **Offen für spätere Phasen:**
+  - Sichtbare Zielhilfe bei Standards (D3).
+  - Einzeln dargestelltes Elfmeterschießen und Pokalanbindung (E4).
+  - Touch-Taste für Stellen (G).
+  - Posen für die neuen Aktionen (C5).

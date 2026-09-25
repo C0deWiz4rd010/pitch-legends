@@ -374,7 +374,8 @@ export function poseFootballer(model: ProceduralFootballer, state: PlayerRuntime
     j.spine.rotation.x += 0.2 * extend;
   }
   if (state.action === 'slide' || state.action === 'stumble' || state.action === 'injured') {
-    const envelope = state.action === 'injured' ? 1 : Math.sin(Math.min(age / actionDuration, 1) * Math.PI) ** 2;
+    // Injured players go down, stay down and get up again before limping on.
+    const envelope = state.action === 'injured' ? Math.min(1, age / .35, Math.max(0, actionDuration - age) / .6) : Math.sin(Math.min(age / actionDuration, 1) * Math.PI) ** 2;
     j.hips.position.y -= envelope * 0.62;
     j.hips.rotation.x = -envelope * 0.8;
     j.rightThigh.rotation.x = THREE.MathUtils.lerp(j.rightThigh.rotation.x,-1.0,envelope);

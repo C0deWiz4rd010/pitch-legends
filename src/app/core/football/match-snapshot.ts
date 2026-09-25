@@ -68,7 +68,7 @@ export function writePlayers(actors: readonly ArcadeActor[], target: PlayerRunti
 export function writeBallSnapshot(ball: ArcadeBall, target: BallSnapshot): BallSnapshot {
   target.x = ball.x; target.y = ball.y; target.z = ball.z;
   target.vx = ball.vx; target.vy = ball.vy; target.vz = ball.vz;
-  target.spin = ball.spin; target.ownerId = ball.ownerId; target.controlledTouch = ball.controlledTouch;
+  target.spin = ball.spin; target.topspin = ball.topspin; target.ownerId = ball.ownerId; target.controlledTouch = ball.controlledTouch;
   return target;
 }
 
@@ -97,8 +97,8 @@ export function applyActorSnapshot(actor: ArcadeActor, saved: PlayerRuntimeSnaps
 }
 
 export function ballSnapshot(ball: ArcadeBall): BallSnapshot {
-  const { x, y, z, vx, vy, vz, spin, ownerId, controlledTouch } = ball;
-  return { x, y, z, vx, vy, vz, spin, ownerId, controlledTouch };
+  const { x, y, z, vx, vy, vz, spin, topspin, ownerId, controlledTouch } = ball;
+  return { x, y, z, vx, vy, vz, spin, topspin, ownerId, controlledTouch };
 }
 
 /** 32-bit FNV-1a, hex encoded. */

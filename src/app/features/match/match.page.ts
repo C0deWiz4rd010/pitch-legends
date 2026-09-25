@@ -53,7 +53,7 @@ import { interpolateThreeReplay } from './three-render-state';
 import type { ThreePitchRenderer } from './three-pitch.renderer';
 
 type PagePhase = 'preview' | 'intro' | 'simulating' | 'match' | 'halftime' | 'result';
-type TouchAction = 'sprint' | 'pass' | 'through' | 'lob' | 'shoot' | 'skill' | 'switch';
+type TouchAction = 'sprint' | 'pass' | 'through' | 'lob' | 'shoot' | 'skill' | 'switch' | 'jockey';
 
 const EMPTY_MATCH_VIEW: MatchViewState = {
   footballMinute: 0,
@@ -139,6 +139,7 @@ export class MatchPage implements OnDestroy {
     shoot: false,
     skill: false,
     switch: false,
+    jockey: false,
   });
 
   private arcade: ArcadeMatch | null = null;
@@ -548,6 +549,7 @@ export class MatchPage implements OnDestroy {
     const goalDistance=Math.min(this.arcade.ball.x,105-this.arcade.ball.x);
     const crowd=this.arcade.phase==='goalReplay'?1:.1+Math.max(0,30-goalDistance)/50;
     if(Math.abs(crowd-this.lastCrowdIntensity)>.02) { this.audio.setCrowdIntensity(crowd); this.lastCrowdIntensity=crowd; }
+    this.audio.setChant(this.arcade.homeScore > this.arcade.awayScore && this.arcade.phase !== 'goalReplay');
     const eventChanged = this.arcade.events.length !== this.matchView().eventRevision;
     if (eventChanged) this.revealed.set([...this.arcade.events]);
     for (let index = this.lastAudioEvent; index < this.arcade.events.length; index++) this.audio.matchEvent(this.arcade.events[index]);
@@ -610,7 +612,7 @@ export class MatchPage implements OnDestroy {
 
   private celebrate(side: 'home' | 'away'): void {
     const scorer = [...(this.arcade?.events ?? [])].reverse().find((event) => event.type === 'goal' && event.side === side);
-    this.flash.set(scorer?.playerName ?? 'GOAL');
+    this.flash.set(scorer?.ownGoal ? this.i18n.pick('EIGENTOR', 'OWN GOAL') : scorer?.playerName ?? 'GOAL');
     this.renderer?.triggerGoal();
     this.replayElapsed = 0;
     setTimeout(() => this.flash.set(null), 1500);
@@ -847,6 +849,7 @@ export class MatchPage implements OnDestroy {
       skill: pressed('skill'),
       switchPlayer: pressed('switch'),
       keeperRush: pressed('through'),
+      jockey: pressed('jockey'),
       tacticX: 0,
       tacticY: 0,
       pause: false,
@@ -895,7 +898,7 @@ export class MatchPage implements OnDestroy {
     this.pendingPassAttempt = -1;
     this.touchX.set(0);
     this.touchY.set(0);
-    this.touchActions.set({ sprint: false, pass: false, through: false, lob: false, shoot: false, skill: false, switch: false });
+    this.touchActions.set({ sprint: false, pass: false, through: false, lob: false, shoot: false, skill: false, switch: false, jockey: false });
   }
 
   private async enterImmersiveMode(force: boolean): Promise<void> {

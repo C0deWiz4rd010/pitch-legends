@@ -41,6 +41,9 @@ export type PlayerActionState =
   | 'header'
   | 'ball-roll'
   | 'drag-back'
+  | 'body-feint'
+  | 'knock-on'
+  | 'jockey'
   | 'skill-failed'
   | 'press'
   | 'support-press'
@@ -94,6 +97,15 @@ export interface MatchConfig {
   weather: MatchWeather;
   inputDevice: InputDevice;
   camera: MatchCameraSettings;
+  /** Cup ties: a draw after 90 minutes goes to extra time and then penalties. */
+  knockout?: boolean;
+}
+
+export interface PenaltyShootout {
+  home: boolean[];
+  away: boolean[];
+  takers: { home: string[]; away: string[] };
+  winner: Side;
 }
 
 export interface MatchCameraSettings {
@@ -110,6 +122,8 @@ export interface MatchEvent {
   playerId: string | null;
   playerName?: string;
   assistName?: string;
+  /** Goal credited to the opponents after the last touch of a defending player. */
+  ownGoal?: boolean;
   messageKey?: string;
   params?: Record<string, string | number>;
   /** Fallback for legacy/internal commentary while every event is localised. */
@@ -128,6 +142,8 @@ export interface InputFrame {
   lob?: boolean;
   skill?: boolean;
   keeperRush?: boolean;
+  /** Contain the ball carrier: stay goal-side, face the ball, move with restraint. */
+  jockey?: boolean;
   tacticX?: number;
   tacticY?: number;
   pause?: boolean;
@@ -152,6 +168,7 @@ export const EMPTY_MATCH_COMMAND: MatchCommand = {
   skill: false,
   switchPlayer: false,
   keeperRush: false,
+  jockey: false,
   tacticX: 0,
   tacticY: 0,
   pause: false,
@@ -159,6 +176,8 @@ export const EMPTY_MATCH_COMMAND: MatchCommand = {
 };
 
 export interface TeamMatchStats {
+  /** Shots blocked by outfield players. */
+  blocks?: number;
   possession: number; // percentage 0-100
   shots: number;
   shotsOnTarget: number;
@@ -214,6 +233,8 @@ export interface FootballContact {
   z: number;
   kind: 'foot' | 'head' | 'hand';
   foot: 'left' | 'right';
+  /** Close-control touches while dribbling are presented quieter than strikes. */
+  dribble?: boolean;
 }
 
 export interface PlayerRuntimeSnapshot {
@@ -251,6 +272,8 @@ export interface BallSnapshot {
   vy: number;
   vz: number;
   spin: number;
+  /** Positive topspin dips and kicks on, negative backspin floats and checks up. */
+  topspin?: number;
   ownerId: string | null;
   controlledTouch: number;
 }
@@ -334,6 +357,14 @@ export interface MatchCheckpoint {
       oneTwoUntilTick: number;
       restartRelease?: { phase: RuleState['phase']; side: Side; takerId: string; indirect?: boolean } | null;
       subbedOutIds?: string[];
+      /** Players hurt during this match; they limp until substituted. */
+      injuredIds?: string[];
+      /** Substitution budget of the side that is not managed by the player. */
+      opponentSubs?: { used: number; windows: number; lastAt: number };
+      /** Added football minutes per half and the real seconds the first half ran over. */
+      stoppage?: { added: [number, number]; overrun: number };
+      /** Extra time of a knockout tie: current period and the elapsed time it started at. */
+      extra?: { period: 1 | 2; periodStart: number };
     };
     previousInput: MatchCommand;
     actionHeld: { pass: number; through: number; lob: number; shoot: number };
@@ -390,6 +421,8 @@ export interface MatchResult {
   weather?: MatchWeather;
   heatmaps?: Record<string, { x: number; y: number; weight: number }[]>;
   endingFitness?: Record<string, number>;
+  extraTime?: boolean;
+  shootout?: PenaltyShootout;
 }
 
 export interface MatchContribution {

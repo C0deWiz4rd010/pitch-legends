@@ -46,6 +46,27 @@ describe('Football presentation',()=>{
     audio.stopCrowd();expect(FakeAudioContext.stopped).toBe(stopped+1);
     audio.stopCrowd();expect(FakeAudioContext.stopped).toBe(stopped+1);
   });
+  it('distinguishes whistle patterns, quiet dribbles and chants while leading',()=>{
+    vi.useFakeTimers();vi.stubGlobal('AudioContext',FakeAudioContext);FakeAudioContext.oscillators=0;
+    TestBed.configureTestingModule({providers:[{provide:GameStateService,useValue:{game:()=>null}}]});
+    const audio=TestBed.inject(AudioService);
+    audio.matchEvent({minute:10,type:'foul',side:'home',playerId:null,messageKey:'match.offside'});
+    const offside=FakeAudioContext.oscillators;
+    FakeAudioContext.oscillators=0;
+    audio.matchEvent({minute:90,type:'fulltime',side:null,playerId:null});
+    expect(FakeAudioContext.oscillators).toBeGreaterThan(offside);
+    expect(offside).toBe(4);
+    FakeAudioContext.oscillators=0;
+    audio.contact({tick:5,x:0,y:0,z:.11,kind:'foot',foot:'right',dribble:true},6);
+    expect(FakeAudioContext.oscillators).toBe(1);
+    audio.contact({tick:6,x:0,y:0,z:.11,kind:'foot',foot:'right'},30);
+    expect(FakeAudioContext.oscillators).toBe(3);
+    const created=vi.spyOn(FakeAudioContext.prototype,'createBufferSource');
+    audio.setChant(true);vi.advanceTimersByTime(2400);
+    expect(created.mock.calls.length).toBeGreaterThan(3);
+    audio.setChant(false);const calls=created.mock.calls.length;vi.advanceTimersByTime(2400);
+    expect(created.mock.calls.length).toBe(calls);
+  });
   it('retains twelve seconds in order and freezes the actual goal crossing before kickoff',()=>{
     const {home,away}=createPracticeTeams();
     const match=new ArcadeMatch(home,away,home.id);

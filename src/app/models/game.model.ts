@@ -21,7 +21,7 @@ export interface ManagerAttributes {
   negotiation: number;
   youthDevelopment: number;
 }
-export type InputAction = 'move' | 'pass' | 'through' | 'lob' | 'shoot' | 'sprint' | 'skill' | 'switch' | 'tactics' | 'keeper';
+export type InputAction = 'move' | 'pass' | 'through' | 'lob' | 'shoot' | 'sprint' | 'skill' | 'switch' | 'tactics' | 'keeper' | 'jockey';
 
 export interface ControlLearningState {
   introSeen: boolean;

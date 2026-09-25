@@ -35,22 +35,22 @@ export const CONTROL_BINDINGS: readonly ControlBinding[] = [
   },
   {
     action: 'pass', chapter: 'pass', title: { de: 'Kurzpass / Stellungstackling', en: 'Short pass / standing tackle' },
-    description: { de: 'J/A halten und loslassen zum Passen; nach 0,8 Sekunden ist die Kraft voll. Sprint + Pass startet einen Doppelpasslauf. Kurz vor der Annahme loslassen ermöglicht direktes Weiterspielen. Gegen den Ball führt J/A ein Stellungstackling aus.', en: 'Hold and release J/A to pass; power is full after 0.8 seconds. Sprint + pass starts a give-and-go run. Release just before receiving to play first time. Against the ball J/A performs a standing tackle.' },
+    description: { de: 'J/A halten und loslassen zum Passen; nach 0,8 Sekunden ist die Kraft voll. Sprint + Pass startet einen Doppelpasslauf. Kurz vor der Annahme loslassen ermöglicht direktes Weiterspielen. Gegen den Ball löst J/A sofort beim Drücken ein Stellungstackling aus.', en: 'Hold and release J/A to pass; power is full after 0.8 seconds. Sprint + pass starts a give-and-go run. Release just before receiving to play first time. Against the ball J/A triggers a standing tackle the moment you press it.' },
     keyboard: [{ label: 'J', asset: `${ASSET}key-j.png` }], gamepad: [{ label: 'A', asset: `${ASSET}gamepad-a.png` }], touch: [{ label: 'A', tone: 'green' }],
   },
   {
     action: 'through', chapter: 'pass', title: { de: 'Steilpass / Torwart rufen', en: 'Through ball / rush keeper' },
-    description: { de: 'K/Y spielt in den Laufraum. In der Defensive lässt dieselbe Taste den Torwart herauslaufen.', en: 'K/Y passes into space. In defence the same button rushes the goalkeeper.' },
+    description: { de: 'K/Y spielt den Ball in den Raum vor den Läufer – je mehr Kraft, desto weiter. Mit gehaltenem U/X wird daraus ein hoher Steilpass. Aus der Flankenzone schlägt K/Y eine scharfe, flache Hereingabe. In der Defensive nahe dem eigenen Tor lässt dieselbe Taste den Torwart herauslaufen.', en: 'K/Y plays the ball into the space ahead of the runner – more power, further lead. Hold U/X for a lofted through ball. From the crossing zone K/Y whips in a low driven cross. Defending near your own goal the same button rushes the goalkeeper.' },
     keyboard: [{ label: 'K', asset: `${ASSET}key-k.png` }], gamepad: [{ label: 'Y', asset: `${ASSET}gamepad-y.png` }], touch: [{ label: 'Y', tone: 'yellow' }],
   },
   {
     action: 'lob', chapter: 'pass', title: { de: 'Lob / Flanke / Grätsche', en: 'Lob / cross / slide' },
-    description: { de: 'U/X hebt den Ball für Flanken und Lobs an. Ohne Ball startest du eine riskantere Grätsche.', en: 'U/X lifts the ball for crosses and lobs. Without the ball it starts a riskier slide tackle.' },
+    description: { de: 'U/X hebt den Ball an. Aus der Flankenzone (seitlich, vor dem Strafraum) segelt die Flanke auf Kopfhöhe zum besten Läufer im Strafraum. Ohne Ball startest du sofort eine riskantere Grätsche.', en: 'U/X lifts the ball. From the crossing zone (wide, near the box) the cross arrives at head height for the best runner in the box. Without the ball it starts a riskier slide tackle immediately.' },
     keyboard: [{ label: 'U', asset: `${ASSET}key-u.png` }], gamepad: [{ label: 'X', asset: `${ASSET}gamepad-x.png` }], touch: [{ label: 'X', tone: 'blue' }],
   },
   {
     action: 'shoot', chapter: 'attack', title: { de: 'Schuss / Befreiung', en: 'Shoot / clearance' },
-    description: { de: 'L/B halten, zielen und loslassen. Kurzes Antippen schießt flach, nach 0,9 Sekunden ist die Kraft voll. I/RB beim Loslassen halten für einen angeschnittenen Schuss; U/X für einen Lupfer.', en: 'Hold L/B, aim and release. A quick tap shoots low; full power takes 0.9 seconds. Hold I/RB on release for a finesse shot, or U/X for a chip.' },
+    description: { de: 'L/B halten, zielen und loslassen. Kurzes Antippen schießt flach, nach 0,9 Sekunden ist die Kraft voll. Beim Loslassen: I/RB halten für einen angeschnittenen Schuss (der starke Fuß bestimmt die Kurve), U/X für einen Lupfer, beide zusammen für einen Kraftschuss. Hohe Bälle werden als Volley genommen.', en: 'Hold L/B, aim and release. A quick tap shoots low; full power takes 0.9 seconds. On release hold I/RB for a finesse shot (the stronger foot sets the curl), U/X for a chip, or both for a driven power shot. High balls are struck as volleys.' },
     keyboard: [{ label: 'L', asset: `${ASSET}key-l.png` }], gamepad: [{ label: 'B', asset: `${ASSET}gamepad-b.png` }], touch: [{ label: 'B', tone: 'red' }],
   },
   {
@@ -60,12 +60,17 @@ export const CONTROL_BINDINGS: readonly ControlBinding[] = [
   },
   {
     action: 'skill', chapter: 'attack', title: { de: 'Skill / enge Führung', en: 'Skill / close control' },
-    description: { de: 'I/RB plus Richtung löst Ballrolle oder Drag Back aus. Ohne Ball rufst du genau einen Mitspieler zum Pressing.', en: 'I/RB plus direction performs a ball roll or drag back. Off the ball it calls one teammate to press.' },
+    description: { de: 'I/RB wählt den Trick über die Richtung: ohne Richtung Körpertäuschung, seitlich Ballrolle, zurück Drag Back, nach vorn Vorlegen. Timing entscheidet: Ist der Gegner näher als etwa einen Meter, verlierst du den Ball; zwischen einem und dreieinhalb Metern lässt du ihn stehen. Ohne Ball rufst du einen Mitspieler zum Pressing.', en: 'I/RB picks the move by direction: none for a body feint, sideways for a ball roll, back for a drag back, forward to knock the ball on. Timing decides: with a defender closer than about one metre you lose the ball; between one and three and a half metres you leave the defender standing. Off the ball it calls one teammate to press.' },
     keyboard: [{ label: 'I' }], gamepad: [{ label: 'RB' }], touch: [{ label: 'SK', tone: 'purple' }],
   },
   {
+    action: 'jockey', chapter: 'defend', title: { de: 'Stellen', en: 'Jockey' },
+    description: { de: 'O/LT halten: Dein Verteidiger bleibt torseitig vor dem Ballführer, schaut zum Ball und weicht kontrolliert zurück. Aus dieser Haltung gelingen Tacklings etwas häufiger. Wer mit dem Rücken zum Gegner ohne Sprint dribbelt, schirmt den Ball ab.', en: 'Hold O/LT: your defender stays goal-side of the carrier, faces the ball and gives ground under control. Tackles from this stance succeed slightly more often. A carrier dribbling without sprinting, with a defender behind, shields the ball.' },
+    keyboard: [{ label: 'O' }], gamepad: [{ label: 'LT' }], touch: [{ label: 'LT', tone: 'blue' }],
+  },
+  {
     action: 'keeper', chapter: 'defend', title: { de: 'Torwart', en: 'Goalkeeper' },
-    description: { de: 'K/Y halten ruft den Torwart heraus. Er fängt oder wehrt erreichbare Bälle ab, sammelt gefangene Bälle und eröffnet selbstständig. Die automatische Spielerwahl springt nicht auf den Torwart.', en: 'Hold K/Y to rush the keeper. He catches or parries reachable balls, gathers catches and distributes automatically. Automatic player switching does not select the goalkeeper.' },
+    description: { de: 'K/Y halten ruft den Torwart heraus. Er fängt oder wehrt erreichbare Bälle ab, sammelt gefangene Bälle und eröffnet selbstständig. Die automatische Spielerwahl springt nicht auf den Torwart.', en: 'Hold K/Y near your own goal to rush the keeper. The keeper catches or parries reachable balls, gathers catches and distributes automatically. Automatic player switching does not select the goalkeeper.' },
     keyboard: [{ label: 'K', asset: `${ASSET}key-k.png` }], gamepad: [{ label: 'Y', asset: `${ASSET}gamepad-y.png` }], touch: [{ label: 'Y', tone: 'yellow' }],
   },
   {
@@ -92,6 +97,7 @@ export const CONTROL_INPUT_MAP = {
   shoot: { keyboard: ['KeyL'], gamepadButton: 1 },
   skill: { keyboard: ['KeyI'], gamepadButton: 5 },
   switch: { keyboard: ['Space'], gamepadButton: 4 },
+  jockey: { keyboard: ['KeyO'], gamepadButton: 6 },
 } as const;
 
 export const MOVEMENT_KEYS = {

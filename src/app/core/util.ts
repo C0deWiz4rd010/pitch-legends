@@ -62,6 +62,11 @@ export class Rng {
     return arr;
   }
 
+  /** Standard normal sample (Box–Muller) scaled to a real standard deviation. */
+  normal(mean: number, deviation: number): number {
+    return mean + Math.sqrt(-2 * Math.log(Math.max(1e-9, this.next()))) * Math.cos(2 * Math.PI * this.next()) * deviation;
+  }
+
   /** Approximate normal distribution via averaging (mean, spread). */
   gaussian(mean: number, spread: number): number {
     const r = (this.next() + this.next() + this.next()) / 3;

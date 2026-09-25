@@ -41,6 +41,7 @@ export interface ArcadeBall {
   vy: number;
   vz: number;
   spin: number;
+  topspin: number;
   ownerId: string | null;
   lastTouch: Side;
   lastTouchPlayerId: string | null;
