@@ -4,6 +4,28 @@ All notable changes to Pitch Legends are recorded here. Releases follow
 [Semantic Versioning](https://semver.org/) and are generated from Conventional
 Commits by Release Please.
 
+## [1.5.0](https://github.com/C0deWiz4rd010/pitch-legends/compare/pitch-legends-v1.4.2...pitch-legends-v1.5.0) (2026-09-25)
+
+
+### Features
+
+* **ai:** add coordinated football decisions and credible goalkeeping ([07c4ada](https://github.com/C0deWiz4rd010/pitch-legends/commit/07c4ada61b79758f00d45f5930ea2fe853f72b52))
+* **animation:** join arm surfaces and smooth player joint deformation ([a47539e](https://github.com/C0deWiz4rd010/pitch-legends/commit/a47539eb4a065f8e818f2bd88b2b4e0f6d28a0f1))
+* **gameplay:** calm camera and player switching and improve goalkeeper animation ([100dda8](https://github.com/C0deWiz4rd010/pitch-legends/commit/100dda82b6916efc1cbe357eedee98b9e9fc7d80))
+* **gameplay:** rebuild dribbling passing shooting and ball contact ([40c70a1](https://github.com/C0deWiz4rd010/pitch-legends/commit/40c70a198beb0bec73693145926a153713936ced))
+* **gameplay:** rework movement, actions, ball physics, AI and match rules ([7661fa4](https://github.com/C0deWiz4rd010/pitch-legends/commit/7661fa4bed543cc7b39993620f16d1226e951904))
+* **match:** bring arcade 3D to career and complete match restarts ([dd1adab](https://github.com/C0deWiz4rd010/pitch-legends/commit/dd1adab698a8f83cbb66ef1dca05ff5164c79bec))
+* **players:** add procedural identities and continuous football animation ([f5e6a76](https://github.com/C0deWiz4rd010/pitch-legends/commit/f5e6a76dc7683cc5925677c20cd42fb7ce101d7e))
+* **rendering:** introduce the playable three-dimensional training pitch ([2f566b3](https://github.com/C0deWiz4rd010/pitch-legends/commit/2f566b3abb01ea414f8a1fd1489ef25f89a3ce37))
+
+
+### Bug Fixes
+
+* **gameplay:** make movement turning and input consistently responsive ([a2c89df](https://github.com/C0deWiz4rd010/pitch-legends/commit/a2c89df3b80b96911a87347d1081dae1df94cb59))
+* **performance:** cancel stale portraits and pace software graphics ([d382ecc](https://github.com/C0deWiz4rd010/pitch-legends/commit/d382ecc106e1a1ef2d4ae9061fd56dc2f973422b))
+* **rendering:** keep football playable after delayed GPU frames ([8cc8edd](https://github.com/C0deWiz4rd010/pitch-legends/commit/8cc8edd20504270f27942e6aa30c4b2971ba2bf3))
+* **season:** secure multi-season progression and document the 2.0 roadmap ([f3b393b](https://github.com/C0deWiz4rd010/pitch-legends/commit/f3b393bf1a36ca246e6d3ba0d4d08ec969ce763d))
+
 ## 1.4.2 (2026-08-15)
 
 ### Features
