@@ -1,3 +1,4 @@
+import { computeStandings } from '../standings';
 import { Injectable, inject } from '@angular/core';
 import { GameState, NewsItem } from '../../models/game.model';
 import { Team } from '../../models/team.model';
@@ -320,23 +321,7 @@ export class SeasonService {
   private resolveLeagueObjective(draft: GameState): void {
     const objective = draft.objectives.find((candidate) => candidate.type === 'league-position' && !candidate.completed);
     if (!objective) return;
-    const points = new Map(draft.teams.map((team) => [team.id, { points: 0, diff: 0 }]));
-    for (const fixture of draft.league.fixtures) {
-      if (!fixture.played || fixture.homeScore == null || fixture.awayScore == null) continue;
-      const home = points.get(fixture.homeTeamId)!;
-      const away = points.get(fixture.awayTeamId)!;
-      home.diff += fixture.homeScore - fixture.awayScore;
-      away.diff += fixture.awayScore - fixture.homeScore;
-      if (fixture.homeScore > fixture.awayScore) home.points += 3;
-      else if (fixture.awayScore > fixture.homeScore) away.points += 3;
-      else {
-        home.points++;
-        away.points++;
-      }
-    }
-    const position = [...points.entries()]
-      .sort((a, b) => b[1].points - a[1].points || b[1].diff - a[1].diff)
-      .findIndex(([id]) => id === draft.clubId) + 1;
+    const position = computeStandings(draft.teams, draft.league.fixtures).findIndex((row) => row.teamId === draft.clubId) + 1;
     objective.progress = position;
     if (position > 0 && position <= objective.target) {
       objective.completed = true;

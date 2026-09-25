@@ -120,9 +120,7 @@ export class DashboardPage {
     return this.gs.teamById(id);
   }
 
-  protected text(de: string, en: string): string {
-    return this.i18n.locale() === 'de' ? de : en;
-  }
+  protected text(de: string, en: string): string { return this.i18n.pick(de, en); }
 
   protected weatherLabel(weather: 'clear' | 'rain' | 'storm'): string {
     const labels = {

@@ -34,12 +34,16 @@ import { createInjury, isPlayerAvailable } from '../injury-engine';
 import { accelerateTowards, turnTowards } from '../football/movement';
 import { actionIsPlaying, isLocomotionAction } from '../football/action-timing';
 import { BALL_RADIUS, collideGoalFrame } from '../football/ball-physics';
+import { ActiveShot, ArcadeActor, ArcadeBall, FIELD_LENGTH, FIELD_WIDTH, GOAL_HEIGHT, GOAL_WIDTH, MATCH_TICK, distance, oppositeSide } from '../football/match-types';
+import { closestOpponentDistance, isOffsidePosition, passLanePressure } from '../football/pitch-analysis';
+import { PlayerCollisionGrid } from '../football/collisions';
+import { actorSnapshot, applyActorSnapshot, ballSnapshot, fnv1aHex, writeBallSnapshot, writePlayers } from '../football/match-snapshot';
+import { keeperDiveTarget, keeperPositionIntent } from '../football/keeper-ai';
+import { arrangeRestart, chooseRestartTaker } from '../football/set-pieces';
 
-export const FIELD_LENGTH = 105;
-export const FIELD_WIDTH = 68;
-export const GOAL_WIDTH = 7.32;
-export const GOAL_HEIGHT = 2.44;
-export const MATCH_TICK = 1 / 60;
+export { FIELD_LENGTH, FIELD_WIDTH, GOAL_HEIGHT, GOAL_WIDTH, MATCH_TICK } from '../football/match-types';
+export type { ArcadeActor, ArcadeBall } from '../football/match-types';
+
 export const ARCADE_MATCH_TUNING = {
   sprintMin: 6,
   sprintMax: 9.4,
@@ -52,8 +56,6 @@ export const ARCADE_MATCH_TUNING = {
   aiFirstTouchAssist: 10,
   aiIntendedReceiverBonus: 8,
   intendedReceiverControlBias: 0.12,
-  homeKeeperComposure: 0.06,
-  awayKeeperComposure: -0.035,
 } as const;
 
 export function arcadeSprintSpeed(pace: number): number {
@@ -63,54 +65,6 @@ export function arcadeSprintSpeed(pace: number): number {
 
 export function arcadeJogSpeed(pace: number): number {
   return arcadeSprintSpeed(pace) * ARCADE_MATCH_TUNING.jogRatio;
-}
-
-export interface ArcadeActor {
-  contact?: PlayerRuntimeSnapshot['contact'];
-  actionTarget?: PlayerRuntimeSnapshot['actionTarget'];
-  player: Player;
-  side: Side;
-  x: number;
-  y: number;
-  homeX: number;
-  homeY: number;
-  vx: number;
-  vy: number;
-  stamina: number;
-  facingX: number;
-  facingY: number;
-  active: boolean;
-  card: 'none' | 'yellow' | 'red';
-  action: PlayerActionState;
-  actionStartedTick: number;
-  decisionCooldown: number;
-  skillCooldown: number;
-  tackleCooldown: number;
-  intentX: number;
-  intentY: number;
-  animationDistance: number;
-}
-
-export interface ArcadeBall {
-  x: number;
-  y: number;
-  z: number;
-  vx: number;
-  vy: number;
-  vz: number;
-  spin: number;
-  ownerId: string | null;
-  lastTouch: Side;
-  lastTouchPlayerId: string | null;
-  controlledTouch: number;
-}
-
-interface ActiveShot {
-  shooterId: string;
-  side: Side;
-  xG: number;
-  targetY: number;
-  checkedKeeper: boolean;
 }
 
 const DEFAULT_CONFIG: Omit<MatchConfig, 'controlledTeamId' | 'seed'> = {
@@ -124,10 +78,6 @@ const DEFAULT_CONFIG: Omit<MatchConfig, 'controlledTeamId' | 'seed'> = {
   inputDevice: 'keyboard',
   camera: { zoom: 1, lookAhead: 0.18, shake: true, reducedMotion: false },
 };
-
-function distance(a: { x: number; y: number }, b: { x: number; y: number }): number {
-  return Math.hypot(a.x - b.x, a.y - b.y);
-}
 
 function normaliseCommand(input: InputFrame | MatchCommand): MatchCommand {
   return {
@@ -209,8 +159,7 @@ export class ArcadeMatch {
   private readonly replayBuffer = new ReplayRing();
   private frozenReplay: MatchSnapshot[] = [];
   private lastSubAt = -100;
-  private readonly collisionGrid: ArcadeActor[][] = Array.from({ length: 216 }, () => []);
-  private readonly usedCollisionBuckets: number[] = [];
+  private readonly collisions = new PlayerCollisionGrid();
 
   constructor(
     home: Team,
@@ -489,19 +438,44 @@ export class ArcadeMatch {
     };
   }
 
-  renderState(): MatchRenderState {
-    const activeSignature = this.actors
-      .filter((actor) => actor.active)
-      .map((actor) => actor.player.id)
-      .join(',');
+  /** Pass a frame that is no longer displayed to reuse its objects. */
+  renderState(reuse?: MatchRenderState): MatchRenderState {
+    let activeSignature = '';
+    for (const actor of this.actors) if (actor.active) activeSignature += actor.player.id + ',';
+    const discontinuityKey = `${this.half}|${this.phase}|${this.rule.phase}|${this.homeScore}:${this.awayScore}|${activeSignature}`;
+    if (reuse) {
+      reuse.tick = this.tick;
+      reuse.controlledPlayerId = this.selectedPlayerId;
+      reuse.attackDirection = this.currentAttackDirection;
+      reuse.discontinuityKey = discontinuityKey;
+      writeBallSnapshot(this.ball, reuse.ball);
+      writePlayers(this.actors, reuse.players);
+      return reuse;
+    }
     return {
       tick: this.tick,
       controlledPlayerId: this.selectedPlayerId,
       attackDirection: this.currentAttackDirection,
-      discontinuityKey: `${this.half}|${this.phase}|${this.rule.phase}|${this.homeScore}:${this.awayScore}|${activeSignature}`,
+      discontinuityKey,
       ball: this.ballSnapshot(),
       players: this.actors.map((actor) => this.actorSnapshot(actor)),
     };
+  }
+
+  private snapshotInto(reuse: MatchSnapshot | undefined): MatchSnapshot {
+    if (!reuse) return this.snapshot();
+    reuse.tick = this.tick;
+    reuse.phase = this.phase;
+    reuse.footballMinute = this.footballMinute;
+    reuse.elapsed = this.elapsed;
+    reuse.homeScore = this.homeScore;
+    reuse.awayScore = this.awayScore;
+    reuse.controlledPlayerId = this.selectedPlayerId;
+    reuse.attackDirection = this.currentAttackDirection;
+    reuse.rule = Object.assign(reuse.rule, this.rule);
+    writeBallSnapshot(this.ball, reuse.ball);
+    writePlayers(this.actors, reuse.players);
+    return reuse;
   }
 
   checkpoint(): MatchCheckpoint {
@@ -617,12 +591,7 @@ export class ArcadeMatch {
     const snapshot = this.snapshot();
     const players = snapshot.players.map(({ animationDistance: _presentationOnly, ...player }) => player);
     const json = JSON.stringify({ snapshot: { ...snapshot, players }, rng: this.rng.snapshot(), events: this.events, football: this.football, previousInput: this.previousInput, actionHeld: this.actionHeld, activeShot: this.activeShot, intendedReceiverId: this.intendedReceiverId, lastPasser: this.lastPasser });
-    let hash = 2166136261;
-    for (let index = 0; index < json.length; index++) {
-      hash ^= json.charCodeAt(index);
-      hash = Math.imul(hash, 16777619);
-    }
-    return (hash >>> 0).toString(16).padStart(8, '0');
+    return fnv1aHex(json);
   }
 
   private buildActors(team: Team, side: Side): void {
@@ -780,14 +749,11 @@ export class ArcadeMatch {
   }
 
   private moveAi(actor: ArcadeActor, dt: number): void {
-    if(actor.player.positionGroup==='GK' && actor.action==='keeper-ready' && this.activeShot && this.activeShot.side!==actor.side && !this.ball.ownerId && Math.abs(this.ball.vx)>8) {
-      const flight=(actor.x-this.ball.x)/this.ball.vx;
-      const targetY=this.ball.y+this.ball.vy*flight;
-      const lateral=Math.abs(targetY-actor.y);
-      const targetHeight=this.ball.z+this.ball.vz*flight-4.905*flight*flight;
-      if(flight>.02 && flight<.24 && lateral>.65 && lateral<1.8 && targetHeight<2.3 && targetHeight>-.1) {
+    if(actor.player.positionGroup==='GK') {
+      const dive=keeperDiveTarget(actor,this.ball,this.activeShot);
+      if(dive) {
         this.setAction(actor,'keeper-dive');
-        actor.actionTarget={x:actor.x,y:targetY,z:clamp(targetHeight,.15,2.3)};
+        actor.actionTarget=dive;
       }
     }
     if(actor.player.positionGroup==='GK' && ['keeper-dive','keeper-catch','keeper-parry'].includes(actor.action) && actionIsPlaying(actor.action,actor.actionStartedTick,this.tick)) {
@@ -857,22 +823,10 @@ export class ArcadeMatch {
     }
 
     if (actor.player.positionGroup === 'GK') {
-      const goalX = direction > 0 ? 0 : FIELD_LENGTH;
-      const ballDepth = Math.abs(this.ball.x - goalX);
-      const sweeper = !owner && ballDepth < 15 && distance(actor, this.ball) < 9 && this.ball.z < 1.3;
-      if (sweeper) {
-        this.setAction(actor, 'keeper-rush');
-        actor.intentX = this.ball.x + this.ball.vx * 0.15;
-        actor.intentY = this.ball.y + this.ball.vy * 0.15;
-      } else {
-        this.setAction(actor, 'keeper-ready');
-        const depth = clamp(ballDepth * 0.11, 1.1, 5);
-        actor.intentX = goalX + direction * depth;
-        const incoming = this.ball.vx * direction < -3;
-        const flight = incoming ? clamp((actor.intentX - this.ball.x) / this.ball.vx, 0, 0.75) : 0;
-        const angleY = 34 + (this.ball.y - 34) * depth / Math.max(depth, ballDepth);
-        actor.intentY = clamp(incoming ? this.ball.y + this.ball.vy * flight : angleY, 29.3, 38.7);
-      }
+      const intent = keeperPositionIntent(actor, this.ball, !!owner, direction);
+      this.setAction(actor, intent.action);
+      actor.intentX = intent.x;
+      actor.intentY = intent.y;
       return;
     }
 
@@ -1491,12 +1445,7 @@ export class ArcadeMatch {
     const phase = this.rule.phase;
     const side = this.rule.restartSide ?? 'home';
     const team = this.teamOf(side);
-    const nominated = phase === 'penalty' ? team.tactics.penaltyTakerId : phase === 'corner' ? team.tactics.cornerTakerId : phase === 'freeKick' ? team.tactics.freeKickTakerId : null;
-    const candidates = this.actors.filter(actor => actor.active && actor.side === side);
-    const taker = candidates.find(actor => actor.player.id === nominated)
-      ?? (phase === 'goalKick' ? candidates.find(actor => actor.player.positionGroup === 'GK') : undefined)
-      ?? candidates.filter(actor=>actor.player.positionGroup!=='GK').sort((a,b)=>distance(a,this.ball)-distance(b,this.ball))[0]
-      ?? candidates[0];
+    const taker = chooseRestartTaker(this.rule, team, this.actors.filter(actor => actor.active && actor.side === side), this.ball);
     if (!taker) return;
     if (this.rule.elapsed === 0) {
       this.arrangeRestart(taker);
@@ -1546,35 +1495,8 @@ export class ArcadeMatch {
   }
 
   private arrangeRestart(taker: ArcadeActor): void {
-    const rule = this.rule;
-    const direction = this.attackDirection(taker.side);
-    taker.x = clamp(rule.spotX - direction*.45,.4,104.6);
-    taker.y = clamp(rule.spotY,.4,67.6);
-    taker.vx = taker.vy = 0;
-    taker.facingX = direction; taker.facingY = 0;
-    this.ball.x = rule.spotX; this.ball.y = rule.spotY; this.ball.z = BALL_RADIUS;
+    arrangeRestart(taker, this.rule, this.ball, this.actors, actor => this.attackDirection(actor.side));
     if (taker.side === this.controlledSide && !this.config.playerLockId) this.selectedPlayerId = taker.player.id;
-    for (const actor of this.actors) {
-      if (!actor.active || actor===taker) continue;
-      actor.vx=actor.vy=0;
-      const separation = rule.phase==='throwIn'?2:9.15;
-      if (rule.phase==='kickoff') {
-        actor.x = this.attackDirection(actor.side)>0 ? Math.min(actor.x,51) : Math.max(actor.x,54);
-      }
-      if (rule.phase==='penalty') {
-        if (actor.side!==taker.side && actor.player.positionGroup==='GK') { actor.x=direction>0?104.89:.11; actor.y=34; continue; }
-        actor.x=direction>0?Math.min(actor.x,87):Math.max(actor.x,18);
-      }
-      if (rule.phase==='goalKick' && actor.side!==taker.side && Math.abs(actor.y-34)<20.16) {
-        actor.x=direction>0?Math.max(actor.x,17):Math.min(actor.x,88);
-      }
-      if (actor.side!==taker.side && distance(actor,this.ball)<separation) {
-        const dx=actor.x-this.ball.x || -direction,dy=actor.y-this.ball.y;
-        const length=Math.hypot(dx,dy)||1;
-        actor.x=clamp(this.ball.x+dx/length*separation,.4,104.6);
-        actor.y=clamp(this.ball.y+dy/length*separation,.4,67.6);
-      }
-    }
   }
 
   private legalRestartTouch(actor: ArcadeActor): boolean {
@@ -1677,7 +1599,7 @@ export class ArcadeMatch {
       this.keyframes.push({ minute, ball: { x: clamp(this.ball.x / FIELD_LENGTH, 0, 1), y: clamp(this.ball.y / FIELD_WIDTH, 0, 1) }, homeInPossession: this.owner()?.side === 'home' });
     }
     if (this.config.mode !== 'instant' && this.phase !== 'goalReplay') {
-      this.replayBuffer.push(this.snapshot());
+      this.replayBuffer.record(reuse => this.snapshotInto(reuse));
     }
     const heatmapInterval = this.config.mode === 'instant' ? 180 : 60;
     if (this.tick % heatmapInterval === 0) {
@@ -1702,79 +1624,15 @@ export class ArcadeMatch {
   }
 
   private resolvePlayerCollisions(): void {
-    const cellSize = 6;
-    const columns = 18;
-    const rows = 12;
-    for (const index of this.usedCollisionBuckets) this.collisionGrid[index].length = 0;
-    this.usedCollisionBuckets.length = 0;
-    for (const actor of this.actors) {
-      if (!actor.active) continue;
-      const gx = Math.min(columns - 1, Math.floor(actor.x / cellSize));
-      const gy = Math.min(rows - 1, Math.floor(actor.y / cellSize));
-      const index = gy * columns + gx;
-      if (this.collisionGrid[index].length === 0) this.usedCollisionBuckets.push(index);
-      this.collisionGrid[index].push(actor);
-    }
-    for (const actor of this.actors) {
-      if (!actor.active) continue;
-      const gx = Math.floor(actor.x / cellSize);
-      const gy = Math.floor(actor.y / cellSize);
-      for (let ox = -1; ox <= 1; ox++) for (let oy = -1; oy <= 1; oy++) {
-        const cx = gx + ox;
-        const cy = gy + oy;
-        if (cx < 0 || cy < 0 || cx >= columns || cy >= rows) continue;
-        for (const other of this.collisionGrid[cy * columns + cx]) {
-          if (other === actor || other.player.id < actor.player.id) continue;
-          const dx = other.x - actor.x;
-          const dy = other.y - actor.y;
-          const minimum = 1.05;
-          const lengthSquared = dx * dx + dy * dy;
-          if (lengthSquared >= minimum * minimum) continue;
-          const length = Math.sqrt(lengthSquared) || 0.001;
-          const normalX = dx / length;
-          const normalY = dy / length;
-          const penetration = Math.max(0, minimum - length - 0.02);
-          const push = penetration * 0.78;
-          const massA = 0.75 + actor.player.attributes.physical / 100;
-          const massB = 0.75 + other.player.attributes.physical / 100;
-          const totalMass = massA + massB;
-          actor.x = clamp(actor.x - normalX * push * (massB / totalMass), 0.8, FIELD_LENGTH - 0.8);
-          actor.y = clamp(actor.y - normalY * push * (massB / totalMass), 0.8, FIELD_WIDTH - 0.8);
-          other.x = clamp(other.x + normalX * push * (massA / totalMass), 0.8, FIELD_LENGTH - 0.8);
-          other.y = clamp(other.y + normalY * push * (massA / totalMass), 0.8, FIELD_WIDTH - 0.8);
-          const closingSpeed = (other.vx - actor.vx) * normalX + (other.vy - actor.vy) * normalY;
-          if (closingSpeed < 0) {
-            const impulse = -closingSpeed * 0.32;
-            actor.vx -= normalX * impulse * (massB / totalMass);
-            actor.vy -= normalY * impulse * (massB / totalMass);
-            other.vx += normalX * impulse * (massA / totalMass);
-            other.vy += normalY * impulse * (massA / totalMass);
-          }
-        }
-      }
-    }
+    this.collisions.resolve(this.actors);
   }
 
   private isOffside(target: ArcadeActor, passer: ArcadeActor): boolean {
-    const direction = this.attackDirection(passer.side);
-    if ((direction > 0 && target.x < FIELD_LENGTH / 2) || (direction < 0 && target.x > FIELD_LENGTH / 2)) return false;
-    const defenders = this.actors.filter((actor) => actor.active && actor.side !== passer.side).map((actor) => actor.x).sort((a, b) => a - b);
-    if (defenders.length < 2) return false;
-    return direction > 0 ? target.x > defenders.at(-2)! && target.x > passer.x : target.x < defenders[1] && target.x < passer.x;
+    return isOffsidePosition(target, passer, this.actors, this.attackDirection(passer.side));
   }
 
   private passLanePressure(from: ArcadeActor, to: ArcadeActor): number {
-    const dx = to.x - from.x;
-    const dy = to.y - from.y;
-    const length2 = dx * dx + dy * dy || 1;
-    let pressure = 0;
-    for (const opponent of this.actors.filter((actor) => actor.active && actor.side !== from.side)) {
-      const t = clamp(((opponent.x - from.x) * dx + (opponent.y - from.y) * dy) / length2, 0, 1);
-      const px = from.x + dx * t;
-      const py = from.y + dy * t;
-      if (Math.hypot(opponent.x - px, opponent.y - py) < 2.2) pressure++;
-    }
-    return pressure;
+    return passLanePressure(from, to, this.actors);
   }
 
   private validateState(): void {
@@ -1810,60 +1668,15 @@ export class ArcadeMatch {
   }
 
   private actorSnapshot(actor: ArcadeActor): PlayerRuntimeSnapshot {
-    return {
-      contact: actor.contact ? { ...actor.contact } : undefined,
-      actionTarget: actor.actionTarget ? {...actor.actionTarget} : undefined,
-      id: actor.player.id,
-      side: actor.side,
-      x: actor.x,
-      y: actor.y,
-      homeX: actor.homeX,
-      homeY: actor.homeY,
-      vx: actor.vx,
-      vy: actor.vy,
-      facingX: actor.facingX,
-      facingY: actor.facingY,
-      fitness: actor.stamina,
-      active: actor.active,
-      card: actor.card,
-      action: actor.action,
-      actionStartedTick: actor.actionStartedTick,
-      decisionCooldown: actor.decisionCooldown,
-      skillCooldown: actor.skillCooldown,
-      tackleCooldown: actor.tackleCooldown,
-      intentX: actor.intentX,
-      intentY: actor.intentY,
-      animationDistance: actor.animationDistance,
-    };
+    return actorSnapshot(actor);
   }
 
   private applyActorSnapshot(actor: ArcadeActor, saved: PlayerRuntimeSnapshot): void {
-    actor.contact = saved.contact ? { ...saved.contact } : undefined;
-    actor.actionTarget = saved.actionTarget ? {...saved.actionTarget} : undefined;
-    actor.x = saved.x;
-    actor.y = saved.y;
-    actor.homeX = saved.homeX;
-    actor.homeY = saved.homeY;
-    actor.vx = saved.vx;
-    actor.vy = saved.vy;
-    actor.facingX = saved.facingX;
-    actor.facingY = saved.facingY;
-    actor.stamina = saved.fitness;
-    actor.active = saved.active;
-    actor.card = saved.card;
-    actor.action = saved.action;
-    actor.actionStartedTick = saved.actionStartedTick ?? this.tick;
-    actor.decisionCooldown = saved.decisionCooldown;
-    actor.skillCooldown = saved.skillCooldown;
-    actor.tackleCooldown = saved.tackleCooldown;
-    actor.intentX = saved.intentX;
-    actor.intentY = saved.intentY;
-    actor.animationDistance = saved.animationDistance ?? 0;
+    applyActorSnapshot(actor, saved, this.tick);
   }
 
   private ballSnapshot(): BallSnapshot {
-    const { x, y, z, vx, vy, vz, spin, ownerId, controlledTouch } = this.ball;
-    return { x, y, z, vx, vy, vz, spin, ownerId, controlledTouch };
+    return ballSnapshot(this.ball);
   }
 
   private newRule(phase: RuleState['phase'], restartSide: Side | null, spotX: number, spotY: number, indirect = false): RuleState {
@@ -1886,10 +1699,6 @@ export class ArcadeMatch {
     return base * fitness * ball * (sprint ? 1 : ARCADE_MATCH_TUNING.jogRatio);
   }
 
-  private approach(current: number, target: number, amount: number): number {
-    return current < target ? Math.min(target, current + amount) : Math.max(target, current - amount);
-  }
-
   private owner(): ArcadeActor | undefined {
     return this.actors.find((actor) => actor.active && actor.player.id === this.ball.ownerId);
   }
@@ -1903,7 +1712,7 @@ export class ArcadeMatch {
   }
 
   private opposite(side: Side): Side {
-    return side === 'home' ? 'away' : 'home';
+    return oppositeSide(side);
   }
 
   private sideAttackingDirection(direction: 1 | -1): Side {
@@ -1911,7 +1720,7 @@ export class ArcadeMatch {
   }
 
   private closestOpponent(actor: ArcadeActor): number {
-    return Math.min(...this.actors.filter((candidate) => candidate.active && candidate.side !== actor.side).map((candidate) => distance(actor, candidate)), 99);
+    return closestOpponentDistance(actor, this.actors);
   }
 
   private pushCommentary(messageKey: string, params: Record<string, string | number>): void {

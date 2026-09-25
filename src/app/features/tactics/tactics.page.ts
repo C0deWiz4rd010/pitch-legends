@@ -100,9 +100,7 @@ export class TacticsPage {
   protected readonly analysisKeys = ['attack', 'control', 'defence', 'transition', 'fitnessLoad', 'risk'] as const;
   protected readonly setPieceTypes: SetPieceType[] = ['captain', 'penalty', 'freeKick', 'corner'];
 
-  protected text(de: string, en: string): string {
-    return this.i18n.locale() === 'de' ? de : en;
-  }
+  protected text(de: string, en: string): string { return this.i18n.pick(de, en); }
 
   protected playerById(id: string | null): Player | undefined {
     return id ? this.gs.squad().find((player) => player.id === id) : undefined;

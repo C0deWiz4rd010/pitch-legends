@@ -50,6 +50,9 @@ jobs:
       - name: Check synchronized version
         run: npm run version:check
 
+      - name: Type-check application and tests
+        run: npm run typecheck
+
       - name: Unit tests
         run: npm test -- --watch=false
 

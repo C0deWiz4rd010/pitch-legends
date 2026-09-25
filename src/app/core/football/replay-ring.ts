@@ -11,6 +11,10 @@ export class ReplayRing {
     this.cursor=(this.cursor+1)%this.capacity;
     this.count=Math.min(this.capacity,this.count+1);
   }
+  /** Reuses the frame object that is about to be overwritten. */
+  record(write:(reuse:MatchSnapshot|undefined)=>MatchSnapshot):void {
+    this.push(write(this.frames[this.cursor]));
+  }
   latest(count=this.count):MatchSnapshot[] {
     const length=Math.min(this.count,Math.max(0,count));
     return Array.from({length},(_,i)=>this.frames[(this.cursor-length+i+this.capacity)%this.capacity]!);

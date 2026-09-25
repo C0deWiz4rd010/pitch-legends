@@ -4,6 +4,7 @@ import { PlayerRuntimeSnapshot } from '../../models/match.model';
 import { hash32 } from '../../core/visual-identity';
 import { blendJointSkin } from './joint-skinning';
 import { createLimbSurface } from './limb-surface';
+import { ACTION_DURATION_TICKS } from '../../core/football/action-timing';
 
 const SKIN = ['#f5d0a9', '#e9b989', '#d99a68', '#bf7b50', '#9b5c3d', '#75422f', '#573126', '#35221f'];
 const HAIR = ['#17141d', '#2c1b18', '#4b2e24', '#71462b', '#9b673d', '#c89b62', '#d9c6a2', '#702c32'];
@@ -294,6 +295,14 @@ export function placeFoot(model: ProceduralFootballer, side: 'left' | 'right', x
 }
 
 /** Continuous, distance-driven locomotion and simulation-timed action poses. */
+const KICK_ACTIONS: ReadonlySet<string> = new Set(['pass', 'through-pass', 'lob', 'shot', 'low-shot', 'finesse-shot', 'chip-shot', 'keeper-kick']);
+const JOINT_LISTS = new WeakMap<ProceduralFootballer, THREE.Bone[]>();
+function jointList(model: ProceduralFootballer): THREE.Bone[] {
+  let list = JOINT_LISTS.get(model);
+  if (!list) JOINT_LISTS.set(model, list = Object.values(model.joints));
+  return list;
+}
+
 export function poseFootballer(model: ProceduralFootballer, state: PlayerRuntimeSnapshot, tick: number, time: number, reducedMotion = false, chargePower = 0): void {
   const j = model.joints;
   const speed = Math.hypot(state.vx, state.vy);
@@ -302,8 +311,9 @@ export function poseFootballer(model: ProceduralFootballer, state: PlayerRuntime
   const cycle = (state.animationDistance ?? 0) / stride;
   const phase = cycle * TAU;
   const age = Math.max(0, (tick - state.actionStartedTick) / 60);
+  const actionDuration = (ACTION_DURATION_TICKS[state.action] ?? 12) / 60;
   const breath = reducedMotion ? 0 : Math.sin(time * 2.2 + model.recipe.seed % 11) * 0.005;
-  for (const joint of Object.values(j)) joint.rotation.set(0, 0, 0);
+  for (const joint of jointList(model)) joint.rotation.set(0, 0, 0);
   const moving = Math.min(1, speed / 0.8);
   const maximumReach = model.thighLength + model.shinLength - 0.014;
   const stanceHalf = stride * 0.25 / 2;
@@ -329,10 +339,11 @@ export function poseFootballer(model: ProceduralFootballer, state: PlayerRuntime
     j[`${side}Arm`].rotation.z = sign * (0.10 + run * 0.04);
     j[`${side}Forearm`].rotation.x = -0.22 - run * 0.78;
   }
-  const kick = ['pass', 'through-pass', 'lob', 'shot', 'low-shot', 'finesse-shot', 'chip-shot', 'keeper-kick'].includes(state.action);
-  if (kick && age < 0.50) {
-    const strength = ['pass', 'through-pass'].includes(state.action) ? 0.75 : 1;
-    const weight=1-THREE.MathUtils.smoothstep(age,.17,.50);
+  const kick = KICK_ACTIONS.has(state.action);
+  const kickEnd = Math.min(.50, actionDuration);
+  if (kick && age < kickEnd) {
+    const strength = state.action === 'pass' || state.action === 'through-pass' ? 0.75 : 1;
+    const weight=1-THREE.MathUtils.smoothstep(age,Math.min(.17,kickEnd*.4),kickEnd);
     const extension=Math.sin(Math.min(1,age/.36)*Math.PI)*strength;
     const side=model.footedness>0?'right':'left';
     const thigh=j[`${side}Thigh`],shin=j[`${side}Shin`],foot=j[`${side}Foot`];
@@ -351,34 +362,34 @@ export function poseFootballer(model: ProceduralFootballer, state: PlayerRuntime
     j.leftArm.rotation.z+=power*.35;j.rightArm.rotation.z-=power*.35;
   }
   if (state.action === 'receive' || state.action === 'close-control' || state.action === 'ball-roll' || state.action === 'drag-back') {
-    j.rightThigh.rotation.x -= Math.sin(Math.min(age * 6, 1) * Math.PI) * 0.38;
-    j.rightFoot.rotation.y = -0.42;
-    j.spine.rotation.x += 0.12;
+    const envelope=Math.sin(Math.min(age/actionDuration,1)*Math.PI) ** 2;
+    j.rightThigh.rotation.x -= envelope * 0.38;
+    j.rightFoot.rotation.y = -0.42 * envelope;
+    j.spine.rotation.x += 0.12 * envelope;
   }
-  if (state.action === 'standing-tackle' && age < 0.5) {
-    const extend = Math.sin(Math.min(age / 0.5, 1) * Math.PI);
-    j.rightThigh.rotation.x = -0.85 * extend;
-    j.rightShin.rotation.x = 0.15;
-    j.spine.rotation.x = 0.2;
+  if (state.action === 'standing-tackle' && age < actionDuration) {
+    const extend = Math.sin(Math.min(age / actionDuration, 1) * Math.PI) ** 2;
+    j.rightThigh.rotation.x = THREE.MathUtils.lerp(j.rightThigh.rotation.x,-0.85,extend);
+    j.rightShin.rotation.x = THREE.MathUtils.lerp(j.rightShin.rotation.x,0.15,extend);
+    j.spine.rotation.x += 0.2 * extend;
   }
   if (state.action === 'slide' || state.action === 'stumble' || state.action === 'injured') {
-    const envelope = state.action === 'injured' ? 1 : Math.sin(Math.min(age / 0.8, 1) * Math.PI);
+    const envelope = state.action === 'injured' ? 1 : Math.sin(Math.min(age / actionDuration, 1) * Math.PI) ** 2;
     j.hips.position.y -= envelope * 0.62;
     j.hips.rotation.x = -envelope * 0.8;
-    j.rightThigh.rotation.x = -envelope * 1.0;
-    j.leftThigh.rotation.x = -envelope * 0.6;
-    j.leftShin.rotation.x = envelope * 1.4;
+    j.rightThigh.rotation.x = THREE.MathUtils.lerp(j.rightThigh.rotation.x,-1.0,envelope);
+    j.leftThigh.rotation.x = THREE.MathUtils.lerp(j.leftThigh.rotation.x,-0.6,envelope);
+    j.leftShin.rotation.x = THREE.MathUtils.lerp(j.leftShin.rotation.x,1.4,envelope);
   }
   if (state.action === 'header') {
-    const jump = Math.sin(Math.min(age / 0.65, 1) * Math.PI);
+    const jump = Math.sin(Math.min(age / actionDuration, 1) * Math.PI) ** 2;
     j.hips.position.y += jump * 0.45;
-    j.spine.rotation.x = jump * 0.24;
-    j.head.rotation.x = jump * 0.30;
-    j.leftArm.rotation.z = 0.68;
-    j.rightArm.rotation.z = -0.68;
+    j.spine.rotation.x += jump * 0.24;
+    j.head.rotation.x += jump * 0.30;
+    j.leftArm.rotation.z = THREE.MathUtils.lerp(j.leftArm.rotation.z,0.68,jump);
+    j.rightArm.rotation.z = THREE.MathUtils.lerp(j.rightArm.rotation.z,-0.68,jump);
   }
-  if (state.action.startsWith('keeper-') && !['keeper-kick', 'keeper-rush'].includes(state.action)) {
-    const baseHeight=j.hips.position.y;
+  if (state.action.startsWith('keeper-') && state.action !== 'keeper-kick' && state.action !== 'keeper-rush') {
     j.hips.position.y-=.12;
     j.spine.rotation.x=.16;
     j.leftArm.rotation.z=.27;j.rightArm.rotation.z=-.27;
@@ -395,11 +406,13 @@ export function poseFootballer(model: ProceduralFootballer, state: PlayerRuntime
       const extent=THREE.MathUtils.smoothstep(age,0,.20)*(1-THREE.MathUtils.smoothstep(age,.52,1.10));
       const sign=Math.sign(target.x)||1;
       j.hips.position.x=target.x*.35*extent;
-      j.hips.position.y=THREE.MathUtils.lerp(baseHeight,Math.max(.36,target.y*.55),extent);
+      j.hips.position.y=THREE.MathUtils.lerp(j.hips.position.y,Math.max(.36,target.y*.55),extent);
       j.hips.rotation.z=-sign*1.22*extent;
-      j.spine.rotation.x=.10;
-      j.leftThigh.rotation.x=-.20*extent;j.rightThigh.rotation.x=-.35*extent;
-      j.leftShin.rotation.x=.45*extent;j.rightShin.rotation.x=.60*extent;
+      j.spine.rotation.x=THREE.MathUtils.lerp(j.spine.rotation.x,.10,extent);
+      j.leftThigh.rotation.x=THREE.MathUtils.lerp(j.leftThigh.rotation.x,-.20,extent);
+      j.rightThigh.rotation.x=THREE.MathUtils.lerp(j.rightThigh.rotation.x,-.35,extent);
+      j.leftShin.rotation.x=THREE.MathUtils.lerp(j.leftShin.rotation.x,.45,extent);
+      j.rightShin.rotation.x=THREE.MathUtils.lerp(j.rightShin.rotation.x,.60,extent);
       pointHand(model,'left',target.clone().add(new THREE.Vector3(.07,0,0)),extent);
       pointHand(model,'right',target.clone().add(new THREE.Vector3(-.07,0,0)),extent);
     } else if(state.action==='keeper-catch') {

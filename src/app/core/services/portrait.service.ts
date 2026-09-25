@@ -2,8 +2,7 @@ import { Injectable, InjectionToken, inject } from '@angular/core';
 import { Player } from '../../models/player.model';
 import { Team } from '../../models/team.model';
 import { KitDesign } from '../../models/visual.model';
-import { kitVisualSignature } from '../kit-visuals';
-import { PlayerSpriteFactory, PLAYER_SPRITE_HEIGHT, PLAYER_SPRITE_WIDTH } from '../../features/match/player-sprite.factory';
+import { createPixelRamp, kitVisualSignature } from '../kit-visuals';
 
 export const PORTRAIT_RENDERER_LOADER = new InjectionToken<() => Promise<typeof import('../../features/match/footballer-portrait')>>('Portrait renderer loader', {
   providedIn: 'root', factory: () => () => import('../../features/match/footballer-portrait'),
@@ -13,7 +12,6 @@ export const PORTRAIT_RENDERER_LOADER = new InjectionToken<() => Promise<typeof 
 export class PortraitService {
   private readonly loadRenderer = inject(PORTRAIT_RENDERER_LOADER);
   private readonly cache = new Map<string, string>();
-  private readonly sprites = new PlayerSpriteFactory();
 
   private readonly inFlight = new Map<string, { promise: Promise<string>; consumers: (() => boolean)[] }>();
   private epoch = 0;
@@ -48,8 +46,7 @@ export class PortraitService {
       .then(module => needed() ? module.footballerPortrait(player, kit, full, needed) : '')
       .catch(() => {
         if (!needed()) return '';
-        const sprite = full ? this.sprites.getStandalone(player, kit, 'idle', 1, 2) : this.sprites.getPortrait(player, kit);
-        return renderDataUri(sprite, full ? PLAYER_SPRITE_WIDTH : 48, full ? PLAYER_SPRITE_HEIGHT : 48);
+        return kitSilhouetteUri(kit, player.kitNumber, full);
       }).then(uri => {
         if (epoch === this.epoch) {
           if (uri) {
@@ -68,21 +65,24 @@ export class PortraitService {
     this.epoch++;
     this.inFlight.clear();
     this.cache.clear();
-    this.sprites.destroy();
   }
 }
 
-function renderDataUri(source: CanvasImageSource, width: number, height: number, crop?: { sx: number; sy: number; sw: number; sh: number }): string {
-  if (typeof document === 'undefined') return '';
-  const canvas = document.createElement('canvas');
-  canvas.width = width;
-  canvas.height = height;
-  const ctx = canvas.getContext('2d');
-  if (!ctx) return '';
-  ctx.imageSmoothingEnabled = false;
-  if (crop) ctx.drawImage(source, crop.sx, crop.sy, crop.sw, crop.sh, 0, 0, width, height);
-  else ctx.drawImage(source, 0, 0, width, height);
-  return canvas.toDataURL('image/png');
+/** Lightweight static fallback when WebGL portraits are unavailable. */
+export function kitSilhouetteUri(kit: KitDesign, number: number, full: boolean): string {
+  const shirt = createPixelRamp(kit.shirt), shorts = createPixelRamp(kit.shorts);
+  const body = full
+    ? `<rect x="26" y="96" width="12" height="26" fill="${kit.socks}"/><rect x="58" y="96" width="12" height="26" fill="${kit.socks}"/>`
+      + `<rect x="24" y="74" width="48" height="24" fill="${shorts.base}" stroke="${shorts.outline}" stroke-width="2"/>`
+    : '';
+  const height = full ? 128 : 96;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 ${height}">`
+    + `<circle cx="48" cy="22" r="15" fill="#c9a27e" stroke="${shirt.outline}" stroke-width="2"/>`
+    + `<path d="M18 44 L34 36 L62 36 L78 44 L78 ${full ? 76 : 96} L18 ${full ? 76 : 96} Z" fill="${shirt.base}" stroke="${shirt.outline}" stroke-width="2"/>`
+    + `<rect x="18" y="44" width="60" height="6" fill="${shirt.highlight}" opacity=".45"/>`
+    + `<text x="48" y="${full ? 66 : 74}" font-family="monospace" font-size="18" font-weight="700" text-anchor="middle" fill="${kit.number}">${Math.max(0, Math.round(number))}</text>`
+    + body + '</svg>';
+  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
 }
 
 function neutralKit(): KitDesign {

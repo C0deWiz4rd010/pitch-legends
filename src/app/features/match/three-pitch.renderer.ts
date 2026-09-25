@@ -2,14 +2,17 @@ import * as THREE from 'three';
 import { ArcadeActor, ArcadeMatch, FIELD_LENGTH, FIELD_WIDTH, GOAL_WIDTH, GOAL_HEIGHT } from '../../core/services/arcade-match';
 import { resolveMatchKits, MatchKitSelection } from '../../core/kit-visuals';
 import { hash32 } from '../../core/visual-identity';
-import { MatchRenderFrame, MatchRenderState, MatchSnapshot } from '../../models/match.model';
+import { MatchRenderFrame, MatchRenderState, MatchSnapshot, PlayerRuntimeSnapshot } from '../../models/match.model';
 import { createProceduralFootballer, poseFootballer, ProceduralFootballer } from './three-player.factory';
-import { interpolateThreeFrame, playerInCameraSpace } from './three-render-state';
+import { interpolateThreeFrame, playerInCameraSpace, RenderInterpolationScratch } from './three-render-state';
 import { usesSoftwareGraphics } from './graphics-capabilities';
 import { advanceBroadcastCamera } from './broadcast-camera';
 import { RenderCadence } from './render-cadence';
 
 type VisualState = MatchRenderState | MatchSnapshot;
+const SELECTION_OWNER = new THREE.Color('#ffe875');
+const SELECTION_FREE = new THREE.Color('#81e6ed');
+
 export type PitchQuality = 'high' | 'balanced' | 'low';
 export interface PitchRenderDiagnostics {
   renderer: 'three-webgl2';
@@ -58,6 +61,12 @@ export class ThreePitchRenderer {
   private readonly confettiVelocity = new Float32Array(160 * 3);
   private readonly weather: THREE.LineSegments;
   private quality: PitchQuality;
+  private readonly interpolation: RenderInterpolationScratch = { players: [], owned: [] };
+  private readonly mirroredPlayer = {} as PlayerRuntimeSnapshot;
+  /** Highest profile this device started with; recovery never exceeds it. */
+  private ceilingQuality: PitchQuality = 'high';
+  private stableSamples = 0;
+  private downgrades = 0;
   private readonly software: boolean;
   private readonly cadence: RenderCadence;
   private pixelRatio: number;
@@ -105,6 +114,7 @@ export class ThreePitchRenderer {
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 0.98;
+    this.ceilingQuality = this.quality;
     this.renderer.shadowMap.enabled = this.quality === 'high';
     this.renderer.shadowMap.type = THREE.PCFShadowMap;
     this.scene.background = new THREE.Color('#162c36');
@@ -246,7 +256,7 @@ export class ThreePitchRenderer {
     const started = performance.now();
     const dt = this.cadence.consume(Math.min(0.05, Math.max(0.001, frame?.deltaSeconds ?? 1 / 60)));
     if (!dt) return;
-    const state = replay ?? (frame ? interpolateThreeFrame(frame) : match.renderState());
+    const state = replay ?? (frame ? interpolateThreeFrame(frame, this.interpolation) : match.renderState());
     this.time += dt;
     this.ensureMatch(match);
     this.updateCamera(match, state, dt, !!replay);
@@ -264,7 +274,7 @@ export class ThreePitchRenderer {
       this.cullSphere.center.copy(model.mesh.position).setY(1);
       if (!this.cullFrustum.intersectsSphere(this.cullSphere)) { model.mesh.visible = false; continue; }
       model.mesh.rotation.y = Math.atan2(player.facingX * mirror, player.facingY);
-      poseFootballer(model, playerInCameraSpace(player,mirror), state.tick, this.time, match.config.camera.reducedMotion,player.id===state.controlledPlayerId&&!replay?match.actionPower:0);
+      poseFootballer(model, playerInCameraSpace(player,mirror,this.mirroredPlayer), state.tick, this.time, match.config.camera.reducedMotion,player.id===state.controlledPlayerId&&!replay?match.actionPower:0);
       this.matrixDummy.position.copy(model.mesh.position).setY(0.014);
       this.matrixDummy.rotation.set(-Math.PI / 2, 0, 0);
       this.matrixDummy.scale.set(1.0, 0.66, 1);
@@ -272,7 +282,7 @@ export class ThreePitchRenderer {
       this.shadow.setMatrixAt(index++, this.matrixDummy.matrix);
       if (player.id === state.controlledPlayerId) {
         this.selection.position.copy(model.mesh.position).setY(0.028);
-        this.selection.material.color.set(match.ball.ownerId === player.id ? '#ffe875' : '#81e6ed');
+        this.selection.material.color.copy(match.ball.ownerId === player.id ? SELECTION_OWNER : SELECTION_FREE);
         this.arrow.position.copy(model.mesh.position).setY(model.recipe.height + 0.53);
         this.power.position.copy(model.mesh.position).setY(0.03);
         this.power.visible = match.actionPower > 0.025 && !replay;
@@ -714,6 +724,15 @@ export class ThreePitchRenderer {
     ctx.textAlign = 'left';
   }
 
+  /** One step down after a stalled frame burst instead of dropping straight to the lowest profile. */
+  stepDownQuality(): void {
+    if (this.quality === 'low' || this.qualityCooldown > 0) return;
+    this.setQuality(this.quality === 'high' ? 'balanced' : 'low');
+    this.qualityCooldown = 8;
+    this.stableSamples = 0;
+    this.downgrades++;
+  }
+
   private adaptQuality(dt: number): void {
     this.qualityCooldown -= dt;
     this.sampleFrames++;
@@ -721,9 +740,17 @@ export class ThreePitchRenderer {
     if (this.sampleFrames < 150) return;
     const average = this.sampleTime / this.sampleFrames;
     if (this.qualityCooldown <= 0 && average > 0.024 && this.quality !== 'low') {
-      this.setQuality(this.quality === 'high' ? 'balanced' : 'low');
-      this.qualityCooldown = 8;
-    }
+      this.stepDownQuality();
+    } else if (average < 0.0185 && !this.software) {
+      // Stable samples (2.5 s each) earn one profile back; every stall raises the bar to avoid oscillation.
+      this.stableSamples++;
+      const rank = { low: 0, balanced: 1, high: 2 } as const;
+      if (this.stableSamples >= Math.min(12, 2 * (1 + this.downgrades)) && this.qualityCooldown <= 0 && rank[this.quality] < rank[this.ceilingQuality]) {
+        this.setQuality(this.quality === 'low' ? 'balanced' : 'high');
+        this.qualityCooldown = 12;
+        this.stableSamples = 0;
+      }
+    } else this.stableSamples = 0;
     this.sampleTime = 0;
     this.sampleFrames = 0;
   }

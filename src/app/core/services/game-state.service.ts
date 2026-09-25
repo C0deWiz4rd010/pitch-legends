@@ -2,16 +2,23 @@ import { Injectable, computed, inject, signal } from '@angular/core';
 import { GameState } from '../../models/game.model';
 import { Team } from '../../models/team.model';
 import { Player } from '../../models/player.model';
-import { Fixture, StandingRow, emptyStanding } from '../../models/league.model';
+import { Fixture, StandingRow } from '../../models/league.model';
 import { createNewGame, NewGameOptions } from '../../data/generators';
 import { playerName } from '../ratings';
 import { SaveService } from './save.service';
 import { prepareTravelEvent } from '../travel-engine';
+import { computeStandings } from '../standings';
 
 @Injectable({ providedIn: 'root' })
 export class GameStateService {
   private readonly saves = inject(SaveService);
   private readonly state = signal<GameState | null>(null);
+  private pendingSave: GameState | null = null;
+  private saveTimer: ReturnType<typeof setTimeout> | null = null;
+
+  constructor() {
+    if (typeof window !== 'undefined') window.addEventListener('pagehide', () => this.flushSave());
+  }
 
   readonly game = this.state.asReadonly();
   readonly hasGame = computed(() => this.state() !== null);
@@ -37,42 +44,7 @@ export class GameStateService {
   /** Full league standings sorted by points, then goal difference, then goals. */
   readonly standings = computed<StandingRow[]>(() => {
     const g = this.state();
-    if (!g) return [];
-    const rows = new Map<string, StandingRow>();
-    g.teams.forEach((t) => rows.set(t.id, emptyStanding(t.id, t.name)));
-    for (const f of g.league.fixtures) {
-      if (!f.played || f.homeScore == null || f.awayScore == null) continue;
-      const home = rows.get(f.homeTeamId);
-      const away = rows.get(f.awayTeamId);
-      if (!home || !away) continue;
-      home.played++;
-      away.played++;
-      home.goalsFor += f.homeScore;
-      home.goalsAgainst += f.awayScore;
-      away.goalsFor += f.awayScore;
-      away.goalsAgainst += f.homeScore;
-      if (f.homeScore > f.awayScore) {
-        home.won++;
-        home.points += 3;
-        away.lost++;
-      } else if (f.homeScore < f.awayScore) {
-        away.won++;
-        away.points += 3;
-        home.lost++;
-      } else {
-        home.drawn++;
-        away.drawn++;
-        home.points++;
-        away.points++;
-      }
-    }
-    return [...rows.values()].sort(
-      (a, b) =>
-        b.points - a.points ||
-        b.goalsFor - b.goalsAgainst - (a.goalsFor - a.goalsAgainst) ||
-        b.goalsFor - a.goalsFor ||
-        a.teamName.localeCompare(b.teamName),
-    );
+    return g ? computeStandings(g.teams, g.league.fixtures) : [];
   });
 
   readonly nextFixture = computed<Fixture | null>(() => {
@@ -105,6 +77,7 @@ export class GameStateService {
   // ── Lifecycle ──────────────────────────────────────────────────────────────
   newGame(opts: NewGameOptions): void {
     const g = createNewGame(opts);
+    this.discardPendingSave();
     prepareTravelEvent(g);
     this.state.set(g);
     this.saves.save(g);
@@ -112,6 +85,7 @@ export class GameStateService {
 
   loadFromStorage(): boolean {
     const g = this.saves.load();
+    this.discardPendingSave();
     if (g) {
       prepareTravelEvent(g);
       this.state.set(g);
@@ -121,11 +95,13 @@ export class GameStateService {
   }
 
   importState(g: GameState): void {
+    this.discardPendingSave();
     this.state.set(g);
     this.saves.save(g);
   }
 
   deleteGame(): void {
+    this.discardPendingSave();
     this.saves.clear();
     this.state.set(null);
   }
@@ -154,7 +130,28 @@ export class GameStateService {
     fn(draft);
     draft.updatedAt = Date.now();
     this.state.set(draft);
-    if (draft.settings.autoSave) this.saves.save(draft);
+    if (draft.settings.autoSave) this.scheduleSave(draft);
+  }
+
+  /** Bursts of mutations (season simulation, bulk edits) serialise the career once. */
+  private scheduleSave(state: GameState): void {
+    this.pendingSave = state;
+    if (this.saveTimer === null) this.saveTimer = setTimeout(() => this.flushSave(), 150);
+  }
+
+  private discardPendingSave(): void {
+    if (this.saveTimer !== null) clearTimeout(this.saveTimer);
+    this.saveTimer = null;
+    this.pendingSave = null;
+  }
+
+  /** Persists a pending autosave immediately. */
+  flushSave(): void {
+    if (this.saveTimer !== null) clearTimeout(this.saveTimer);
+    this.saveTimer = null;
+    const state = this.pendingSave;
+    this.pendingSave = null;
+    if (state) this.saves.save(state);
   }
 
   /** Convenience lookup helpers. */

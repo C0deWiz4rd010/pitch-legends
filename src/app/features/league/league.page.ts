@@ -56,7 +56,7 @@ export class LeaguePage {
     this.travel.ensureCurrent();
   }
 
-  protected text(de: string, en: string): string { return this.i18n.locale() === 'de' ? de : en; }
+  protected text(de: string, en: string): string { return this.i18n.pick(de, en); }
   protected translate(key: string, params?: Record<string, string | number>): string { return this.i18n.t(key, params); }
   protected teamName(id: string): string { return this.gs.teamById(id)?.name ?? '—'; }
   protected teamShort(id: string): string { return this.gs.teamById(id)?.shortName ?? '—'; }

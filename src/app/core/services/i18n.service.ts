@@ -1,4 +1,4 @@
-import { Injectable, computed, inject, signal } from '@angular/core';
+import { Injectable, computed, effect, inject, signal } from '@angular/core';
 import { TRANSLATIONS } from '../../data/translations';
 import { MessageParams } from '../../models/game.model';
 import { MatchEvent } from '../../models/match.model';
@@ -9,6 +9,16 @@ export class I18nService {
   private readonly gs = inject(GameStateService);
   private readonly startLocale = signal<'de' | 'en'>('de');
   readonly locale = computed(() => this.gs.game()?.settings.locale ?? this.startLocale());
+
+  constructor() {
+    // Screen readers and hyphenation follow the chosen language.
+    effect(() => { if (typeof document !== 'undefined') document.documentElement.lang = this.locale(); });
+  }
+
+  /** Inline bilingual text; prefer translation keys for anything reused. */
+  pick(de: string, en: string): string {
+    return this.locale() === 'de' ? de : en;
+  }
 
   setLocale(locale: 'de' | 'en'): void {
     if (this.gs.game()) this.gs.mutate((draft) => (draft.settings.locale = locale));

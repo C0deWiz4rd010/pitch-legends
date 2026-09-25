@@ -130,7 +130,5 @@ export class ControlHandbookComponent {
     if (event.target === event.currentTarget) this.close();
   }
 
-  protected text(de: string, en: string): string {
-    return this.i18n.locale() === 'de' ? de : en;
-  }
+  protected text(de: string, en: string): string { return this.i18n.pick(de, en); }
 }

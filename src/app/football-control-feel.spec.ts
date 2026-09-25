@@ -4,6 +4,7 @@ import { EMPTY_MATCH_COMMAND } from './models/match.model';
 import { advanceBroadcastCamera } from './features/match/broadcast-camera';
 import { createProceduralFootballer,poseFootballer } from './features/match/three-player.factory';
 import { Vector3 } from 'three';
+import { ACTION_DURATION_TICKS } from './core/football/action-timing';
 
 function scene() {
   const {home,away}=createPracticeTeams();
@@ -17,6 +18,22 @@ function scene() {
   return {match,selected,other};
 }
 describe('Calm control and football animation',()=>{
+  it.each(['pass','through-pass','lob','shot','low-shot','finesse-shot','chip-shot','receive','standing-tackle','slide','stumble','header','keeper-dive'] as const)(
+    'returns %s to locomotion without a final-frame pose jump', action => {
+      const {home,away}=createPracticeTeams();
+      const state=new ArcadeMatch(home,away,home.id).snapshot().players[0];
+      Object.assign(state,{x:0,y:0,vx:0,vy:4,facingX:0,facingY:1,action,actionStartedTick:0,actionTarget:{x:1.05,y:.35,z:.6}});
+      const model=createProceduralFootballer(home.players[0].visuals,home.visuals.kits.home,1,action==='keeper-dive');
+      const end=ACTION_DURATION_TICKS[action]!;
+      poseFootballer(model,state,end-1,0,true);
+      const height=model.joints.hips.position.clone();
+      const rotations=Object.values(model.joints).map(joint=>joint.quaternion.clone());
+      state.action=action==='keeper-dive'?'keeper-ready':'jog';
+      poseFootballer(model,state,end,0,true);
+      expect(model.joints.hips.position.distanceTo(height)).toBeLessThan(.015);
+      Object.values(model.joints).forEach((joint,index)=>expect(joint.quaternion.angleTo(rotations[index])).toBeLessThan(.08));
+      model.destroy();
+    });
   it('holds the camera inside its quiet area and caps a sudden long-pass pan',()=>{
     const initial={x:0,z:0,width:48};
     expect(advanceBroadcastCamera(initial,{x:2,z:1,width:48},1/60)).toEqual(initial);

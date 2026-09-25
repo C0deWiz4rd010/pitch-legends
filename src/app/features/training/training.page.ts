@@ -66,9 +66,7 @@ export class TrainingPage {
     return this.playerById(plan.targetIds[0])?.positionGroup ?? null;
   });
 
-  protected text(de: string, en: string): string {
-    return this.i18n.locale() === 'de' ? de : en;
-  }
+  protected text(de: string, en: string): string { return this.i18n.pick(de, en); }
 
   protected drill(id: string): TrainingDrill | undefined {
     return this.training.drill(id);

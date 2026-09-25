@@ -156,6 +156,7 @@ export class MatchPage implements OnDestroy {
   private prevAway = 0;
   private previousRule = '';
   private lastAudioEvent = 0;
+  private lastCrowdIntensity = -1;
   private introTimer: ReturnType<typeof setTimeout> | null = null;
   private gamepadSeen = false;
   private touchPointer: number | null = null;
@@ -236,6 +237,7 @@ export class MatchPage implements OnDestroy {
   private readonly visibilityChange = () => {
     if (document.hidden && (this.phase() === 'match' || this.phase() === 'halftime')) this.pauseFor('Match automatisch pausiert: Browser-Tab verlassen.');
   };
+  private readonly flushCheckpoint = () => { this.checkpoints.flush(); };
   private readonly blur = () => {
     this.resetInputs();
     if (this.phase() === 'match') this.pauseFor('Match automatisch pausiert: Fokus verloren.');
@@ -255,6 +257,7 @@ export class MatchPage implements OnDestroy {
     window.addEventListener('blur', this.blur);
     window.addEventListener('gamepaddisconnected', this.gamepadDisconnected);
     document.addEventListener('visibilitychange', this.visibilityChange);
+    window.addEventListener('pagehide', this.flushCheckpoint);
     document.addEventListener('fullscreenchange', this.fullscreenChange);
     effect(() => {
       this.document.body.classList.toggle('match-immersive', this.phase() === 'match');
@@ -485,9 +488,11 @@ export class MatchPage implements OnDestroy {
       const input = this.arcade.controllerMode === 'human' ? this.readInput() : EMPTY_MATCH_COMMAND;
       let steps = 0;
       while (this.fixedAccumulator >= MATCH_TICK && steps < ARCADE_MATCH_TUNING.maxCatchUpSteps) {
+        // Two alternating frames: the one no longer displayed is rewritten in place.
+        const spare = this.previousRenderState !== this.currentRenderState ? this.previousRenderState ?? undefined : undefined;
         this.previousRenderState = this.currentRenderState ?? this.arcade.renderState();
         this.arcade.step(MATCH_TICK, this.inputBuffer.consume(input, timestamp));
-        this.currentRenderState = this.arcade.renderState();
+        this.currentRenderState = this.arcade.renderState(spare);
         for(const actor of this.arcade.actors) if(actor.contact?.tick===this.arcade.tick) {
           this.audio.contact(actor.contact,Math.hypot(this.arcade.ball.vx,this.arcade.ball.vy));
         }
@@ -498,7 +503,7 @@ export class MatchPage implements OnDestroy {
         // A delayed GPU frame must not strand the player in a pause menu.
         // Discard wall-clock debt, keeping every simulated tick at exactly 60 Hz.
         this.fixedAccumulator %= MATCH_TICK;
-        if (this.renderer && 'setQuality' in this.renderer) this.renderer.setQuality('low');
+        this.renderer?.stepDownQuality();
       }
       this.syncMatch(timestamp);
       this.lastSimulationCost = performance.now() - simulationStarted;
@@ -541,10 +546,11 @@ export class MatchPage implements OnDestroy {
   private syncMatch(timestamp: number, forceView = false): void {
     if (!this.arcade) return;
     const goalDistance=Math.min(this.arcade.ball.x,105-this.arcade.ball.x);
-    this.audio.setCrowdIntensity(this.arcade.phase==='goalReplay'?1:.1+Math.max(0,30-goalDistance)/50);
+    const crowd=this.arcade.phase==='goalReplay'?1:.1+Math.max(0,30-goalDistance)/50;
+    if(Math.abs(crowd-this.lastCrowdIntensity)>.02) { this.audio.setCrowdIntensity(crowd); this.lastCrowdIntensity=crowd; }
     const eventChanged = this.arcade.events.length !== this.matchView().eventRevision;
     if (eventChanged) this.revealed.set([...this.arcade.events]);
-    for (const event of this.arcade.events.slice(this.lastAudioEvent)) this.audio.matchEvent(event);
+    for (let index = this.lastAudioEvent; index < this.arcade.events.length; index++) this.audio.matchEvent(this.arcade.events[index]);
     this.lastAudioEvent = this.arcade.events.length;
     const controlledStats = this.arcade.controlledSide === 'home' ? this.arcade.homeStats : this.arcade.awayStats;
     if (this.pendingPassAttempt >= 0 && controlledStats.passesAttempted > this.pendingPassAttempt) {
@@ -875,8 +881,9 @@ export class MatchPage implements OnDestroy {
     return errors;
   }
 
+  /** The state is captured now; serialisation and storage wait for idle time outside the frame. */
   private saveCheckpoint(): void {
-    if (!this.practice && this.arcade) this.checkpoints.save(this.arcade.checkpoint());
+    if (!this.practice && this.arcade) this.checkpoints.saveWhenIdle(this.arcade.checkpoint());
   }
 
   private resetInputs(): void {
@@ -980,6 +987,8 @@ export class MatchPage implements OnDestroy {
 
   ngOnDestroy(): void {
     this.controlHelp.flushProgress();
+    this.checkpoints.flush();
+    window.removeEventListener('pagehide', this.flushCheckpoint);
     this.disposed = true;
     if (this.introTimer) clearTimeout(this.introTimer);
     cancelAnimationFrame(this.raf);
