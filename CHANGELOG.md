@@ -4,6 +4,13 @@ All notable changes to Pitch Legends are recorded here. Releases follow
 [Semantic Versioning](https://semver.org/) and are generated from Conventional
 Commits by Release Please.
 
+## [1.6.0](https://github.com/C0deWiz4rd010/pitch-legends/compare/pitch-legends-v1.5.0...pitch-legends-v1.6.0) (2026-09-25)
+
+
+### Features
+
+* **presentation:** broadcast cameras, image-based lighting and animated celebrations ([44bc6d9](https://github.com/C0deWiz4rd010/pitch-legends/commit/44bc6d96c9e3b2d981a0ca08f3d8c5a3d7ba0905))
+
 ## [1.5.0](https://github.com/C0deWiz4rd010/pitch-legends/compare/pitch-legends-v1.4.2...pitch-legends-v1.5.0) (2026-09-25)
 
 
