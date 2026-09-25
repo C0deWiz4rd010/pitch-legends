@@ -30,6 +30,7 @@ import {
   MatchResult,
   MatchViewState,
   MatchWeather,
+  MatchSnapshot,
 } from '../../models/match.model';
 import { Team } from '../../models/team.model';
 import { Player } from '../../models/player.model';
@@ -50,6 +51,7 @@ import { BufferedButton, TickInputBuffer } from '../../core/football/tick-input'
 import { MatchMetrics } from '../../core/football/match-metrics';
 import { createPracticeTeams } from '../../core/football/practice';
 import { interpolateThreeReplay } from './three-render-state';
+import { replayPlayback } from './replay-playback';
 import type { ThreePitchRenderer } from './three-pitch.renderer';
 
 type PagePhase = 'preview' | 'intro' | 'simulating' | 'match' | 'halftime' | 'result';
@@ -471,13 +473,21 @@ export class MatchPage implements OnDestroy {
     if (this.arcade.phase === 'goalReplay') {
       this.replayElapsed += renderDelta;
       const frames = this.arcade.replaySnapshots();
-      const duration = Math.max(1, (frames.length-1) / 60 / .65);
-      const cursor = Math.min(frames.length - 1, this.replayElapsed / duration * Math.max(0, frames.length - 1));
-      const index = Math.max(0, Math.floor(cursor));
+      const reduced = this.arcade.config.camera.reducedMotion;
+      // First the scorer celebrates in close-up, then the replay slows down towards the finish.
+      const celebrate = reduced || !frames.length ? 0 : 2.4;
+      const scorer = this.celebrationScorer(frames.at(-1));
+      if (this.replayElapsed < celebrate && scorer && this.renderer) {
+        this.renderer.renderCelebration(this.arcade, this.celebrationFrame(frames.at(-1)!, scorer, this.replayElapsed), scorer, this.replayElapsed, renderDelta);
+        this.raf = requestAnimationFrame((time) => this.loop(time));
+        return;
+      }
+      const playback = replayPlayback(frames.length, Math.max(0, this.replayElapsed - celebrate), reduced);
       const current = this.currentRenderState ?? this.arcade.renderState();
-      const replay = frames.length ? interpolateThreeReplay(frames[index], frames[Math.min(frames.length - 1, index + 1)], cursor - index) : undefined;
+      const index = Math.max(0, Math.floor(playback.cursor));
+      const replay = frames.length ? interpolateThreeReplay(frames[index], frames[Math.min(frames.length - 1, index + 1)], playback.cursor - index) : undefined;
       this.renderer?.render(this.arcade, { previous: current, current, alpha: 1, deltaSeconds: renderDelta }, replay);
-      if (this.replayElapsed >= duration) this.skipReplay();
+      if (playback.done) this.skipReplay();
       this.raf = requestAnimationFrame((time) => this.loop(time));
       return;
     }
@@ -677,7 +687,37 @@ export class MatchPage implements OnDestroy {
   protected cycleCamera(): void {
     const view = this.cameraView() === 'ARCADE' ? 'TV' : this.cameraView() === 'TV' ? 'TAKTIK' : 'ARCADE';
     this.cameraView.set(view);
-    if (this.arcade) this.arcade.config.camera.zoom = view === 'ARCADE' ? 1 : view === 'TV' ? .82 : .64;
+    if (this.arcade) {
+      this.arcade.config.camera.preset = view === 'ARCADE' ? 'arcade' : view === 'TV' ? 'tv' : 'tactic';
+      this.arcade.config.camera.zoom = 1;
+    }
+  }
+
+  /** Scorer of the latest goal, or for an own goal the nearest attacker of the scoring side. */
+  private celebrationScorer(frame: MatchSnapshot | undefined): string | null {
+    if (!this.arcade || !frame) return null;
+    const goal = [...this.arcade.events].reverse().find(event => event.type === 'goal');
+    if (!goal) return null;
+    if (goal.playerId && !goal.ownGoal) return goal.playerId;
+    return frame.players.filter(player => player.active && player.side === goal.side)
+      .sort((a, b) => Math.hypot(a.x - frame.ball.x, a.y - frame.ball.y) - Math.hypot(b.x - frame.ball.x, b.y - frame.ball.y))[0]?.id ?? null;
+  }
+
+  /** The goal moment with the scorer running off to celebrate and the nearest team-mates joining in. */
+  private celebrationFrame(frame: MatchSnapshot, scorerId: string, elapsed: number): MatchSnapshot {
+    const scorer = frame.players.find(player => player.id === scorerId);
+    if (!scorer) return frame;
+    const cornerX = scorer.x > 52.5 ? 103 : 2, cornerY = scorer.y > 34 ? 66 : 2;
+    const run = Math.min(1, elapsed / 1.6);
+    const tick = frame.tick + Math.round(elapsed * 60);
+    const mates = new Set(frame.players.filter(player => player.active && player.side === scorer.side && player.id !== scorerId && player.action !== 'keeper-ready')
+      .sort((a, b) => Math.hypot(a.x - scorer.x, a.y - scorer.y) - Math.hypot(b.x - scorer.x, b.y - scorer.y)).slice(0, 2).map(player => player.id));
+    const sx = scorer.x + (cornerX - scorer.x) * run * 0.35, sy = scorer.y + (cornerY - scorer.y) * run * 0.35;
+    return { ...frame, tick, ball: { ...frame.ball, vx: 0, vy: 0, vz: 0 }, players: frame.players.map(player => {
+      if (player.id === scorerId) return { ...player, x: sx, y: sy, vx: (cornerX - scorer.x) * 0.2 * (1 - run), vy: (cornerY - scorer.y) * 0.2 * (1 - run), facingX: Math.sign(cornerX - scorer.x) || 1, facingY: 0, action: 'celebrate', actionStartedTick: frame.tick + 30 };
+      if (mates.has(player.id)) return { ...player, x: player.x + (sx - player.x) * run * 0.6, y: player.y + (sy - player.y) * run * 0.6, action: run > 0.7 ? 'celebrate' : 'sprint', actionStartedTick: frame.tick + 60 };
+      return { ...player, vx: 0, vy: 0, action: 'idle' };
+    }) };
   }
 
   protected cycleSpeed(): void {
@@ -1028,3 +1068,4 @@ function radialAxes(x: number, y: number): [number, number] {
   const curved = Math.pow(normalized, 1.12);
   return [x / magnitude * curved, y / magnitude * curved];
 }
+

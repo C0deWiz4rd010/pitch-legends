@@ -108,7 +108,11 @@ export interface PenaltyShootout {
   winner: Side;
 }
 
+export type MatchCameraPreset = 'arcade' | 'tv' | 'tactic';
+
 export interface MatchCameraSettings {
+  /** Broadcast angle; older configs derive it from the zoom value. */
+  preset?: MatchCameraPreset;
   zoom: number;
   lookAhead: number;
   shake: boolean;

@@ -221,3 +221,46 @@ Grundlage: neuer, element-weiser Verbesserungsplan (Fundament → Gameplay → G
   - Einzeln dargestelltes Elfmeterschießen und Pokalanbindung (E4).
   - Touch-Taste für Stellen (G).
   - Posen für die neuen Aktionen (C5).
+
+## Gesamtverbesserung Phase C – Grafik und Animation (2026-09-25)
+
+- **Kamera:**
+  - ARCADE, TV und TAKTIK sind jetzt echte Einstellungen mit eigenem Winkel, Objektiv und Ausschnitt (30° / 25° / 60°) statt reiner Zoomstufen. Die Standardansicht ist flacher und 20 % enger; die Spieler sind dadurch deutlich größer, Tribünen und Himmel sind sichtbar.
+  - Die nahe Längstribüne entfällt, weil die Kamera in ihr sitzt und sie sonst die Seitenlinie verdecken würde.
+  - Kamerawackeln bei Toren, Pfosten und Blocks (abschaltbar, aus bei reduzierter Bewegung).
+  - Kurzer Kameraschwenk über das Stadion vor dem Anstoß.
+- **Licht:**
+  - Image-based Lighting (RoomEnvironment) und ein Gegenlicht; das direkte Licht ist dafür etwas reduziert.
+  - Die Schattenkamera folgt dem Bild auf das Texel genau: etwa 28 statt 14 Texel pro Meter.
+  - Die runden Schatten sind im High-Profil nur noch schwach eingeblendet, der doppelte Schatten ist damit weg.
+  - Nachbearbeitung nur im High-Profil: Bloom (nur Lampen und Torblitz), Vignette, Tone Mapping.
+  - Die Draw-Call-Statistik zählt den ganzen Frame einschließlich aller Passes.
+- **Stadion:**
+  - Himmelskuppel mit Farbverlauf und Skyline für Tag, Dämmerung und Nacht.
+  - Leuchtende Flutlichtköpfe, nachts mit Schein.
+  - Rückwände; ab Stadionstufe 2 Tribünendächer mit Stützen.
+  - Netze als halbtransparente, texturierte Flächen mit Ausbeulung.
+  - Spielfeldlinien als Geometrie, in jedem Abstand scharf.
+  - Rasen mit Bump-Map, großflächiger Farbvariation und Lichtverlauf; nasser Rasen glänzt.
+  - Flatternde Eckfahnen, dichterer Regen bei Sturm.
+- **Figuren:**
+  - Ein gemeinsames Material für alle Spieler.
+  - Name und Nummer auf dem Rücken (Canvas-Aufdruck am Wirbelsäulen-Knochen; das Softwareprofil behält die Segmentziffern).
+  - Blick zum Ball, Neigung in Kurven, Schrittlänge nach Körpergröße.
+  - Ruhephasen mit Gewichtsverlagerung und Umschauen.
+- **Animation:**
+  - 0,14 s Überblendung bei jedem Aktionswechsel, als Schicht vor der Torwart- und Kontakt-IK, damit Hände und Stiefelkontakt exakt bleiben. Der neue Test deckte einen Aliasing-Fehler in `slerpQuaternions` auf, der die Überblendung sonst wirkungslos gemacht hätte.
+  - Eigene Schussposen: Innenseitpass, Vollspann mit gebeugtem Standbein und Armausgleich, Lupfer, Flanke, Vorlegen.
+  - Posen für Stellen und Körpertäuschung.
+  - Fünf Jubelvarianten nach Seed: Arme hoch, Knierutscher, Flugzeug, Faust, Zeigen zum Himmel.
+- **Effekte und Inszenierung:**
+  - Die Ballspur ist ein kamerazugewandtes, auslaufendes Band.
+  - Rasenfetzen bei Grätschen und harten Schüssen.
+  - Vor dem Replay 2,4 s Jubel in Nahaufnahme: Der Torschütze läuft zur Ecke, zwei Mitspieler kommen dazu.
+  - Replay mit wechselnder Regie (Standard, hinter dem Tor, tief an der Seitenlinie), Kinobalken und Zeitlupenrampe von 0,65× auf 0,3× in den letzten 1,5 s.
+- **Nachweis:**
+  - 169 Unit-Tests (5 neu in `presentation-v2`: Replay-Zeitlupe, Kameraeinstellungen, Überblendung, Blick und Neigung, Jubelvarianten).
+  - Build bestanden; 21 E2E-Tests gegen den Produktionsbuild bestanden (16,7 / 17 / 19,4 ms, keine Long Tasks).
+  - Mit Software-GL bestanden: Performance-, Playground- und Renderer-Test (16,7 / 16,7 / 16,8 ms).
+  - Screenshots: [Spiel](screenshots/gameplay-2026-09-25.png), [Strafraum/Stadion](screenshots/stadium-2026-09-25.png).
+- **Offen:** Schnee als Wetter. Eigene Spielerkamera. Eine vollständige Abnahme aller 128 Varianten in Nahansicht.
