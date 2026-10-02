@@ -4,6 +4,13 @@ All notable changes to Pitch Legends are recorded here. Releases follow
 [Semantic Versioning](https://semver.org/) and are generated from Conventional
 Commits by Release Please.
 
+## [1.7.0](https://github.com/C0deWiz4rd010/pitch-legends/compare/pitch-legends-v1.6.0...pitch-legends-v1.7.0) (2026-10-02)
+
+
+### Features
+
+* **ui:** phase D – readable design system, full DE/EN, pause menu and match report ([997454a](https://github.com/C0deWiz4rd010/pitch-legends/commit/997454afe08ca599a2aa498bff32bd54c69d169e))
+
 ## [1.6.0](https://github.com/C0deWiz4rd010/pitch-legends/compare/pitch-legends-v1.5.0...pitch-legends-v1.6.0) (2026-09-25)
 
 
