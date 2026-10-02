@@ -4,6 +4,13 @@ All notable changes to Pitch Legends are recorded here. Releases follow
 [Semantic Versioning](https://semver.org/) and are generated from Conventional
 Commits by Release Please.
 
+## [1.8.0](https://github.com/C0deWiz4rd010/pitch-legends/compare/pitch-legends-v1.7.0...pitch-legends-v1.8.0) (2026-10-02)
+
+
+### Features
+
+* **career:** phase E – second division, cup, club finances and season cycle ([8bd4ffc](https://github.com/C0deWiz4rd010/pitch-legends/commit/8bd4ffc729d1bde0610a6dafbb8e13223f42f471))
+
 ## [1.7.0](https://github.com/C0deWiz4rd010/pitch-legends/compare/pitch-legends-v1.6.0...pitch-legends-v1.7.0) (2026-10-02)
 
 
