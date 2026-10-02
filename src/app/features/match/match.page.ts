@@ -57,6 +57,8 @@ import { ConfirmDialogComponent } from '../../shared/components/confirm-dialog.c
 import { HeatmapComponent } from '../../shared/components/heatmap.component';
 import { tacticLabel } from '../../shared/tactic-labels';
 import { CUP_ROUND_LABELS } from '../../core/career/cup';
+import { ExhibitionService } from '../../core/services/exhibition.service';
+import { CHALLENGES, ChallengeController, ChallengeHud, ChallengeOutcome, loadChallengeRecords, saveChallengeResult } from '../../core/football/challenges';
 import type { ThreePitchRenderer } from './three-pitch.renderer';
 
 type PagePhase = 'preview' | 'intro' | 'simulating' | 'match' | 'halftime' | 'result';
@@ -94,8 +96,11 @@ export class MatchPage implements OnDestroy {
   private readonly router = inject(Router);
   private readonly route = inject(ActivatedRoute);
   protected readonly practice = this.route.snapshot.routeConfig?.path === 'play';
-  private readonly practiceTeams = this.practice ? createPracticeTeams() : null;
-  private readonly matchFixture = computed(() => this.practice ? { id: 'practice-20260905', week: 1 } : this.gs.nextFixture());
+  private readonly exhibitions = inject(ExhibitionService);
+  /** Legends Team, quick match, challenges: a match handed over without a career fixture. */
+  protected readonly exhibition = this.practice ? this.exhibitions.current() : null;
+  private readonly practiceTeams = this.practice ? (this.exhibition ? { home: this.exhibition.home, away: this.exhibition.away } : createPracticeTeams()) : null;
+  private readonly matchFixture = computed(() => this.practice ? { id: this.exhibition?.id ?? 'practice-20260905', week: 1 } : this.gs.nextFixture());
   protected readonly graphicsLoading = signal(false);
   protected readonly graphicsError = signal('');
   private startingRenderer = false;
@@ -229,7 +234,10 @@ export class MatchPage implements OnDestroy {
     const fixture = this.gs.nextFixture();
     return this.gs.teamById(result?.awayTeamId ?? fixture?.awayTeamId ?? '') ?? null;
   });
-  protected readonly controlledTeam = computed(() => this.practiceTeams?.home ?? this.gs.playerTeam());
+  protected readonly controlledTeam = computed(() => {
+    if (!this.practiceTeams) return this.gs.playerTeam();
+    return this.exhibition?.controlledTeamId === this.practiceTeams.away.id ? this.practiceTeams.away : this.practiceTeams.home;
+  });
   protected readonly opponent = computed(() => {
     const club = this.controlledTeam();
     return this.homeTeam()?.id === club?.id ? this.awayTeam() : this.homeTeam();
@@ -240,6 +248,11 @@ export class MatchPage implements OnDestroy {
     const fixture = this.matchFixture();
     return !this.practice && !!fixture && 'competition' in fixture && fixture.competition === 'cup';
   });
+  private readonly knockout = computed(() => this.isCupTie() || !!this.exhibition?.knockout);
+  /** Training challenge running on top of this match, if any. */
+  private challenge: ChallengeController | null = null;
+  protected readonly challengeHud = signal<ChallengeHud | null>(null);
+  protected readonly challengeResult = signal<{ outcome: ChallengeOutcome; best: number; newBest: boolean; de: string; en: string; unitDe: string; unitEn: string } | null>(null);
   protected readonly cupRoundName = computed(() => {
     const fixture = this.matchFixture();
     const cup = this.gs.game()?.cup;
@@ -352,7 +365,8 @@ export class MatchPage implements OnDestroy {
         this.arcade.setPaused(false);
       }
     });
-    if (this.autoStartRequested || this.instantStartRequested || this.practice) queueMicrotask(() => { this.kickOff(); if (this.practice) this.skipIntro(); });
+    const practiceAutoStart = this.practice && (!this.exhibition || this.exhibition.autoStart);
+    if (this.autoStartRequested || this.instantStartRequested || practiceAutoStart) queueMicrotask(() => { this.kickOff(); if (this.practice) this.skipIntro(); });
   }
 
   protected teamRating(team: Team | null): number {
@@ -509,7 +523,7 @@ export class MatchPage implements OnDestroy {
     if (!this.practice) this.travel.resolveSafeForFixture(fixture.id);
     if (this.selectedMode() === 'instant') {
       this.phase.set('simulating');
-      void this.engine.simulateAsync(home, away, fixture.week, this.stableSeed(fixture.id), fixture.id, this.isCupTie()).then((result) => {
+      void this.engine.simulateAsync(home, away, fixture.week, this.exhibition?.seed ?? this.stableSeed(fixture.id), fixture.id, this.knockout(), !!this.exhibition?.smallSided).then((result) => {
         this.result.set(result);
         this.revealed.set([...result.events]);
         this.phase.set('result');
@@ -523,18 +537,23 @@ export class MatchPage implements OnDestroy {
       controllerMode: this.selectedMode() === 'coach' || this.autoStartRequested ? 'auto' : 'human',
       fixtureId: fixture.id,
       controlledTeamId: this.controlledTeam()?.id ?? home.id,
-      halfMinutes: settings?.matchDuration ?? 3,
-      seed: this.stableSeed(fixture.id),
+      halfMinutes: this.exhibition?.halfMinutes ?? settings?.matchDuration ?? 3,
+      seed: this.exhibition?.seed ?? this.stableSeed(fixture.id),
       difficulty: settings?.difficulty ?? 'normal',
       assist: this.assist(),
       autoSwitch: this.switchPolicy(),
       playerLockId: lockId,
-      weather: this.practice ? 'clear' : this.expectedWeather(),
+      weather: this.practice ? this.exhibition?.weather ?? 'clear' : this.expectedWeather(),
       inputDevice: this.selectedMode() === 'coach' ? 'ai' : this.inputDevice(),
       camera: { zoom: 1, lookAhead: 0.18, shake: settings?.cameraShake ?? true, reducedMotion: settings?.reducedMotion ?? false },
-      knockout: this.isCupTie(),
+      knockout: this.knockout(),
+      smallSided: !!this.exhibition?.smallSided,
     }, this.gs.manager()?.perks.tactics ?? 0);
     this.autoEnabled.set(this.arcade.controllerMode === 'auto');
+    const definition = CHALLENGES.find((candidate) => candidate.id === this.exhibition?.challengeId);
+    this.challenge = definition ? new ChallengeController(definition, this.arcade) : null;
+    this.challenge?.start();
+    this.challengeResult.set(null);
     this.prevHome = this.arcade.homeScore;
     this.prevAway = this.arcade.awayScore;
     this.revealed.set([...this.arcade.events]);
@@ -671,12 +690,14 @@ export class MatchPage implements OnDestroy {
         const spare = this.previousRenderState !== this.currentRenderState ? this.previousRenderState ?? undefined : undefined;
         this.previousRenderState = this.currentRenderState ?? this.arcade.renderState();
         this.arcade.step(MATCH_TICK, this.inputBuffer.consume(input, timestamp));
+        this.challenge?.afterStep();
         this.currentRenderState = this.arcade.renderState(spare);
         for(const actor of this.arcade.actors) if(actor.contact?.tick===this.arcade.tick) {
           this.audio.contact(actor.contact,Math.hypot(this.arcade.ball.vx,this.arcade.ball.vy));
         }
         this.fixedAccumulator -= MATCH_TICK;
         steps++;
+        if (this.challenge?.done) break;
       }
       if (this.fixedAccumulator > 0.25) {
         // A delayed GPU frame must not strand the player in a pause menu.
@@ -686,6 +707,11 @@ export class MatchPage implements OnDestroy {
       }
       this.syncMatch(timestamp);
       this.lastSimulationCost = performance.now() - simulationStarted;
+      if (this.challenge) {
+        this.challengeHud.set(this.challenge.hud());
+        this.renderer?.setMarkers(this.challenge.markers());
+        if (this.challenge.done) { this.finishChallenge(); return; }
+      }
     }
     if((this.arcade.phase as MatchPhase)==='goalReplay') {
       this.raf=requestAnimationFrame(time=>this.loop(time));
@@ -938,9 +964,37 @@ export class MatchPage implements OnDestroy {
     this.audio.whistle();
   }
 
+  private finishChallenge(): void {
+    const challenge = this.challenge;
+    if (!challenge) return;
+    cancelAnimationFrame(this.raf);
+    const outcome = challenge.outcome();
+    const newBest = saveChallengeResult(outcome);
+    const definition = challenge.definition;
+    this.challengeResult.set({ outcome, newBest, best: loadChallengeRecords()[outcome.id]?.best ?? outcome.score, de: definition.de, en: definition.en, unitDe: definition.unit.de, unitEn: definition.unit.en });
+    this.challenge = null;
+    this.challengeHud.set(null);
+    this.phase.set('result');
+    this.destroyRenderer();
+    this.audio.whistle();
+  }
+
+  protected retryChallenge(): void {
+    this.challengeResult.set(null);
+    this.reset();
+    this.kickOff();
+    this.skipIntro();
+  }
+
   protected async confirm(): Promise<void> {
     const result = this.result();
     if (!result || this.committing()) return;
+    if (this.practice && this.exhibition && !this.exhibition.rematch) {
+      this.exhibitions.report(result);
+      this.reset();
+      await this.router.navigateByUrl(this.exhibition.returnUrl);
+      return;
+    }
     if (this.practice) { this.reset(); this.kickOff(); this.skipIntro(); return; }
     this.committing.set(true);
     const committed = await this.season.commitWeek(result);
@@ -1088,7 +1142,9 @@ export class MatchPage implements OnDestroy {
     const ids = team.formation.slots.map((slot) => slot.playerId).filter((id): id is string => !!id);
     const players = ids.map((id) => team.players.find((player) => player.id === id)).filter((player): player is Player => !!player);
     const errors: string[] = [];
-    if (ids.length !== 11 || players.length !== 11) errors.push('Die Startelf muss exakt elf gültige Spieler enthalten.');
+    // Five-a-side lines up five, every other match eleven.
+    const size = this.exhibition?.smallSided ? 5 : 11;
+    if (ids.length !== size || players.length !== size) errors.push(size === 11 ? 'Die Startelf muss exakt elf gültige Spieler enthalten.' : 'Fünf gegen fünf braucht genau fünf gültige Spieler.');
     if (new Set(ids).size !== ids.length) errors.push('Ein Spieler ist mehrfach aufgestellt.');
     if (players.filter((player) => player.positionGroup === 'GK').length !== 1) errors.push('Die Startelf benötigt genau einen Torwart.');
     if (players.some((player) => player.injuryWeeks > 0)) errors.push('Verletzte Spieler müssen aus der Startelf entfernt werden.');

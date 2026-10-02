@@ -1,0 +1,228 @@
+<section class="legends fade-up">
+  @if (!gs.hasGame()) { <a routerLink="/" class="back">← {{ text('Hauptmenü', 'Main menu') }}</a> }
+  <header class="legends-head">
+    <div>
+      <span class="eyebrow">{{ text('EIGENER MODUS · KEIN ECHTGELD', 'SEPARATE MODE · NO REAL MONEY') }}</span>
+      <h1>LEGENDS TEAM</h1>
+    </div>
+    @if (state(); as s) {
+      <div class="wallet">
+        <p><small>{{ text('Münzen', 'Coins') }}</small><b>{{ s.coins }}</b></p>
+        <p><small>Packs</small><b>{{ s.packs.length }}</b></p>
+        <p><small>{{ text('Karten', 'Cards') }}</small><b>{{ s.cards.length }}</b></p>
+      </div>
+    }
+  </header>
+
+  @if (!state()) {
+    <article class="card create">
+      <h2>{{ text('GRÜNDE DEIN LEGENDS TEAM', 'FOUND YOUR LEGENDS TEAM') }}</h2>
+      <p>{{ text('Sammle Spielerkarten aus Packs, baue ein Team mit hoher Chemie und steige in den Division Rivals auf. Münzen gibt es nur durch Spielen; deine Karriere bleibt unberührt.', 'Collect player cards from packs, build a team with strong chemistry and climb Division Rivals. Coins are earned by playing only; your career is never touched.') }}</p>
+      <label>{{ text('Vereinsname', 'Club name') }} <input [ngModel]="clubName()" (ngModelChange)="clubName.set($event)" maxlength="24" placeholder="Legends XI" /></label>
+      <button type="button" class="btn btn--primary" (click)="create()">{{ text('STARTEN · 21 KARTEN + 2 PACKS', 'START · 21 CARDS + 2 PACKS') }}</button>
+    </article>
+  } @else {
+    @let s = state()!;
+    <nav class="tabs" role="tablist" [attr.aria-label]="text('Legends-Bereiche', 'Legends areas')">
+      @for (item of tabs; track item.key) {
+        <button role="tab" [attr.aria-selected]="tab() === item.key" [class.active]="tab() === item.key" (click)="tab.set(item.key)">{{ text(item.de, item.en) }}</button>
+      }
+    </nav>
+    @if (message()) { <p class="message" role="status">{{ message() }}</p> }
+    @if (legends.storageError()) { <p class="message warn" role="alert">{{ text('Speichern fehlgeschlagen: Der Browserspeicher ist voll.', 'Saving failed: browser storage is full.') }}</p> }
+
+    @switch (tab()) {
+      @case ('hub') {
+        @if (legends.lastReport(); as report) {
+          <article class="card report" [class.won]="report.won">
+            <h2>{{ report.won ? text('SIEG', 'WIN') : report.goalsFor === report.goalsAgainst ? text('UNENTSCHIEDEN', 'DRAW') : text('NIEDERLAGE', 'DEFEAT') }} · {{ report.goalsFor }}:{{ report.goalsAgainst }} {{ text('gegen', 'vs') }} {{ report.opponent }}</h2>
+            @if (report.rivals; as rivals) {
+              <p>+{{ rivals.coins }} {{ text('Münzen', 'coins') }}
+                @if (rivals.seasonEnded) { · {{ rivals.promoted ? text('AUFSTIEG!', 'PROMOTED!') : rivals.relegated ? text('Abstieg', 'Relegated') : text('Klassenerhalt', 'Division held') }} · {{ packName(rivals.rewardPack!) }} }
+              </p>
+            }
+            <button type="button" class="btn btn--ghost btn--sm" (click)="legends.lastReport.set(null)">OK</button>
+          </article>
+        }
+        <div class="hub-grid">
+          <article class="card rivals">
+            <h2>DIVISION RIVALS</h2>
+            <div class="division"><b>{{ s.rivals.division }}</b><span>{{ text('Division', 'Division') }} · {{ text('Gegnerstärke', 'Opponent strength') }} ~{{ divisionStrength(s.rivals.division) }}</span></div>
+            <p>{{ text('Saison', 'Season') }} {{ s.rivals.season }} · {{ s.rivals.played }}/{{ rivalsMatches }} {{ text('Spiele', 'matches') }} · <b>{{ s.rivals.points }} {{ text('Punkte', 'points') }}</b></p>
+            <div class="points" role="meter" [attr.aria-valuenow]="s.rivals.points" aria-valuemin="0" [attr.aria-valuemax]="rivalsMatches * 3" [attr.aria-label]="text('Punkte', 'Points')">
+              <i [style.width.%]="s.rivals.points / (rivalsMatches * 3) * 100"></i>
+              <em class="up" [style.left.%]="promotionPoints / (rivalsMatches * 3) * 100" [title]="text('Aufstieg', 'Promotion')"></em>
+              <em class="down" [style.left.%]="relegationPoints / (rivalsMatches * 3) * 100" [title]="text('Abstieg', 'Relegation')"></em>
+            </div>
+            <small>{{ text('Aufstieg ab', 'Promotion from') }} {{ promotionPoints }} · {{ text('Abstieg bis', 'Relegation up to') }} {{ relegationPoints }} {{ text('Punkte', 'points') }} · {{ text('Beste Division', 'Best division') }} {{ s.rivals.bestDivision }}</small>
+            <button type="button" class="btn btn--primary" [disabled]="!view() || view()!.starters.filter(entry => entry.card).length < 11" (click)="legends.playRivals()">▶ {{ text('RIVALS-SPIEL', 'RIVALS MATCH') }}</button>
+          </article>
+          <article class="card squad-summary">
+            <h2>{{ text('DEIN TEAM', 'YOUR TEAM') }}</h2>
+            @if (view(); as v) {
+              <div class="numbers"><p><small>{{ text('Wertung', 'Rating') }}</small><b>{{ v.rating }}</b></p><p><small>{{ text('Chemie', 'Chemistry') }}</small><b>{{ v.chemistry }}</b></p><p><small>{{ text('Formation', 'Formation') }}</small><b>{{ s.squad.formationId }}</b></p></div>
+            }
+            <button type="button" class="btn btn--ghost" (click)="tab.set('team')">{{ text('TEAM BEARBEITEN', 'EDIT TEAM') }}</button>
+          </article>
+          <article class="card">
+            <h2>{{ text('VERLAUF', 'HISTORY') }}</h2>
+            @for (entry of s.history.slice(0, 6); track entry.id) {
+              <p class="history"><span>{{ entry.mode === 'draft' ? 'DRAFT' : 'RIVALS' }}</span>{{ entry.goalsFor }}:{{ entry.goalsAgainst }} {{ entry.opponent }} @if (entry.coins) { <small>+{{ entry.coins }}</small> }</p>
+            } @empty { <p class="muted">{{ text('Noch keine Spiele.', 'No matches yet.') }}</p> }
+          </article>
+        </div>
+      }
+
+      @case ('team') {
+        <div class="team-tools">
+          <label>{{ text('Formation', 'Formation') }}
+            <select (change)="legends.setFormation($any($event.target).value)">@for (formation of formations; track formation.id) { <option [value]="formation.id" [selected]="formation.id === s.squad.formationId">{{ formation.name }}</option> }</select>
+          </label>
+          <button type="button" class="btn btn--ghost" (click)="legends.autoBuild()">{{ text('AUTO-AUFSTELLUNG', 'AUTO BUILD') }}</button>
+          @if (view(); as v) { <span class="pill">{{ text('Wertung', 'Rating') }} <b>{{ v.rating }}</b></span><span class="pill">{{ text('Chemie', 'Chemistry') }} <b>{{ v.chemistry }}</b></span> }
+        </div>
+        <p class="muted hint">{{ text('Chemie: richtige Position, gleiche Vereine, Ligen und Nationen. Hohe Chemie stärkt alle Werte um bis zu 3 Punkte.', 'Chemistry: right position plus shared clubs, leagues and nations. High chemistry raises every attribute by up to 3.') }}</p>
+        @if (view(); as v) {
+          <div class="pitch">
+            @for (entry of v.starters; track $index; let index = $index) {
+              <button type="button" class="slot" [class.selected]="selectedSlot() === index" [attr.aria-label]="entry.position + (entry.card ? ': ' + entry.card.player.lastName : '')" (click)="selectedSlot.set(selectedSlot() === index ? null : index)">
+                <span class="slot-pos">{{ entry.position }}</span>
+                @if (entry.card; as card) { <app-legends-card [card]="card" [seed]="seed()" [compact]="true" [chemistry]="entry.chemistry" /> } @else { <span class="empty">+</span> }
+              </button>
+            }
+          </div>
+          <h3>{{ text('BANK', 'BENCH') }}</h3>
+          <div class="row">@for (card of v.bench; track card.id) { <app-legends-card [card]="card" [seed]="seed()" [compact]="true" /> }</div>
+        }
+        @if (selectedSlot() !== null) {
+          <h3>{{ text('SPIELER FÜR DIESE POSITION', 'PLAYERS FOR THIS POSITION') }}</h3>
+          <div class="row picker">@for (card of slotCandidates(); track card.id) { <button type="button" class="card-button" (click)="chooseForSlot(card)"><app-legends-card [card]="card" [seed]="seed()" [compact]="true" /></button> }</div>
+        }
+      }
+
+      @case ('packs') {
+        <div class="shop">
+          @for (pack of packs; track pack.id) {
+            <article [class]="'card pack pack-' + pack.id">
+              <h2>{{ packName(pack.id) }}</h2>
+              <p class="price">{{ pack.price }} {{ text('Münzen', 'coins') }} · {{ pack.size }} {{ text('Karten', 'cards') }}</p>
+              <ul class="odds" [attr.aria-label]="text('Wahrscheinlichkeiten je Karte', 'Odds per card')">
+                @for (tier of tiers; track tier) { @if (pack.odds[tier]) { <li><span>{{ tierLabel(tier) }}</span><b>{{ percent(pack.odds[tier]) }}</b></li> } }
+              </ul>
+              @if (pack.guarantee) { <small>{{ text('Garantiert', 'Guaranteed') }}: {{ pack.guarantee.count }}× {{ tierLabel(pack.guarantee.tier) }}+</small> }
+              <div class="pack-actions">
+                <button type="button" class="btn btn--ghost btn--sm" [disabled]="s.coins < pack.price" (click)="buy(pack.id)">{{ text('KAUFEN', 'BUY') }}</button>
+                <button type="button" class="btn btn--primary btn--sm" [disabled]="!packCounts()[pack.id]" (click)="open(pack.id)">{{ text('ÖFFNEN', 'OPEN') }} ({{ packCounts()[pack.id] ?? 0 }})</button>
+              </div>
+            </article>
+          }
+        </div>
+        <p class="muted hint">{{ text('Alle Ziehungen sind fest mit deinem Spielstand verknüpft und nutzen die angezeigten Wahrscheinlichkeiten.', 'All draws are tied to your save and use the odds shown.') }}</p>
+      }
+
+      @case ('collection') {
+        <div class="team-tools">
+          <label>{{ text('Stufe', 'Tier') }}<select [value]="tierFilter()" (change)="tierFilter.set($any($event.target).value); page.set(0)"><option value="all">{{ text('Alle', 'All') }}</option>@for (tier of tiers; track tier) { <option [value]="tier">{{ tierLabel(tier) }}</option> }</select></label>
+          <label>{{ text('Position', 'Position') }}<select [value]="groupFilter()" (change)="groupFilter.set($any($event.target).value); page.set(0)"><option value="all">{{ text('Alle', 'All') }}</option><option value="GK">GK</option><option value="DEF">DEF</option><option value="MID">MID</option><option value="ATT">ATT</option></select></label>
+          <button type="button" class="btn btn--ghost btn--sm" [disabled]="!duplicateIds().size" (click)="sellDuplicates()">{{ text('DUPLIKATE VERKAUFEN', 'SELL DUPLICATES') }} ({{ duplicateIds().size }})</button>
+          @if (selling().length) { <button type="button" class="btn btn--danger btn--sm" (click)="sellSelected()">{{ selling().length }} {{ text('VERKAUFEN', 'SELL') }} · {{ sellValue() }}</button> }
+        </div>
+        <p class="muted hint">{{ text('Karte antippen, um sie zum Verkauf zu markieren. Kaderspieler sind geschützt.', 'Tap a card to mark it for sale. Squad players are protected.') }}</p>
+        <div class="grid">
+          @for (card of pagedCards(); track card.id) {
+            <button type="button" class="card-button" [class.marked]="selling().includes(card.id)" [class.locked]="isInSquad(card)" [attr.aria-pressed]="selling().includes(card.id)" (click)="toggleSell(card)">
+              <app-legends-card [card]="card" [seed]="seed()" [duplicate]="duplicateIds().has(card.id)" />
+              <small>{{ isInSquad(card) ? text('IM KADER', 'IN SQUAD') : quickSellValue(card) + ' ' + text('Münzen', 'coins') }}</small>
+            </button>
+          }
+        </div>
+        @if (pages() > 1) {
+          <div class="pager"><button type="button" [disabled]="page() === 0" (click)="page.set(page() - 1)">‹</button><span>{{ page() + 1 }}/{{ pages() }}</span><button type="button" [disabled]="page() >= pages() - 1" (click)="page.set(page() + 1)">›</button></div>
+        }
+      }
+
+      @case ('tasks') {
+        <div class="tasks-grid">
+          @for (period of ['daily', 'weekly']; track period) {
+            <article class="card">
+              <h2>{{ period === 'daily' ? text('TAGESAUFGABEN', 'DAILY TASKS') : text('WOCHENAUFGABEN', 'WEEKLY TASKS') }}</h2>
+              @for (task of s.tasks; track task.id) {
+                @if (task.period === period) {
+                  <div class="task" [class.done]="task.claimed">
+                    <span><b>{{ taskLabel(task) }}</b><small>{{ rewardLabel(task) }}</small></span>
+                    <i><em [style.width.%]="task.progress / task.target * 100"></em></i>
+                    <button type="button" class="btn btn--primary btn--sm" [disabled]="task.claimed || task.progress < task.target" (click)="claim(task)">{{ task.claimed ? '✓' : task.progress + '/' + task.target }}</button>
+                  </div>
+                }
+              }
+            </article>
+          }
+        </div>
+        <h2 class="section">SQUAD BUILDING CHALLENGES</h2>
+        <div class="sbc-grid">
+          @for (sbc of sbcs; track sbc.id) {
+            <article class="card sbc" [class.done]="sbcDone(sbc.id)">
+              <h3>{{ text(sbc.de, sbc.en) }}</h3>
+              <p>{{ text(sbc.descriptionDe, sbc.descriptionEn) }}</p>
+              <small>{{ text('Belohnung', 'Reward') }}: {{ packName(sbc.reward) }} · {{ sbc.repeatable ? text('wiederholbar', 'repeatable') : text('einmalig', 'once') }}</small>
+              <button type="button" class="btn btn--ghost btn--sm" [disabled]="sbcDone(sbc.id)" (click)="prepareSbc(sbc.id)">{{ sbcDone(sbc.id) ? '✓' : text('AUTO-FÜLLEN', 'AUTO FILL') }}</button>
+            </article>
+          }
+        </div>
+        @if (sbcSelection(); as selection) {
+          <article class="card sbc-confirm">
+            <h3>{{ text('Diese Karten werden eingetauscht', 'These cards will be exchanged') }}</h3>
+            <div class="row">@for (card of sbcCards(); track card.id) { <app-legends-card [card]="card" [seed]="seed()" [compact]="true" /> }</div>
+            <div class="pack-actions"><button type="button" class="btn btn--ghost btn--sm" (click)="sbcSelection.set(null)">{{ text('ABBRECHEN', 'CANCEL') }}</button><button type="button" class="btn btn--primary btn--sm" (click)="submitSbc()">{{ text('EINREICHEN', 'SUBMIT') }}</button></div>
+          </article>
+        }
+      }
+
+      @case ('draft') {
+        @if (!s.draft || s.draft.rewardClaimed) {
+          <article class="card draft-intro">
+            <h2>{{ text('DRAFT-TURNIER', 'DRAFT TOURNAMENT') }}</h2>
+            <p>{{ text('Wähle für jede Position einen von fünf Spielern, dann spielst du bis zu vier K.-o.-Runden. Draft-Karten bleiben im Turnier.', 'Pick one of five players for every position, then play up to four knockout rounds. Draft cards stay in the tournament.') }}</p>
+            <ul class="rewards">@for (reward of draftRewards; track $index; let wins = $index) { <li><b>{{ wins }} {{ text('Siege', 'wins') }}</b>{{ reward.coins }} @if (reward.pack) { + {{ packName(reward.pack) }} }</li> }</ul>
+            <button type="button" class="btn btn--primary" [disabled]="s.coins < draftEntry" (click)="startDraft()">{{ text('STARTEN', 'START') }} · {{ draftEntry }} {{ text('Münzen', 'coins') }}</button>
+          </article>
+        } @else {
+          @let draft = s.draft;
+          @if (draft.round === 0) {
+            <p class="lead">{{ text('Position', 'Position') }} {{ draftSlot() + 1 }}/{{ draft.picks.length }} · {{ draft.formationId }}</p>
+            @if (draftSlot() >= 0) {
+              <div class="row">@for (card of draft.picks[draftSlot()].options; track card.id) { <button type="button" class="card-button" (click)="pickDraft(draftSlot(), card)"><app-legends-card [card]="card" [seed]="seed()" /></button> }</div>
+            }
+          } @else {
+            <article class="card">
+              <h2>{{ text('DEIN DRAFT-TEAM', 'YOUR DRAFT TEAM') }} · {{ text('Wertung', 'Rating') }} {{ draftInfo()?.rating }} · {{ text('Chemie', 'Chemistry') }} {{ draftInfo()?.chemistry }}</h2>
+              <p>{{ draft.wins }} {{ text('Siege', 'wins') }} · @if (draft.eliminated) { {{ text('ausgeschieden', 'eliminated') }} } @else if (draft.round > draftRounds) { {{ text('Turniersieg!', 'Tournament won!') }} } @else { {{ text('Runde', 'Round') }} {{ draft.round }}/{{ draftRounds }} }</p>
+              @if (!draft.eliminated && draft.round <= draftRounds) { <button type="button" class="btn btn--primary" (click)="legends.playDraft()">▶ {{ text('RUNDE SPIELEN', 'PLAY ROUND') }}</button> }
+              @else { <button type="button" class="btn btn--primary" (click)="claimDraft()">{{ text('BELOHNUNG ABHOLEN', 'COLLECT REWARD') }}</button> }
+            </article>
+          }
+          <h3>{{ text('GEWÄHLT', 'PICKED') }}</h3>
+          <div class="row">@for (card of draftSquad(); track card.id) { <app-legends-card [card]="card" [seed]="seed()" [compact]="true" /> }</div>
+        }
+      }
+    }
+  }
+
+</section>
+
+@if (opening(); as result) {
+  <div class="pack-overlay" role="dialog" aria-modal="true" [attr.aria-label]="text('Pack-Öffnung', 'Pack opening')">
+    <div class="reveal">
+      @for (card of result.cards; track card.id; let index = $index) {
+        @if (index < revealed()) {
+          <div class="flip" [class.walkout]="card.tier === 'gold' || card.tier === 'legend'"><app-legends-card [card]="card" [seed]="seed()" [duplicate]="result.duplicates.includes(card.id)" /></div>
+        } @else { <div class="back-card" aria-hidden="true">?</div> }
+      }
+    </div>
+    <div class="pack-actions">
+      @if (revealed() < result.cards.length) { <button type="button" class="btn btn--ghost" (click)="revealAll()">{{ text('ALLE AUFDECKEN', 'REVEAL ALL') }}</button> }
+      @else { <button type="button" class="btn btn--primary" (click)="closePack()">{{ text('ZUR SAMMLUNG', 'TO COLLECTION') }}</button> }
+    </div>
+  </div>
+}
+

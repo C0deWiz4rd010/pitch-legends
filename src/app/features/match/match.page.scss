@@ -395,3 +395,11 @@ canvas { display: block; width: 100%; height: 100%; image-rendering: auto; touch
 
 .cup-eyebrow { color: var(--accent-3); }
 .ko-note { color: var(--accent-3); font-size: 11px; }
+
+// Training challenges
+.challenge-hud { position: absolute; top: 72px; left: 50%; transform: translateX(-50%); display: flex; gap: 14px; align-items: center; padding: 8px 14px; background: rgba(9, 26, 33, .82); border: 1px solid rgba(223, 240, 225, .3); color: #f5f6e9; font: 600 13px system-ui, sans-serif; z-index: 4; }
+.challenge-hud b { color: #ffe477; }
+.challenge-hud strong { color: var(--accent); font-size: 15px; }
+.challenge-result { max-width: 560px; margin: 0 auto; display: flex; flex-direction: column; align-items: center; gap: 10px; text-align: center; }
+.challenge-result .medal { font-size: 64px; line-height: 1; }
+.challenge-result .score b { font: 34px var(--font-display); color: var(--accent-3); }

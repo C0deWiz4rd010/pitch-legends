@@ -1,6 +1,6 @@
 import type { PlayerActionState } from '../../models/match.model';
 import { clamp } from '../util';
-import { ActiveShot, ArcadeActor, ArcadeBall, FIELD_LENGTH, distance } from './match-types';
+import { ActiveShot, ArcadeActor, ArcadeBall, FIELD_LENGTH, FIELD_WIDTH, GOAL_WIDTH, distance } from './match-types';
 
 export interface KeeperIntent { action: PlayerActionState; x: number; y: number; }
 
@@ -14,8 +14,9 @@ export function keeperPositionIntent(keeper: ArcadeActor, ball: ArcadeBall, ball
   const x = goalX + direction * depth;
   const incoming = ball.vx * direction < -3;
   const flight = incoming ? clamp((x - ball.x) / ball.vx, 0, 0.75) : 0;
-  const angleY = 34 + (ball.y - 34) * depth / Math.max(depth, ballDepth);
-  return { action: 'keeper-ready', x, y: clamp(incoming ? ball.y + ball.vy * flight : angleY, 29.3, 38.7) };
+  const centre = FIELD_WIDTH / 2, reach = GOAL_WIDTH / 2 + 1.04;
+  const angleY = centre + (ball.y - centre) * depth / Math.max(depth, ballDepth);
+  return { action: 'keeper-ready', x, y: clamp(incoming ? ball.y + ball.vy * flight : angleY, centre - reach, centre + reach) };
 }
 
 /** Dive target for a reachable shot that is too wide to meet with a side-step. */

@@ -47,6 +47,8 @@ export class App {
     { path: 'academy', labelKey: 'nav.academy', icon: '✦' },
     { path: 'finances', labelKey: 'nav.finances', icon: '¤' },
     { path: 'facilities', labelKey: 'nav.facilities', icon: '▦' },
+    { path: 'legends', labelKey: 'nav.legends', icon: '★' },
+    { path: 'modes', labelKey: 'nav.modes', icon: '◎' },
     { path: 'settings', labelKey: 'nav.settings', icon: '⚙' },
   ];
 
@@ -55,7 +57,7 @@ export class App {
     effect(() => this.document.body.classList.toggle('reduce-motion', !!this.gs.game()?.settings.reducedMotion));
     inject(GamepadMenuService).start();
     this.router.events.pipe(takeUntilDestroyed()).subscribe(event => {
-      if (event instanceof NavigationEnd) this.standalonePage.set(/^\/(?:play|players)(?:[/?#]|$)/.test(event.urlAfterRedirects));
+      if (event instanceof NavigationEnd) this.standalonePage.set(/^\/(?:play|players|legends|quick|challenges|modes)(?:[/?#]|$)/.test(event.urlAfterRedirects));
     });
     // Resume an existing career automatically so a page reload persists state.
     if (this.gs.hasStoredSave()) this.gs.loadFromStorage();

@@ -356,3 +356,41 @@ Grundlage: neuer, element-weiser Verbesserungsplan (Fundament → Gameplay → G
   - Eine eigene interaktive Oberfläche für das Elfmeterschießen fehlt; Ergebnis und Schützen erscheinen im Spielbericht.
   - Die Wirkung von Talenten im Spielbericht fehlt.
   - Die Feinabstimmung der Einnahmen kommt in Phase H: Spitzenvereine haben nach 5 Saisons 1–5 Mio.
+
+## Gesamtverbesserung Phase F – Neue Spielmodi (2026-10-02)
+
+- **Grundlage:**
+  - `ExhibitionService` übergibt der Match-Seite jedes Spiel außerhalb der Karriere (Teams, Seed, Wetter, Länge, K.-o., Kleinfeld, Herausforderung, Ergebnis-Callback).
+  - Die Karriere wird von keinem neuen Modus berührt; das prüfen ein Unit- und ein E2E-Test.
+  - Neue Seite `/modes` und Navigationseinträge „Legends Team“ und „Spielmodi“.
+  - Die Startseite verlinkt Legends Team, Schnellspiel und Herausforderungen, auch ohne Karriere.
+  - Das Seitenmenü scrollt intern, statt die Seite zu verlängern.
+- **F1 Legends Team** (`core/legends/*`, `/legends`, eigener Speicher `pitch-legends:legends:v1`, kein Echtgeld):
+  - Karten: Bronze, Silber, Gold, Legende; Spielerpool je Stufe fest, doppelte Ziehungen sind Duplikate; zwei fiktive Ligen mit 23 Vereinen.
+  - Packs: Bronze, Silber, Gold, Premium mit sichtbaren Wahrscheinlichkeiten und Garantien, Ziehung per Seed, Aufdeck-Animation mit Walkout für Gold und Legende.
+  - Schnellverkauf und „Duplikate verkaufen“; Kaderspieler sind geschützt.
+  - Teambau mit Formation und Auto-Aufstellung. Chemie aus Position, Verein, Liga und Nation verändert alle Werte um bis zu ±3.
+  - Division Rivals über 10 Divisionen: 10 Spiele je Saison, Aufstieg ab 19 Punkten, Abstieg bis 7, Saison-Pack.
+  - Draft-Turnier: aus 11 × 5 Karten wählen, 4 K.-o.-Runden, Belohnungen von 300 Münzen bis zum Premium-Pack.
+  - Je drei Tages- und Wochenaufgaben.
+  - Vier Squad Building Challenges mit Auto-Füllen.
+- **F2 Schnellspiel** (`/quick`):
+  - 12 feste Vereine, eigenes Team frei wählbar.
+  - Einstellbar: 11 v 11 oder 5 v 5, Halbzeitlänge, Wetter, Tageszeit, Stadionstufe.
+  - Tauschen, Zufall, Revanche; die Auswahl wird gespeichert, ein Klick bis zum Anstoß.
+- **F3 Herausforderungen** (`/challenges`, `core/football/challenges.ts`):
+  - Dribbel-Parcours mit Hütchen, Passkombination (60 s gegen 2), Abschluss (8 Versuche), Freistöße mit Mauer, Elfmeter.
+  - Feste Seeds, Medaillen, lokale Bestleistungen.
+  - Ein `ChallengeController` steuert die Versuche nach jedem 60-Hz-Schritt über die neue Engine-Funktion `setupScenario`.
+- **F4 Kleinfeld 5 gegen 5:**
+  - Die Spielfeldmaße sind jetzt eine Geometrie (`PitchGeometry`, `applyPitch`). Alle festen Zahlen in Engine, Standards, Taktik-KI, Torwart-KI und Renderer werden daraus abgeleitet und ergeben auf dem großen Feld bitgenau dieselben Werte; Determinismus-Hashes und alle Engine-Tests sind unverändert grün.
+  - Käfig 46 × 28 m mit 4-m-Toren, Banden statt Einwürfen und Toraus, kein Abseits, Formation 1-2-1-1.
+  - Banden, Zaun und Flutlichtmasten statt Tribünen; die Kamera rahmt enger.
+- **Nachweis:**
+  - 202 Unit-Tests; neu sind `legends-team.spec.ts` (11) und `game-modes.spec.ts` (10).
+  - 23 E2E-Tests; neu ist `game-modes`: Pack öffnen, Karte ins Team, Rivals-Spiel, 5-v-5-Anstoß, Elfmeter-Herausforderung, Karriere unverändert.
+  - Rundgang ohne Konsolenfehler und ohne horizontales Scrollen bei 390 px.
+  - Screenshots: [Legends Team](screenshots/legends-team-2026-10-02.png), [5 gegen 5](screenshots/five-a-side-2026-10-02.png), [Parcours](screenshots/challenge-slalom-2026-10-02.png).
+- **Offen:**
+  - Die Taktik-KI nutzt auf dem Kleinfeld teils noch absolute Abstände; das wird durch das Begrenzen auf das Feld abgefangen und in Phase H feiner abgestimmt.
+  - Draft-Gegner haben eine feste Stärke je Runde.

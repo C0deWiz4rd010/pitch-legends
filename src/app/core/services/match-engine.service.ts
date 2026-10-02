@@ -26,12 +26,12 @@ export class MatchEngineService {
   }
 
   /** Worker-first simulation for the visible instant-SIM action. */
-  simulateAsync(home: Team, away: Team, week: number, seed?: number, fixtureId?: string, knockout = false): Promise<MatchResult> {
+  simulateAsync(home: Team, away: Team, week: number, seed?: number, fixtureId?: string, knockout = false, smallSided = false): Promise<MatchResult> {
     const request: HeadlessMatchRequest = {
       home: structuredClone(home),
       away: structuredClone(away),
       week,
-      config: this.headlessConfig(home, away, week, seed, fixtureId, knockout),
+      config: { ...this.headlessConfig(home, away, week, seed, fixtureId, knockout), smallSided },
     };
     if (typeof Worker === 'undefined') return this.simulateCooperatively(request);
     return new Promise((resolve) => {

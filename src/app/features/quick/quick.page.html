@@ -1,0 +1,65 @@
+<section class="quick fade-up">
+  @if (!gs.hasGame()) { <a routerLink="/" class="back">← {{ text('Hauptmenü', 'Main menu') }}</a> }
+  <header>
+    <span class="eyebrow">{{ text('OHNE KARRIERE · SOFORT LOS', 'NO CAREER · STRAIGHT IN') }}</span>
+    <h1>{{ text('SCHNELLSPIEL', 'QUICK MATCH') }}</h1>
+  </header>
+
+  <div class="teams">
+    <article class="team-pick" [style.--club]="home().primary">
+      <span>{{ text('HEIM', 'HOME') }}</span>
+      <select (change)="update('homeIndex', +$any($event.target).value)" [attr.aria-label]="text('Heimteam', 'Home team')">
+        @for (club of clubs; track club.index) { <option [value]="club.index" [selected]="club.index === settings().homeIndex">{{ club.name }} {{ stars(club.strength) }}</option> }
+      </select>
+      <b>{{ home().short }}</b><small>{{ text('Stärke', 'Rating') }} {{ home().strength }}</small>
+    </article>
+    <div class="versus">
+      <button type="button" (click)="swap()" [attr.aria-label]="text('Teams tauschen', 'Swap teams')">⇄</button>
+      <button type="button" (click)="random()">⚄ {{ text('ZUFALL', 'RANDOM') }}</button>
+    </div>
+    <article class="team-pick" [style.--club]="away().primary">
+      <span>{{ text('AUSWÄRTS', 'AWAY') }}</span>
+      <select (change)="update('awayIndex', +$any($event.target).value)" [attr.aria-label]="text('Gastteam', 'Away team')">
+        @for (club of clubs; track club.index) { <option [value]="club.index" [selected]="club.index === settings().awayIndex">{{ club.name }} {{ stars(club.strength) }}</option> }
+      </select>
+      <b>{{ away().short }}</b><small>{{ text('Stärke', 'Rating') }} {{ away().strength }}</small>
+    </article>
+  </div>
+
+  <div class="options">
+    <fieldset>
+      <legend>{{ text('Du spielst', 'You play') }}</legend>
+      <button type="button" [class.active]="!settings().controlAway" [attr.aria-pressed]="!settings().controlAway" (click)="update('controlAway', false)">{{ home().short }}</button>
+      <button type="button" [class.active]="settings().controlAway" [attr.aria-pressed]="settings().controlAway" (click)="update('controlAway', true)">{{ away().short }}</button>
+    </fieldset>
+    <fieldset>
+      <legend>{{ text('Format', 'Format') }}</legend>
+      <button type="button" [class.active]="!settings().smallSided" [attr.aria-pressed]="!settings().smallSided" (click)="update('smallSided', false)">11 v 11</button>
+      <button type="button" [class.active]="settings().smallSided" [attr.aria-pressed]="settings().smallSided" (click)="update('smallSided', true)">{{ text('5 v 5 · KÄFIG', '5 v 5 · CAGE') }}</button>
+    </fieldset>
+    <fieldset>
+      <legend>{{ text('Halbzeit', 'Half length') }}</legend>
+      @for (length of lengths; track length) { <button type="button" [class.active]="settings().halfMinutes === length" [attr.aria-pressed]="settings().halfMinutes === length" (click)="update('halfMinutes', length)">{{ length }} MIN</button> }
+    </fieldset>
+    <fieldset>
+      <legend>{{ text('Wetter', 'Weather') }}</legend>
+      <button type="button" [class.active]="settings().weather === 'clear'" (click)="update('weather', 'clear')">{{ text('KLAR', 'CLEAR') }}</button>
+      <button type="button" [class.active]="settings().weather === 'rain'" (click)="update('weather', 'rain')">{{ text('REGEN', 'RAIN') }}</button>
+      <button type="button" [class.active]="settings().weather === 'storm'" (click)="update('weather', 'storm')">{{ text('STURM', 'STORM') }}</button>
+    </fieldset>
+    <fieldset>
+      <legend>{{ text('Tageszeit', 'Time of day') }}</legend>
+      <button type="button" [class.active]="settings().atmosphere === 'day'" (click)="update('atmosphere', 'day')">{{ text('TAG', 'DAY') }}</button>
+      <button type="button" [class.active]="settings().atmosphere === 'sunset'" (click)="update('atmosphere', 'sunset')">{{ text('DÄMMERUNG', 'DUSK') }}</button>
+      <button type="button" [class.active]="settings().atmosphere === 'night'" (click)="update('atmosphere', 'night')">{{ text('NACHT', 'NIGHT') }}</button>
+    </fieldset>
+    @if (!settings().smallSided) {
+      <fieldset>
+        <legend>{{ text('Stadion', 'Stadium') }}</legend>
+        @for (level of stadiums; track level) { <button type="button" [class.active]="settings().stadium === level" (click)="update('stadium', level)">{{ level }}</button> }
+      </fieldset>
+    }
+  </div>
+
+  <button type="button" class="btn btn--primary big kick" (click)="kickOff()">▶ {{ text('ANSTOSS', 'KICK OFF') }}</button>
+</section>

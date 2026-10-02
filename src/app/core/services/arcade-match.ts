@@ -35,7 +35,7 @@ import { createInjury, isPlayerAvailable } from '../injury-engine';
 import { accelerateTowards, turnTowards } from '../football/movement';
 import { actionIsPlaying, isLocomotionAction } from '../football/action-timing';
 import { BALL_RADIUS, collideGoalFrame, integrateBall } from '../football/ball-physics';
-import { ActiveShot, ArcadeActor, ArcadeBall, FIELD_LENGTH, FIELD_WIDTH, GOAL_HEIGHT, GOAL_WIDTH, MATCH_TICK, distance, oppositeSide } from '../football/match-types';
+import { ActiveShot, ArcadeActor, ArcadeBall, FIELD_LENGTH, FIELD_WIDTH, FULL_PITCH, GOAL_HEIGHT, GOAL_WIDTH, MATCH_TICK, PITCH, PitchGeometry, SMALL_PITCH, applyPitch, distance, oppositeSide } from '../football/match-types';
 import { closestOpponentDistance, isOffsidePosition, passLanePressure } from '../football/pitch-analysis';
 import { PlayerCollisionGrid } from '../football/collisions';
 import { actorSnapshot, applyActorSnapshot, ballSnapshot, fnv1aHex, writeBallSnapshot, writePlayers } from '../football/match-snapshot';
@@ -43,7 +43,14 @@ import { keeperDiveTarget, keeperPositionIntent } from '../football/keeper-ai';
 import { arrangeRestart, chooseRestartTaker } from '../football/set-pieces';
 import { shotAngleQuality, shotXg } from '../football/xg';
 
-export { FIELD_LENGTH, FIELD_WIDTH, GOAL_HEIGHT, GOAL_WIDTH, MATCH_TICK } from '../football/match-types';
+export { FIELD_LENGTH, FIELD_WIDTH, GOAL_HEIGHT, GOAL_WIDTH, MATCH_TICK, PITCH, applyPitch } from '../football/match-types';
+
+export interface ScenarioSetup {
+  home: Array<{ index: number; x: number; y: number }>;
+  away: Array<{ index: number; x: number; y: number }>;
+  ball: { x: number; y: number; owner?: { side: Side; index: number } };
+  restart?: { phase: 'penalty' | 'freeKick'; side: Side };
+}
 export type { ArcadeActor, ArcadeBall } from '../football/match-types';
 
 export const ARCADE_MATCH_TUNING = {
@@ -103,6 +110,8 @@ export class ArcadeMatch {
   readonly controlledTeamId: string;
   readonly controlledSide: Side;
   readonly matchId: string;
+  /** Full pitch, or the five-a-side cage with boards instead of touchlines and no offside. */
+  readonly pitch: PitchGeometry;
   readonly actors: ArcadeActor[] = [];
   readonly ball: ArcadeBall = {
     x: FIELD_LENGTH / 2,
@@ -195,6 +204,12 @@ export class ArcadeMatch {
           seed: configOrControlledTeamId.seed >>> 0,
           camera: { ...DEFAULT_CONFIG.camera, ...configOrControlledTeamId.camera },
         };
+    this.pitch = this.config.smallSided ? SMALL_PITCH : FULL_PITCH;
+    applyPitch(this.pitch);
+    // Field initialisers ran before the pitch was known.
+    this.ball.x = FIELD_LENGTH / 2;
+    this.ball.y = FIELD_WIDTH / 2;
+    this.rule = this.newRule('kickoff', 'home', FIELD_LENGTH / 2, FIELD_WIDTH / 2);
     this.controlledTeamId = this.config.controlledTeamId;
     this.controlledSide = away.id === this.controlledTeamId ? 'away' : 'home';
     this.controllerChangedAtTick = this.config.controllerMode === 'human' ? -15 : 0;
@@ -292,6 +307,7 @@ export class ArcadeMatch {
   }
 
   step(dt: number, rawInput: InputFrame | MatchCommand = EMPTY_MATCH_COMMAND): void {
+    applyPitch(this.pitch);
     if (!Number.isFinite(dt) || dt <= 0) return;
     if (this.paused || this.finished || this.phase === 'halftime' || this.phase === 'goalReplay') return;
     const acceptsHumanInput = this.config.controllerMode === 'human' && this.tick - this.controllerChangedAtTick >= 15;
@@ -402,6 +418,50 @@ export class ArcadeMatch {
     if (this.phase !== 'goalReplay') return;
     this.phase = this.halftimeReached ? 'secondHalf' : 'firstHalf';
     this.paused = false;
+  }
+
+  /**
+   * Training challenges: places the listed players (index in formation order per side), takes all
+   * others off the pitch and starts open play, or a penalty / free kick for the given side.
+   */
+  setupScenario(setup: ScenarioSetup): void {
+    applyPitch(this.pitch);
+    const listed = new Map<ArcadeActor, { x: number; y: number }>();
+    for (const side of ['home', 'away'] as const) {
+      const team = this.actors.filter((actor) => actor.side === side);
+      for (const spot of setup[side]) if (team[spot.index]) listed.set(team[spot.index], spot);
+    }
+    for (const actor of this.actors) {
+      const spot = listed.get(actor);
+      actor.active = !!spot;
+      actor.card = 'none';
+      actor.vx = actor.vy = 0;
+      actor.stamina = 100;
+      actor.decisionCooldown = 0.3;
+      if (!spot) { actor.x = actor.homeX = -20; actor.y = actor.homeY = -20; continue; }
+      actor.x = actor.homeX = actor.intentX = spot.x;
+      actor.y = actor.homeY = actor.intentY = spot.y;
+      actor.facingX = this.attackDirection(actor.side);
+      actor.facingY = 0;
+      this.setAction(actor, 'formation');
+    }
+    const owner = setup.ball.owner ? this.actors.filter((actor) => actor.side === setup.ball.owner!.side)[setup.ball.owner.index] : undefined;
+    Object.assign(this.ball, { x: setup.ball.x, y: setup.ball.y, z: 0, vx: 0, vy: 0, vz: 0, spin: 0, topspin: 0, ownerId: owner?.player.id ?? null, lastTouch: owner?.side ?? 'home', lastTouchPlayerId: owner?.player.id ?? null, controlledTouch: 0 });
+    if (owner && owner.side === this.controlledSide) this.selectedPlayerId = owner.player.id;
+    else {
+      const first = this.actors.find((actor) => actor.active && actor.side === this.controlledSide && actor.player.positionGroup !== 'GK') ?? this.actors.find((actor) => actor.active && actor.side === this.controlledSide);
+      if (first) this.selectedPlayerId = first.player.id;
+    }
+    this.activeShot = null;
+    this.lastPasser = null;
+    this.intendedReceiverId = null;
+    this.pendingOffsideTargetId = null;
+    this.football.queuedAction = null;
+    this.football.restartRelease = null;
+    this.paused = false;
+    this.phase = this.halftimeReached ? 'secondHalf' : 'firstHalf';
+    this.rule = this.newRule('playing', null, this.ball.x, this.ball.y);
+    if (setup.restart) this.setRestart(setup.restart.phase, setup.restart.side, setup.ball.x, setup.ball.y);
   }
 
   replaySnapshots(): readonly MatchSnapshot[] {
@@ -914,7 +974,7 @@ export class ArcadeMatch {
       const openLane = [-0.65, 0, 0.65].map(lateral => {
         const target = { x: clamp(actor.x + direction * 8,1,104), y:clamp(actor.y + lateral * 8,2,66) };
         const clearance = Math.min(...this.actors.filter(other=>other.active && other.side!==actor.side).map(other=>distance(other,target)));
-        return { ...target, score: clearance - Math.abs(target.y-34)*0.09 };
+        return { ...target, score: clearance - Math.abs(target.y-FIELD_WIDTH/2)*0.09 };
       }).sort((a,b)=>b.score-a.score)[0];
       actor.intentX = openLane.x;
       actor.intentY = openLane.y;
@@ -930,18 +990,18 @@ export class ArcadeMatch {
         if(!long && actor.contact) { actor.contact.kind='hand';this.ball.vz=1.8; }
       } else if (goalDistance < 39 && shootingLane && shotValue >= shotThreshold && !this.betterPlacedTeammate(actor, shotValue)) {
         const keeper = this.actors.find(other=>other.active && other.side!==actor.side && other.player.positionGroup==='GK');
-        const farCorner = keeper && keeper.y > 34 ? -.78 : .78;
+        const farCorner = keeper && keeper.y > FIELD_WIDTH/2 ? -.78 : .78;
         const level = this.aiLevel(actor.side);
         const accuracy = level === 'easy' ? .45 : level === 'hard' ? .10 : .25;
         this.shoot(actor, this.rng.float(.50,.93), direction, clamp(farCorner+this.rng.float(-accuracy,accuracy),-1,1), goalDistance > 18 && actor.player.attributes.shooting > 72, goalDistance < 14);
       } else if (this.tryAiSkill(actor, pressureDistance)) {
         // Took the defender on.
       } else if (pressured || this.rng.bool(patience+(captain?.03:0)) || (shotValue >= shotThreshold && goalDistance < 39)) {
-        const cross = goalDistance < 26 && Math.abs(actor.y-34) > 16;
+        const cross = goalDistance < 26 && Math.abs(actor.y-FIELD_WIDTH/2) > Math.min(16, FIELD_WIDTH/4);
         if (cross && this.cross(actor, this.rng.bool(.3), .7)) return;
         const through = team.tactics.counterAttack && this.rng.bool(.25);
         const long = cross || team.tactics.buildUp === 'long-ball' && this.rng.bool(.3);
-        this.pass(actor, through, long, long?.76:team.tactics.passing==='short'?.38:.60, direction, cross ? (34-actor.y)/25 : this.rng.float(-.4,.4));
+        this.pass(actor, through, long, long?.76:team.tactics.passing==='short'?.38:.60, direction, cross ? (FIELD_WIDTH/2-actor.y)/25 : this.rng.float(-.4,.4));
       }
       return;
     }
@@ -1373,7 +1433,7 @@ export class ArcadeMatch {
       eventType = 'yellow';
     }
     const victimDirection = this.attackDirection(victim.side);
-    const inBox = Math.abs(victim.y - FIELD_WIDTH / 2) <= 20.16 && (victimDirection > 0 ? victim.x > FIELD_LENGTH - 16.5 : victim.x < 16.5);
+    const inBox = Math.abs(victim.y - FIELD_WIDTH / 2) <= PITCH.penaltyHalfWidth && (victimDirection > 0 ? victim.x > FIELD_LENGTH - PITCH.penaltyDepth : victim.x < PITCH.penaltyDepth);
     const params = { player: playerName(defender.player) };
     if (inBox && eventType !== 'foul') {
       // A penalty with a card reports both decisions.
@@ -1534,7 +1594,7 @@ export class ArcadeMatch {
 
   private ballInPenaltyAreaOf(side: Side): boolean {
     const goalDistance = this.attackDirection(side) > 0 ? this.ball.x : FIELD_LENGTH - this.ball.x;
-    return goalDistance <= 16.5 + BALL_RADIUS && Math.abs(this.ball.y - FIELD_WIDTH / 2) <= 20.16 + BALL_RADIUS;
+    return goalDistance <= PITCH.penaltyDepth + BALL_RADIUS && Math.abs(this.ball.y - FIELD_WIDTH / 2) <= PITCH.penaltyHalfWidth + BALL_RADIUS;
   }
 
   private keeperReach(keeper: ArcadeActor): number {
@@ -1546,10 +1606,11 @@ export class ArcadeMatch {
 
   private inOwnPenaltyArea(actor: ArcadeActor): boolean {
     const goalDistance = this.attackDirection(actor.side) > 0 ? actor.x : FIELD_LENGTH - actor.x;
-    return goalDistance <= 16.5 && Math.abs(actor.y - FIELD_WIDTH / 2) <= 20.16;
+    return goalDistance <= PITCH.penaltyDepth && Math.abs(actor.y - FIELD_WIDTH / 2) <= PITCH.penaltyHalfWidth;
   }
 
   private handleBoundary(): boolean {
+    if (this.config.smallSided && this.bounceOffBoards()) return false;
     if (this.ball.x < -BALL_RADIUS || this.ball.x > FIELD_LENGTH + BALL_RADIUS) {
       const inGoal = Math.abs(this.ball.y - FIELD_WIDTH / 2) <= GOAL_WIDTH / 2 - BALL_RADIUS && this.ball.z <= GOAL_HEIGHT - BALL_RADIUS;
       if (inGoal) {
@@ -1558,7 +1619,7 @@ export class ArcadeMatch {
         if (restart && (scoringSide !== restart.side || restart.phase==='throwIn' || restart.indirect)) {
           const own = scoringSide !== restart.side;
           const endX=this.ball.x<0?0:FIELD_LENGTH;
-          this.setRestart(own?'corner':'goalKick',own?scoringSide:this.opposite(scoringSide),own?endX:endX===0?5.5:99.5,own?0:34);
+          this.setRestart(own?'corner':'goalKick',own?scoringSide:this.opposite(scoringSide),own?endX:endX===0?PITCH.goalAreaDepth:FIELD_LENGTH-PITCH.goalAreaDepth,own?0:FIELD_WIDTH/2);
           return true;
         }
         this.scoreGoal(this.ball.x > FIELD_LENGTH ? this.sideAttackingDirection(1) : this.sideAttackingDirection(-1));
@@ -1569,7 +1630,7 @@ export class ArcadeMatch {
       if (corner) this.stats(attacking).corners++;
       this.events.push({ minute: this.footballMinute, type: corner ? 'corner' : 'commentary', side: corner ? attacking : null, playerId: null, messageKey: corner ? 'match.corner' : 'match.goalKick', params: { team: this.teamOf(attacking).shortName } });
       const endX = this.ball.x < 0 ? 0 : FIELD_LENGTH;
-      this.setRestart(corner ? 'corner' : 'goalKick', corner ? attacking : this.opposite(attacking), corner ? endX : endX === 0 ? 5.5 : FIELD_LENGTH - 5.5, corner ? this.ball.y < FIELD_WIDTH / 2 ? 0 : FIELD_WIDTH : FIELD_WIDTH / 2);
+      this.setRestart(corner ? 'corner' : 'goalKick', corner ? attacking : this.opposite(attacking), corner ? endX : endX === 0 ? PITCH.goalAreaDepth : FIELD_LENGTH - PITCH.goalAreaDepth, corner ? this.ball.y < FIELD_WIDTH / 2 ? 0 : FIELD_WIDTH : FIELD_WIDTH / 2);
       return true;
     }
     if (this.ball.y < -BALL_RADIUS || this.ball.y > FIELD_WIDTH + BALL_RADIUS) {
@@ -1684,18 +1745,18 @@ export class ArcadeMatch {
       this.setRestart('freeKick', this.opposite(actor.side), actor.x, actor.y, true);
       return;
     }
-    const aimedY = 34 + (queued?.aimY ?? this.rng.float(-0.6, 0.6)) * 2.6;
+    const aimedY = FIELD_WIDTH / 2 + (queued?.aimY ?? this.rng.float(-0.6, 0.6)) * 2.6;
     // Heading accuracy depends on strength, finishing and distance; wide headers really miss.
     const headingError = (100 - (actor.player.attributes.physical + actor.player.attributes.shooting) / 2) / 100 * 1.8 + goalDistance * 0.06;
     const targetY = aimedY + this.rng.normal(0, headingError);
-    const headerXg = shotXg(goalDistance, actor.y - 34, actor.player.attributes.shooting, clamp((3 - this.closestOpponent(actor)) / 3, 0, 1), true);
+    const headerXg = shotXg(goalDistance, actor.y - FIELD_WIDTH / 2, actor.player.attributes.shooting, clamp((3 - this.closestOpponent(actor)) / 3, 0, 1), true);
     const length = Math.hypot(goalX - actor.x, targetY - actor.y);
     const speed = 11 + actor.player.attributes.physical * 0.07;
     this.releaseBall(actor, (goalX - actor.x) / length * speed, (targetY - actor.y) / length * speed, -1.4, 0);
     if (actor.contact) actor.contact.kind = 'head';
     this.setAction(actor, 'header');
     this.stats(actor.side).shots++;
-    if (Math.abs(targetY - 34) <= GOAL_WIDTH / 2) this.stats(actor.side).shotsOnTarget++;
+    if (Math.abs(targetY - FIELD_WIDTH / 2) <= GOAL_WIDTH / 2) this.stats(actor.side).shotsOnTarget++;
     this.stats(actor.side).xG = round(this.stats(actor.side).xG + headerXg, 2);
     this.activeShot = { shooterId: actor.player.id, side: actor.side, xG: headerXg, targetY, checkedKeeper: false };
     this.football.queuedAction = null;
@@ -1791,7 +1852,7 @@ export class ArcadeMatch {
     this.football.queuedAction = null;
     this.football.offsideCandidates = [];
     this.football.restartRelease = null;
-    if (phase === 'penalty') { x = this.attackDirection(side) > 0 ? 94 : 11; y = 34; }
+    if (phase === 'penalty') { x = this.attackDirection(side) > 0 ? FIELD_LENGTH - PITCH.penaltySpot : PITCH.penaltySpot; y = FIELD_WIDTH / 2; }
     this.rule = this.newRule(phase, side, x, y, indirect);
     this.phase = 'stoppage';
     this.ball.ownerId = null;
@@ -2127,7 +2188,35 @@ export class ArcadeMatch {
     this.collisions.resolve(this.actors);
   }
 
+  /**
+   * Five-a-side boards: the ball rebounds from the side boards and from the end boards next to the
+   * goal, so it never leaves play except into the net. Returns true when it bounced.
+   */
+  private bounceOffBoards(): boolean {
+    const ball = this.ball;
+    let bounced = false;
+    if (ball.y < BALL_RADIUS || ball.y > FIELD_WIDTH - BALL_RADIUS) {
+      ball.y = clamp(ball.y, BALL_RADIUS, FIELD_WIDTH - BALL_RADIUS);
+      ball.vy = -ball.vy * 0.62;
+      ball.vx *= 0.9;
+      bounced = true;
+    }
+    const inMouth = Math.abs(ball.y - FIELD_WIDTH / 2) <= GOAL_WIDTH / 2 - BALL_RADIUS && ball.z <= GOAL_HEIGHT - BALL_RADIUS;
+    if (!inMouth && (ball.x < BALL_RADIUS || ball.x > FIELD_LENGTH - BALL_RADIUS)) {
+      ball.x = clamp(ball.x, BALL_RADIUS, FIELD_LENGTH - BALL_RADIUS);
+      ball.vx = -ball.vx * 0.62;
+      ball.vy *= 0.9;
+      bounced = true;
+    }
+    if (bounced) {
+      ball.ownerId = null;
+      this.activeShot = null;
+    }
+    return bounced;
+  }
+
   private isOffside(target: ArcadeActor, passer: ArcadeActor): boolean {
+    if (this.config.smallSided) return false;
     return isOffsidePosition(target, passer, this.actors, this.attackDirection(passer.side));
   }
 

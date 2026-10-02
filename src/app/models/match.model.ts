@@ -99,6 +99,8 @@ export interface MatchConfig {
   camera: MatchCameraSettings;
   /** Cup ties: a draw after 90 minutes goes to extra time and then penalties. */
   knockout?: boolean;
+  /** Five-a-side cage: small pitch and goals, boards instead of touchlines, no offside. */
+  smallSided?: boolean;
 }
 
 export interface PenaltyShootout {

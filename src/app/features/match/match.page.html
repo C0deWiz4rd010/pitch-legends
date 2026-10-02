@@ -1,10 +1,12 @@
 @if (phase() === 'match') {
-  <div class="practice-bar"><a routerLink="/">← {{ i18n.pick('Zur Karriere', 'Career') }}</a><strong>PITCH LEGENDS <b class="arcade-badge">ARCADE 3D</b></strong><span>{{ i18n.pick('WASD bewegen · J passen · L schießen · Shift sprinten · O stellen', 'WASD move · J pass · L shoot · Shift sprint · O jockey') }}</span></div>
+  <div class="practice-bar"><a [routerLink]="exhibition?.returnUrl ?? '/'">← {{ exhibition ? i18n.pick(exhibition.returnLabel.de, exhibition.returnLabel.en) : i18n.pick('Zur Karriere', 'Career') }}</a><strong>PITCH LEGENDS <b class="arcade-badge">ARCADE 3D</b></strong><span>{{ i18n.pick('WASD bewegen · J passen · L schießen · Shift sprinten · O stellen', 'WASD move · J pass · L shoot · Shift sprint · O jockey') }}</span></div>
 }
 @if (phase() === 'preview') {
   <header class="page-head fade-up">
     <div>
-      @if (isCupTie()) {
+      @if (exhibition) {
+        <p class="eyebrow cup-eyebrow">{{ i18n.pick(exhibition.title.de, exhibition.title.en) }}</p>
+      } @else if (isCupTie()) {
         <p class="eyebrow cup-eyebrow">{{ gs.game()?.cup?.name }} · {{ cupRoundName() }}</p>
       } @else {
         <p class="eyebrow">{{ i18n.pick('SPIELTAG', 'MATCHDAY') }} {{ gs.currentWeek() }}</p>
@@ -182,7 +184,14 @@
         @if (graphicsLoading()) { <div class="graphics-loading" role="status">{{ i18n.pick('Dein Stadion wird vorbereitet …', 'Preparing your stadium …') }}</div> }
         @if (graphicsError()) { <div class="graphics-loading" role="alert"><p>{{ graphicsError() }}</p><a routerLink="/" class="btn btn--primary">← {{ i18n.pick('Zurück', 'Back') }}</a></div> }
         <div class="rotate-notice"><strong>{{ i18n.pick('GERÄT DREHEN', 'ROTATE DEVICE') }}</strong><span>{{ i18n.pick('Touch-Spiele benötigen das Querformat.', 'Touch matches need landscape.') }}</span></div>
-        @if (flash(); as scorer) { <div class="goal-flash" role="status"><strong>{{ i18n.pick('TOR!', 'GOAL!') }}</strong><span>{{ scorer }}</span></div> }
+        @if (flash(); as scorer) { @if (!challengeHud()) { <div class="goal-flash" role="status"><strong>{{ i18n.pick('TOR!', 'GOAL!') }}</strong><span>{{ scorer }}</span></div> } }
+        @if (challengeHud(); as hud) {
+          <div class="challenge-hud" role="status">
+            @if (hud.attempts > 1) { <span>{{ i18n.pick('Versuch', 'Attempt') }} <b>{{ hud.attempt }}/{{ hud.attempts }}</b></span><span>{{ i18n.pick('Tore', 'Goals') }} <b>{{ hud.score }}</b></span> }
+            @else if (hud.seconds || hud.score) { <span><b>{{ hud.seconds }}</b> s</span>@if (exhibition?.challengeId === 'passing') { <span>{{ i18n.pick('Pässe', 'Passes') }} <b>{{ hud.score }}</b></span> } }
+            @if (hud.flash) { <strong>{{ i18n.pick(hud.flash.de, hud.flash.en) }}</strong> }
+          </div>
+        }
         @if (matchPhase() === 'goalReplay') { <button class="replay-skip" (click)="skipReplay()">{{ i18n.pick('REPLAY ÜBERSPRINGEN', 'SKIP REPLAY') }}</button> }
         <button class="auto-chip" [class.on]="autoEnabled()" [attr.aria-pressed]="autoEnabled()" (click)="toggleAuto()">◈ AUTO · {{ autoEnabled() ? i18n.pick('KI STEUERT', 'AI PLAYS') : i18n.pick('AUS', 'OFF') }}</button>
         <button
@@ -303,7 +312,19 @@
 }
 
 @if (phase() === 'result') {
-  @if (result(); as report) {
+  @if (challengeResult(); as challengeEnd) {
+    <section class="card challenge-result fade-up">
+      <p class="eyebrow">{{ i18n.pick('HERAUSFORDERUNG', 'CHALLENGE') }}</p>
+      <h1>{{ i18n.pick(challengeEnd.de, challengeEnd.en) }}</h1>
+      <div class="medal" [attr.data-medal]="challengeEnd.outcome.medal ?? 'none'">{{ challengeEnd.outcome.medal === 'gold' ? '🥇' : challengeEnd.outcome.medal === 'silver' ? '🥈' : challengeEnd.outcome.medal === 'bronze' ? '🥉' : '—' }}</div>
+      <p class="score"><b>{{ challengeEnd.outcome.score }}</b> {{ i18n.pick(challengeEnd.unitDe, challengeEnd.unitEn) }}</p>
+      <p class="muted">{{ challengeEnd.newBest ? i18n.pick('Neue Bestleistung!', 'New personal best!') : i18n.pick('Bestleistung: ', 'Personal best: ') + challengeEnd.best }}</p>
+      <div class="report-actions">
+        <a [routerLink]="exhibition?.returnUrl ?? '/'" class="btn btn--ghost">{{ i18n.pick('ALLE HERAUSFORDERUNGEN', 'ALL CHALLENGES') }}</a>
+        <button type="button" class="btn btn--primary big" (click)="retryChallenge()">{{ i18n.pick('NOCHMAL →', 'TRY AGAIN →') }}</button>
+      </div>
+    </section>
+  } @else if (result(); as report) {
     <section class="report fade-up">
       <article class="card final-card">
         <p class="eyebrow">{{ i18n.pick('ABPFIFF', 'FULL TIME') }}@if (report.extraTime) { · {{ i18n.pick('NACH VERLÄNGERUNG', 'AFTER EXTRA TIME') }} }</p>
@@ -380,8 +401,10 @@
       </div>
 
       <div class="report-actions">
-        @if (practice) {
-          <a routerLink="/" class="btn btn--ghost">{{ i18n.pick('ZUM MENÜ', 'MAIN MENU') }}</a>
+        @if (practice && exhibition && !exhibition.rematch) {
+          <button class="btn btn--primary big continue" (click)="confirm()">{{ i18n.pick('ERGEBNIS ÜBERNEHMEN →', 'CONTINUE →') }}</button>
+        } @else if (practice) {
+          <a [routerLink]="exhibition?.returnUrl ?? '/'" class="btn btn--ghost">{{ exhibition ? i18n.pick(exhibition.returnLabel.de, exhibition.returnLabel.en) : i18n.pick('ZUM MENÜ', 'MAIN MENU') }}</a>
           <button class="btn btn--primary big continue" (click)="confirm()">{{ i18n.pick('REVANCHE →', 'REMATCH →') }}</button>
         } @else {
           <button class="btn btn--primary big continue" [disabled]="committing()" (click)="confirm()">{{ committing() ? i18n.pick('LIGASPIELE WERDEN SIMULIERT …', 'SIMULATING LEAGUE MATCHES …') : i18n.pick('KARRIERE FORTSETZEN →', 'CONTINUE CAREER →') }}</button>

@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { ArcadeActor, ArcadeMatch, FIELD_LENGTH, FIELD_WIDTH, GOAL_WIDTH, GOAL_HEIGHT } from '../../core/services/arcade-match';
+import { ArcadeActor, ArcadeMatch, FIELD_LENGTH, FIELD_WIDTH, GOAL_WIDTH, GOAL_HEIGHT, PITCH, applyPitch } from '../../core/services/arcade-match';
 import { resolveMatchKits, MatchKitSelection } from '../../core/kit-visuals';
 import { hash32 } from '../../core/visual-identity';
 import { MatchRenderFrame, MatchRenderState, MatchSnapshot, PlayerRuntimeSnapshot } from '../../models/match.model';
@@ -314,7 +314,7 @@ export class ThreePitchRenderer {
     this.replayVariant = (this.replayVariant + 1) % 3;
     const side = this.ball.position.x >= 0 ? 1 : -1;
     for (let i = 0; i < 160; i++) {
-      this.confettiOrigins.set([side * 53, 0.2 + i % 4, (i % 2 ? -1 : 1) * (5 + i % 7)], i * 3);
+      this.confettiOrigins.set([side * (FIELD_LENGTH / 2 + .5), 0.2 + i % 4, (i % 2 ? -1 : 1) * (5 + i % 7)], i * 3);
       this.confettiVelocity.set([((hash32(`gx${i}`) % 100) / 100 - 0.5) * 7, 4 + (hash32(`gy${i}`) % 80) / 10, ((hash32(`gz${i}`) % 100) / 100 - 0.5) * 8], i * 3);
     }
   }
@@ -488,12 +488,15 @@ export class ThreePitchRenderer {
     const sx = selected ? (selected.x - FIELD_LENGTH / 2) * mirror : bx;
     const sz = selected ? selected.y - FIELD_WIDTH / 2 : bz;
     const lead = Math.min(0.12, match.config.camera.lookAhead ?? 0.12);
-    const targetX = THREE.MathUtils.clamp(bx * 0.55 + sx * 0.45 + state.ball.vx * mirror * lead, -43, 43);
-    const targetZ = THREE.MathUtils.clamp(bz * 0.55 + sz * 0.45 + state.ball.vy * lead * 0.5, -24, 24);
+    const limitX = Math.max(4, FIELD_LENGTH / 2 - 9.5), limitZ = Math.max(3, FIELD_WIDTH / 2 - 10);
+    const targetX = THREE.MathUtils.clamp(bx * 0.55 + sx * 0.45 + state.ball.vx * mirror * lead, -limitX, limitX);
+    const targetZ = THREE.MathUtils.clamp(bz * 0.55 + sz * 0.45 + state.ball.vy * lead * 0.5, -limitZ, limitZ);
+    // The cage is small: frame it tighter.
+    const frame = match.pitch.id === 'small' ? 0.62 : 1;
     const preset = CAMERA_PRESETS[this.presetFor(match)];
     const reduced = match.config.camera.reducedMotion;
-    const baseWidth = replay && !reduced ? 34 : 48;
-    const targetWidth = Math.max(baseWidth, Math.abs(bx - sx) * 1.25 + 25) * preset.width / THREE.MathUtils.clamp(match.config.camera.zoom || 1, 0.6, 1.4);
+    const baseWidth = (replay && !reduced ? 34 : 48) * frame;
+    const targetWidth = Math.max(baseWidth, Math.abs(bx - sx) * 1.25 + 25 * frame) * preset.width / THREE.MathUtils.clamp(match.config.camera.zoom || 1, 0.6, 1.4);
     if (!this.cameraInitialized || this.lastDirection !== mirror) {
       this.cameraX = targetX;
       this.cameraZ = targetZ;
@@ -603,6 +606,8 @@ export class ThreePitchRenderer {
   }
 
   private ensureMatch(match: ArcadeMatch): void {
+    // Draw with the dimensions of this match (full pitch or five-a-side cage).
+    applyPitch(match.pitch);
     if (this.matchId !== match.matchId) {
       this.matchId = match.matchId;
       this.cameraInitialized=false;
@@ -669,6 +674,10 @@ export class ThreePitchRenderer {
     markings.receiveShadow = true;
     this.stadium.add(markings);
     this.buildGoals();
+    if (match.pitch.id === 'small') {
+      this.buildCage(match, night);
+      return;
+    }
 
     const structures: { position: number[]; scale: number[]; color: string }[] = [];
     const addBox = (x: number, y: number, z: number, w: number, h: number, d: number, color: string) => structures.push({ position: [x, y, z], scale: [w, h, d], color });
@@ -767,6 +776,51 @@ export class ThreePitchRenderer {
     const banner = new THREE.Mesh(new THREE.PlaneGeometry(98, 0.86), new THREE.MeshBasicMaterial({ map: bannerTexture }));
     banner.position.set(0, 0.6, -37.43);
     this.stadium.add(banner);
+  }
+
+  /** Five-a-side: boards around the pitch, a fence behind the goals and four light masts. */
+  private buildCage(match: ArcadeMatch, night: boolean): void {
+    const halfL = FIELD_LENGTH / 2, halfW = FIELD_WIDTH / 2, goalHalf = GOAL_WIDTH / 2;
+    const parts: { position: number[]; scale: number[]; color: string }[] = [];
+    const add = (x: number, y: number, z: number, w: number, h: number, d: number, color: string) => parts.push({ position: [x, y, z], scale: [w, h, d], color });
+    const board = match.home.visuals.kits.home.shirt;
+    for (const side of [-1, 1]) {
+      add(0, 0.5, side * (halfW + 0.15), FIELD_LENGTH + 0.6, 1, 0.3, '#e8eef0');
+      add(0, 0.82, side * (halfW + 0.31), FIELD_LENGTH + 0.6, 0.22, 0.02, board);
+      for (const end of [-1, 1]) {
+        const length = halfW - goalHalf - 0.1;
+        add(side * (halfL + 0.15), 0.5, end * (goalHalf + 0.1 + length / 2), 0.3, 1, length, '#e8eef0');
+      }
+      // Netting fence behind each end.
+      add(side * (halfL + 2.6), 2.2, 0, 0.05, 4.4, FIELD_WIDTH + 0.6, '#3d4c52');
+    }
+    for (const sx of [-1, 1]) for (const sz of [-1, 1]) {
+      add(sx * (halfL + 3), 5, sz * (halfW + 3), 0.3, 10, 0.3, '#8da2a6');
+      add(sx * (halfL + 3), 10, sz * (halfW + 3), 2.6, 1, 0.4, '#c2c8c1');
+    }
+    const boxes = new THREE.InstancedMesh(new THREE.BoxGeometry(), new THREE.MeshStandardMaterial({ roughness: 0.8 }), parts.length);
+    const dummy = new THREE.Object3D();
+    parts.forEach((part, index) => {
+      dummy.position.fromArray(part.position);
+      dummy.scale.fromArray(part.scale);
+      dummy.updateMatrix();
+      boxes.setMatrixAt(index, dummy.matrix);
+      boxes.setColorAt(index, new THREE.Color(part.color));
+    });
+    this.stadium.add(boxes);
+    const fence = new THREE.MeshBasicMaterial({ color: '#9fb4ba', transparent: true, opacity: 0.18, side: THREE.DoubleSide, depthWrite: false });
+    for (const side of [-1, 1]) {
+      const net = new THREE.Mesh(new THREE.PlaneGeometry(FIELD_LENGTH + 6, 4.4), fence);
+      net.position.set(0, 2.2, side * (halfW + 2.6));
+      this.stadium.add(net);
+    }
+    const lampMaterial = new THREE.MeshBasicMaterial({ color: new THREE.Color('#fff6d8').multiplyScalar(night ? 4 : 2.6) });
+    for (const sx of [-1, 1]) for (const sz of [-1, 1]) {
+      const lamp = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.8, 0.1), lampMaterial);
+      lamp.position.set(sx * (halfL + 3), 10, sz * (halfW + 3) + (sz > 0 ? -0.25 : 0.25));
+      lamp.lookAt(0, 0, 0);
+      this.stadium.add(lamp);
+    }
   }
 
   private buildGoals(): void {
@@ -986,6 +1040,27 @@ export class ThreePitchRenderer {
     ctx.textAlign = 'left';
   }
 
+  private markerMeshes: THREE.Mesh[] = [];
+
+  /** Training cones of a challenge; passed cones turn green. */
+  setMarkers(markers: ReadonlyArray<{ x: number; y: number; done: boolean }>): void {
+    while (this.markerMeshes.length < markers.length) {
+      const cone = new THREE.Mesh(new THREE.ConeGeometry(0.28, 0.75, 12), new THREE.MeshStandardMaterial({ color: '#ff8a1f', roughness: 0.6 }));
+      cone.position.y = 0.375;
+      cone.castShadow = true;
+      this.scene.add(cone);
+      this.markerMeshes.push(cone);
+    }
+    this.markerMeshes.forEach((mesh, index) => {
+      const marker = markers[index];
+      mesh.visible = !!marker;
+      if (!marker) return;
+      mesh.position.x = (marker.x - FIELD_LENGTH / 2) * this.lastDirection;
+      mesh.position.z = marker.y - FIELD_WIDTH / 2;
+      (mesh.material as THREE.MeshStandardMaterial).color.set(marker.done ? '#3ad27a' : '#ff8a1f');
+    });
+  }
+
   setMinimap(visible: boolean): void {
     this.minimap = visible;
     this.lastHud = -1;
@@ -1040,10 +1115,12 @@ function createPitchTexture(seed: number, wet: boolean): THREE.CanvasTexture {
       ctx.fillStyle = i % 2 ? 'rgba(233,239,153,.050)' : 'rgba(13,56,32,.050)';
       ctx.fillRect(n % canvas.width, (n >>> 12) % canvas.height, 1, 2 + i % 3);
     }
-    for (const x of [4.5, 100.5]) {
-      const grad = ctx.createRadialGradient(x * sx, 34 * sy, 0, x * sx, 34 * sy, 3.8 * sx);
+    // Worn goal mouths.
+    for (const x of [4.5 * FIELD_LENGTH / 105, FIELD_LENGTH - 4.5 * FIELD_LENGTH / 105]) {
+      const y = FIELD_WIDTH / 2;
+      const grad = ctx.createRadialGradient(x * sx, y * sy, 0, x * sx, y * sy, 3.8 * sx);
       grad.addColorStop(0, 'rgba(152,127,70,.13)'); grad.addColorStop(1, 'rgba(152,127,70,0)');
-      ctx.fillStyle = grad; ctx.fillRect((x - 4) * sx, 29 * sy, 8 * sx, 10 * sy);
+      ctx.fillStyle = grad; ctx.fillRect((x - 4) * sx, (y - 5) * sy, 8 * sx, 10 * sy);
     }
     // Large, soft patches break up the uniform colour; markings are separate geometry.
     for (let i = 0; i < 40; i++) {
@@ -1135,16 +1212,21 @@ function createPitchMarkings(): THREE.BufferGeometry {
   const rect = (x: number, y: number, w: number, h: number) => { line(x, y, x + w, y); line(x + w, y, x + w, y + h); line(x + w, y + h, x, y + h); line(x, y + h, x, y); };
   const arc = (x: number, y: number, r: number, start: number, length: number) => place(new THREE.RingGeometry(r - width / 2, r + width / 2, 72, 1, start, length), x, y);
   const spot = (x: number, y: number) => place(new THREE.CircleGeometry(0.17, 16), x, y);
-  rect(0.06, 0.06, 104.88, 67.88);
-  line(52.5, 0.06, 52.5, 67.94);
-  arc(52.5, 34, 9.15, 0, Math.PI * 2); spot(52.5, 34);
-  rect(0.06, 13.84, 16.44, 40.32); rect(88.5, 13.84, 16.44, 40.32);
-  rect(0.06, 24.84, 5.44, 18.32); rect(99.5, 24.84, 5.44, 18.32);
-  spot(11, 34); spot(94, 34);
-  const a = Math.acos(5.5 / 9.15);
-  arc(11, 34, 9.15, -a, 2 * a); arc(94, 34, 9.15, Math.PI - a, 2 * a);
-  arc(0, 0, 1, -Math.PI / 2, Math.PI / 2); arc(105, 0, 1, -Math.PI, Math.PI / 2);
-  arc(0, 68, 1, 0, Math.PI / 2); arc(105, 68, 1, Math.PI / 2, Math.PI / 2);
+  const L = FIELD_LENGTH, W = FIELD_WIDTH, mid = W / 2, p = PITCH;
+  const boxW = p.penaltyHalfWidth * 2, areaHalf = GOAL_WIDTH / 2 + p.goalAreaDepth;
+  rect(0.06, 0.06, L - 0.12, W - 0.12);
+  line(L / 2, 0.06, L / 2, W - 0.06);
+  arc(L / 2, mid, p.restartDistance, 0, Math.PI * 2); spot(L / 2, mid);
+  rect(0.06, mid - p.penaltyHalfWidth, p.penaltyDepth - 0.06, boxW); rect(L - p.penaltyDepth, mid - p.penaltyHalfWidth, p.penaltyDepth - 0.06, boxW);
+  rect(0.06, mid - areaHalf, p.goalAreaDepth - 0.06, areaHalf * 2); rect(L - p.goalAreaDepth, mid - areaHalf, p.goalAreaDepth - 0.06, areaHalf * 2);
+  spot(p.penaltySpot, mid); spot(L - p.penaltySpot, mid);
+  // The penalty arc only exists where the circle reaches beyond the box.
+  if (p.restartDistance > p.penaltyDepth - p.penaltySpot) {
+    const a = Math.acos((p.penaltyDepth - p.penaltySpot) / p.restartDistance);
+    arc(p.penaltySpot, mid, p.restartDistance, -a, 2 * a); arc(L - p.penaltySpot, mid, p.restartDistance, Math.PI - a, 2 * a);
+  }
+  arc(0, 0, 1, -Math.PI / 2, Math.PI / 2); arc(L, 0, 1, -Math.PI, Math.PI / 2);
+  arc(0, W, 1, 0, Math.PI / 2); arc(L, W, 1, Math.PI / 2, Math.PI / 2);
   const merged = mergeGeometries(parts.map(part => part.index ? part.toNonIndexed() : part), false)!;
   parts.forEach(part => part.dispose());
   return merged;
