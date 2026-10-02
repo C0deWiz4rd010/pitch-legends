@@ -4,6 +4,13 @@ All notable changes to Pitch Legends are recorded here. Releases follow
 [Semantic Versioning](https://semver.org/) and are generated from Conventional
 Commits by Release Please.
 
+## [1.9.0](https://github.com/C0deWiz4rd010/pitch-legends/compare/pitch-legends-v1.8.0...pitch-legends-v1.9.0) (2026-10-02)
+
+
+### Features
+
+* **modes:** phase F – Legends Team, quick match, challenges and five-a-side ([500a966](https://github.com/C0deWiz4rd010/pitch-legends/commit/500a966f3a09d5f42a9eb1f2c066628093b52527))
+
 ## [1.8.0](https://github.com/C0deWiz4rd010/pitch-legends/compare/pitch-legends-v1.7.0...pitch-legends-v1.8.0) (2026-10-02)
 
 
