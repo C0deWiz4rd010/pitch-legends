@@ -35,6 +35,7 @@ const SHORT: Record<AttributeKey, string> = {
         <line [attr.x1]="center()" [attr.y1]="center()" [attr.x2]="a.x" [attr.y2]="a.y" class="spoke" />
         <text [attr.x]="a.lx" [attr.y]="a.ly" class="axis-label">{{ a.short }}</text>
       }
+      @if (compare()) { <polygon [attr.points]="comparePoints()" class="data compare" /> }
       <polygon [attr.points]="dataPoints()" class="data" />
       @for (a of axes(); track a.key) {
         <circle [attr.cx]="pointFor(a).x" [attr.cy]="pointFor(a).y" r="2.6" class="dot" />
@@ -72,12 +73,30 @@ const SHORT: Record<AttributeKey, string> = {
       .dot {
         fill: var(--accent);
       }
+      .data.compare {
+        fill: rgba(55, 216, 255, 0.18);
+        stroke: var(--accent-2);
+        stroke-dasharray: 4 3;
+      }
     `,
   ],
 })
 export class RadarChartComponent {
   readonly attributes = input.required<PlayerAttributes>();
   readonly size = input(240);
+  /** Optional second player drawn underneath for comparisons. */
+  readonly compare = input<PlayerAttributes | null>(null);
+
+  comparePoints = computed(() => {
+    const other = this.compare();
+    if (!other) return '';
+    const c = this.center(), r = this.radius();
+    return ATTRIBUTE_KEYS.map((key, i) => {
+      const angle = -Math.PI / 2 + (i * 2 * Math.PI) / ATTRIBUTE_KEYS.length;
+      const scale = other[key] / 99;
+      return `${c + Math.cos(angle) * r * scale},${c + Math.sin(angle) * r * scale}`;
+    }).join(' ');
+  });
 
   center = computed(() => this.size() / 2);
   private radius = computed(() => this.size() / 2 - 26);

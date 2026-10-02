@@ -325,6 +325,11 @@ export interface MatchViewState {
   controlledFitness: number;
   controllerMode: MatchControllerMode;
   eventRevision: number;
+  /** Announced added minutes (0 before the end of regular time). */
+  stoppage: number;
+  /** Minutes already played beyond 45/90. */
+  stoppageMinute: number;
+  extraTime: boolean;
 }
 
 export interface MatchCheckpoint {

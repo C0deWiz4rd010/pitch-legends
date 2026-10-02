@@ -1,4 +1,4 @@
-import { Component, inject, signal, isDevMode } from '@angular/core';
+import { Component, effect, inject, signal, isDevMode, DOCUMENT } from '@angular/core';
 import { NavigationEnd, Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { GameStateService } from './core/services/game-state.service';
@@ -10,6 +10,8 @@ import { MiniKitComponent } from './shared/components/mini-kit.component';
 import { ControlHandbookComponent } from './shared/components/control-handbook.component';
 import { ControlHelpService } from './core/services/control-help.service';
 import { APP_VERSION } from './core/version';
+import { I18nService } from './core/services/i18n.service';
+import { GamepadMenuService } from './core/services/gamepad-menu.service';
 
 interface NavItem {
   path: string;
@@ -26,6 +28,8 @@ interface NavItem {
 export class App {
   protected readonly gs = inject(GameStateService);
   protected readonly controlHelp = inject(ControlHelpService);
+  protected readonly i18n = inject(I18nService);
+  private readonly document = inject(DOCUMENT);
   protected readonly menuOpen = signal(false);
   protected readonly version = APP_VERSION;
   protected readonly revision = signal('');
@@ -45,6 +49,9 @@ export class App {
   ];
 
   constructor() {
+    // The in-game "reduced motion" setting also calms menu animations, not only the 3D camera.
+    effect(() => this.document.body.classList.toggle('reduce-motion', !!this.gs.game()?.settings.reducedMotion));
+    inject(GamepadMenuService).start();
     this.router.events.pipe(takeUntilDestroyed()).subscribe(event => {
       if (event instanceof NavigationEnd) this.standalonePage.set(/^\/(?:play|players)(?:[/?#]|$)/.test(event.urlAfterRedirects));
     });

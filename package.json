@@ -10,7 +10,8 @@
     "typecheck": "tsc -p tsconfig.app.json --noEmit && tsc -p tsconfig.spec.json --noEmit",
     "test:e2e": "playwright test",
     "balance:check": "esbuild tools/balance-check.ts --bundle --platform=node --format=esm --outfile=tmp/balance-check.mjs && node tmp/balance-check.mjs 500",
-    "version:check": "node tools/check-version.mjs"
+    "version:check": "node tools/check-version.mjs",
+    "styles:check": "node tools/check-styles.mjs"
   },
   "private": true,
   "packageManager": "npm@11.4.2",

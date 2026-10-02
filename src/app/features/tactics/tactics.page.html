@@ -28,9 +28,9 @@
     </div>
   </header>
 
-  <nav class="mobile-view-switch" [attr.aria-label]="text('Taktikansicht', 'Tactics view')">
-    <button [class.active]="mobileView() === 'pitch'" (click)="mobileView.set('pitch')">▦ {{ text('FELD', 'PITCH') }}</button>
-    <button [class.active]="mobileView() === 'inspector'" (click)="mobileView.set('inspector')">☷ {{ text('INSPEKTOR', 'INSPECTOR') }}</button>
+  <nav class="mobile-view-switch" role="tablist" [attr.aria-label]="text('Taktikansicht', 'Tactics view')">
+    <button role="tab" [attr.aria-selected]="mobileView() === 'pitch'" [class.active]="mobileView() === 'pitch'" (click)="mobileView.set('pitch')">▦ {{ text('FELD', 'PITCH') }}</button>
+    <button role="tab" [attr.aria-selected]="mobileView() === 'inspector'" [class.active]="mobileView() === 'inspector'" (click)="mobileView.set('inspector')">☷ {{ text('INSPEKTOR', 'INSPECTOR') }}</button>
   </nav>
 
   <div class="tactics-workspace" [class.mobile-inspector]="mobileView() === 'inspector'">

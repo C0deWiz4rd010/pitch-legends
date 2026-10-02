@@ -26,7 +26,7 @@ test('seeded league atlas exposes clubs, cities, routes and individual coaches',
   expect(state.managers).toHaveLength(11);
 
   await page.goto('/league');
-  await page.getByRole('button', { name: /^(karte|map)$/i }).click();
+  await page.getByRole('tab', { name: /^(karte|map)$/i }).click();
   await expect(page.locator('.world-map')).toBeVisible();
   await expect(page.locator('.world-map .city')).toHaveCount(12);
   expect(await page.locator('.world-map .region').count()).toBeGreaterThanOrEqual(4);

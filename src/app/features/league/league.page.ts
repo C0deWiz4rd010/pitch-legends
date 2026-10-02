@@ -52,6 +52,24 @@ export class LeaguePage {
       .sort((a, b) => b.player.seasonStats.assists - a.player.seasonStats.assists || b.player.overall - a.player.overall).slice(0, 10);
   });
 
+  /** Further leaderboards: average rating (min. 3 apps), clean sheets and discipline. */
+  protected readonly leaders = computed(() => {
+    const game = this.gs.game();
+    if (!game) return [];
+    const all = game.teams.flatMap((team) => team.players.map((player) => ({ player, team })));
+    const top = (entries: typeof all, value: (entry: (typeof all)[number]) => number) =>
+      entries.map(entry => ({ ...entry, value: value(entry) })).filter(entry => entry.value > 0)
+        .sort((a, b) => b.value - a.value || b.player.overall - a.player.overall).slice(0, 8);
+    return [
+      { key: 'rating', de: 'Ø NOTE', en: 'AVG RATING', unit: 'Ø',
+        entries: top(all.filter(entry => entry.player.seasonStats.appearances >= 3), entry => Math.round(entry.player.seasonStats.ratingSum / entry.player.seasonStats.appearances * 10) / 10) },
+      { key: 'clean', de: 'WEISSE WESTE', en: 'CLEAN SHEETS', unit: 'CS',
+        entries: top(all.filter(entry => entry.player.positionGroup === 'GK'), entry => entry.player.seasonStats.cleanSheets) },
+      { key: 'cards', de: 'KARTEN', en: 'CARDS', unit: '▮',
+        entries: top(all, entry => entry.player.seasonStats.yellowCards + entry.player.seasonStats.redCards * 2) },
+    ];
+  });
+
   constructor() {
     this.travel.ensureCurrent();
   }

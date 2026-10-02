@@ -14,10 +14,10 @@
     </button>
   </header>
 
-  <nav class="training-mobile-tabs">
-    <button [class.active]="mobileTab() === 'programs'" (click)="mobileTab.set('programs')">{{ text('PROGRAMME', 'PROGRAMS') }}</button>
-    <button [class.active]="mobileTab() === 'schedule'" (click)="mobileTab.set('schedule')">{{ text('WOCHENPLAN', 'SCHEDULE') }}</button>
-    <button [class.active]="mobileTab() === 'players'" (click)="mobileTab.set('players')">{{ text('SPIELER', 'PLAYERS') }}</button>
+  <nav class="training-mobile-tabs" role="tablist" [attr.aria-label]="text('Trainingsansicht', 'Training view')">
+    <button role="tab" [attr.aria-selected]="mobileTab() === 'programs'" [class.active]="mobileTab() === 'programs'" (click)="mobileTab.set('programs')">{{ text('PROGRAMME', 'PROGRAMS') }}</button>
+    <button role="tab" [attr.aria-selected]="mobileTab() === 'schedule'" [class.active]="mobileTab() === 'schedule'" (click)="mobileTab.set('schedule')">{{ text('WOCHENPLAN', 'SCHEDULE') }}</button>
+    <button role="tab" [attr.aria-selected]="mobileTab() === 'players'" [class.active]="mobileTab() === 'players'" (click)="mobileTab.set('players')">{{ text('SPIELER', 'PLAYERS') }}</button>
   </nav>
 
   @if (feedback()) {

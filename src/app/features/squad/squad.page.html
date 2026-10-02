@@ -1,21 +1,25 @@
 <header class="page-head fade-up">
   <div>
     <p class="eyebrow">{{ gs.playerTeam()?.name }}</p>
-    <h1>Squad</h1>
+    <h1>{{ i18n.pick('Kader', 'Squad') }}</h1>
   </div>
   <div class="summary">
     <div class="sum">
       <span class="sum-val" [style.color]="ratingColor(squadRating())">{{ squadRating() }}</span>
-      <span class="muted">Rating</span>
+      <span class="muted">{{ i18n.pick('Stärke', 'Rating') }}</span>
     </div>
     <div class="sum">
       <span class="sum-val">{{ gs.squad().length }}</span>
-      <span class="muted">Players</span>
+      <span class="muted">{{ i18n.pick('Spieler', 'Players') }}</span>
+    </div>
+    <div class="sum">
+      <span class="sum-val gold">{{ formatCoins(wageBill()) }}</span>
+      <span class="muted">{{ i18n.pick('Gehälter/Woche', 'Wages/week') }}</span>
     </div>
     @if (totalSkillPoints() > 0) {
       <div class="sum sp">
         <span class="sum-val accent">SP {{ totalSkillPoints() }}</span>
-        <span class="muted">Skill points</span>
+        <span class="muted">{{ i18n.pick('Skillpunkte', 'Skill points') }}</span>
       </div>
     }
   </div>
@@ -23,31 +27,59 @@
 
 <div class="toolbar fade-up">
   <div class="search">
-    <span class="s-ico">SR</span>
-    <input type="text" placeholder="Search players…" [ngModel]="search()" (ngModelChange)="search.set($event)" />
-    @if (search()) { <button class="s-clear" (click)="search.set('')" aria-label="Clear">✕</button> }
+    <span class="s-ico" aria-hidden="true">SR</span>
+    <input type="text" [attr.aria-label]="i18n.pick('Spieler suchen', 'Search players')" [placeholder]="i18n.pick('Spieler suchen …', 'Search players…')" [ngModel]="search()" (ngModelChange)="search.set($event)" />
+    @if (search()) { <button class="s-clear" (click)="search.set('')" [attr.aria-label]="i18n.pick('Suche leeren', 'Clear search')">✕</button> }
   </div>
-  <div class="chips">
+  <div class="chips" role="group" [attr.aria-label]="i18n.pick('Positionsfilter', 'Position filter')">
     @for (f of filters; track f.key) {
-      <button class="chip-btn" [class.active]="filter() === f.key" (click)="filter.set(f.key)">
-        {{ f.label }} <span class="cnt">{{ counts()[f.key] }}</span>
+      <button class="chip-btn" [class.active]="filter() === f.key" [attr.aria-pressed]="filter() === f.key" (click)="filter.set(f.key)">
+        {{ i18n.pick(f.de, f.en) }} <span class="cnt">{{ counts()[f.key] }}</span>
       </button>
     }
   </div>
   <div class="sort">
-    <select [value]="sort()" (change)="sort.set($any($event.target).value)">
-      <option value="overall">Sort: Overall</option>
-      <option value="potential">Sort: Potential</option>
-      <option value="level">Sort: Level</option>
-      <option value="value">Sort: Value</option>
-      <option value="position">Sort: Position</option>
+    <select [attr.aria-label]="i18n.pick('Sortierung', 'Sort order')" [value]="sort()" (change)="sort.set($any($event.target).value)">
+      @for (option of sorts; track option.key) {
+        <option [value]="option.key">{{ i18n.pick('Sortieren: ', 'Sort: ') }}{{ i18n.pick(option.de, option.en) }}</option>
+      }
     </select>
   </div>
+  <button class="btn btn--sm" [class.btn--primary]="comparing()" [attr.aria-pressed]="comparing()" (click)="toggleCompare()">
+    {{ comparing() ? i18n.pick('Vergleich beenden', 'End comparison') : i18n.pick('Vergleichen', 'Compare') }}
+  </button>
 </div>
+
+@if (comparing()) {
+  <section class="compare card fade-up" [attr.aria-label]="i18n.pick('Spielervergleich', 'Player comparison')">
+    @if (compared().length < 2) {
+      <p class="muted">{{ i18n.pick('Wähle zwei Spieler aus der Liste.', 'Pick two players from the list.') }} ({{ compared().length }}/2)</p>
+    } @else {
+      <div class="compare-head">
+        <strong class="a">{{ compared()[0].firstName }} {{ compared()[0].lastName }} · {{ compared()[0].overall }}</strong>
+        <strong class="b">{{ compared()[1].firstName }} {{ compared()[1].lastName }} · {{ compared()[1].overall }}</strong>
+      </div>
+      <div class="compare-body">
+        <app-radar-chart [attributes]="compared()[0].attributes" [compare]="compared()[1].attributes" [size]="220" />
+        <table class="compare-table">
+          <tbody>
+            @for (row of compareRows(); track row.key) {
+              <tr>
+                <th scope="row">{{ row.label }}</th>
+                <td [class.win]="row.a > row.b">{{ row.a }}</td>
+                <td [class.win]="row.b > row.a">{{ row.b }}</td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    }
+  </section>
+}
 
 <div class="list fade-up">
   @for (p of players(); track p.id) {
-    <button class="pcard" (click)="select(p.id)" [class.injured]="p.injuryWeeks > 0">
+    <button class="pcard" (click)="select(p.id)" [class.injured]="p.injuryWeeks > 0" [class.picked]="comparing() && compareIds().includes(p.id)" [attr.aria-pressed]="comparing() ? compareIds().includes(p.id) : null">
       <app-player-portrait class="kit" [player]="p" [size]="40" />
 
       <span class="ovr rating" [style.background]="ratingColor(p.overall)">{{ p.overall }}</span>
@@ -56,31 +88,39 @@
         <div class="who-top">
           <strong>{{ p.firstName }} {{ p.lastName }}</strong>
           <span class="pos-chip">{{ p.position }}</span>
-          @if (p.skillPoints > 0) { <span class="badge sp" title="Skill points to spend">SP {{ p.skillPoints }}</span> }
-          @if (p.injuryWeeks > 0) { <span class="badge inj" title="Injured">INJ {{ p.injuryWeeks }}W</span> }
-          @if (p.traitIds.length) { <span class="badge trait" title="Traits">TR {{ p.traitIds.length }}</span> }
+          @if (p.skillPoints > 0) { <span class="badge sp" [title]="i18n.pick('Skillpunkte verfügbar', 'Skill points to spend')">SP {{ p.skillPoints }}</span> }
+          @if (p.injuryWeeks > 0) { <span class="badge inj" [title]="i18n.pick('Verletzt', 'Injured')">{{ i18n.pick('VERL', 'INJ') }} {{ p.injuryWeeks }}{{ i18n.pick('W', 'W') }}</span> }
+          @if (p.traitIds.length) { <span class="badge trait" [title]="i18n.pick('Eigenschaften', 'Traits')">TR {{ p.traitIds.length }}</span> }
+          @if (p.contractWeeks <= 8) { <span class="badge contract" [title]="i18n.pick('Vertrag läuft bald aus', 'Contract expiring soon')">{{ i18n.pick('VERTRAG', 'CONTRACT') }}</span> }
         </div>
         <div class="who-sub muted">
-          Lv {{ p.level }} · {{ p.age }}y
-          @if (p.potential > p.overall) { <span class="pot">↑ {{ p.potential }} potential</span> }
+          {{ i18n.pick('Lv', 'Lv') }} {{ p.level }} · {{ p.age }} {{ i18n.pick('J.', 'y') }}
+          @if (p.potential > p.overall) { <span class="pot">↑ {{ p.potential }} {{ i18n.pick('Potenzial', 'potential') }}</span> }
         </div>
-        <div class="xp-mini"><i [style.width.%]="xpPercent(p)"></i></div>
+        <div class="xp-mini" aria-hidden="true"><i [style.width.%]="xpPercent(p)"></i></div>
+      </div>
+
+      <div class="season hide-sm" [title]="i18n.pick('Saison: Spiele · Tore · Vorlagen · Ø Note', 'Season: apps · goals · assists · avg rating')">
+        <span>{{ p.seasonStats.appearances }}</span><span>{{ p.seasonStats.goals }}</span><span>{{ p.seasonStats.assists }}</span><span>{{ averageRating(p) }}</span>
       </div>
 
       <div class="cond hide-sm">
-        <div class="cond-item" title="Fitness">
-          <span class="cond-ico">⚡</span>
+        <div class="cond-item" [title]="i18n.pick('Fitness', 'Fitness')">
+          <span class="cond-ico" aria-hidden="true">⚡</span>
           <span class="mini-bar"><i [style.width.%]="p.fitness" [style.background]="ratingColor(p.fitness)"></i></span>
         </div>
-        <div class="cond-item mor" title="Morale">{{ moraleIcon(p.morale) }}</div>
+        <div class="cond-item mor" [title]="i18n.pick('Moral', 'Morale')">{{ moraleIcon(p.morale) }}</div>
       </div>
 
-      <span class="value gold hide-md">{{ formatCoins(p.marketValue) }}</span>
+      <div class="money hide-md">
+        <span class="value gold">{{ formatCoins(p.marketValue) }}</span>
+        <span class="muted">{{ formatCoins(p.salary) }}/{{ i18n.pick('W', 'wk') }} · {{ contractLabel(p) }}</span>
+      </div>
 
-      <span class="chev">›</span>
+      <span class="chev" aria-hidden="true">›</span>
     </button>
   } @empty {
-    <div class="empty muted">No players match your search.</div>
+    <div class="empty muted">{{ i18n.pick('Keine Spieler passen zur Suche.', 'No players match your search.') }}</div>
   }
 </div>
 

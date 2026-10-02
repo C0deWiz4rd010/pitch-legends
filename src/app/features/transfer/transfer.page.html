@@ -15,15 +15,15 @@
   <div><span>{{ 'transfer.openOffers' | t }}</span><strong>{{ transfers.negotiations().length }}</strong></div>
 </section>
 
-<nav class="market-tabs fade-up" aria-label="Transferbereiche">
-  <button [class.active]="tab() === 'market'" (click)="selectTab('market')">{{ 'transfer.tab.market' | t }}</button>
-  <button [class.active]="tab() === 'shortlist'" (click)="selectTab('shortlist')">{{ 'transfer.tab.shortlist' | t }} <b>{{ transfers.shortlist().length }}</b></button>
-  <button [class.active]="tab() === 'offers'" (click)="selectTab('offers')">{{ 'transfer.tab.offers' | t }} <b>{{ transfers.incomingOffers().length }}</b></button>
-  <button [class.active]="tab() === 'squad'" (click)="selectTab('squad')">{{ 'transfer.tab.squad' | t }}</button>
+<nav class="market-tabs fade-up" role="tablist" aria-label="Transfer">
+  <button role="tab" [attr.aria-selected]="tab() === 'market'" [class.active]="tab() === 'market'" (click)="selectTab('market')">{{ 'transfer.tab.market' | t }}</button>
+  <button role="tab" [attr.aria-selected]="tab() === 'shortlist'" [class.active]="tab() === 'shortlist'" (click)="selectTab('shortlist')">{{ 'transfer.tab.shortlist' | t }} <b>{{ transfers.shortlist().length }}</b></button>
+  <button role="tab" [attr.aria-selected]="tab() === 'offers'" [class.active]="tab() === 'offers'" (click)="selectTab('offers')">{{ 'transfer.tab.offers' | t }} <b>{{ transfers.incomingOffers().length }}</b></button>
+  <button role="tab" [attr.aria-selected]="tab() === 'squad'" [class.active]="tab() === 'squad'" (click)="selectTab('squad')">{{ 'transfer.tab.squad' | t }}</button>
 </nav>
 
 @if (message()) {
-  <div class="market-message fade-up" role="status"><span>!</span>{{ message() }}<button aria-label="Meldung schließen" (click)="message.set('')">×</button></div>
+  <div class="market-message fade-up" role="status"><span aria-hidden="true">!</span>{{ localize(message()) }}<button [attr.aria-label]="i18n.pick('Meldung schließen', 'Dismiss message')" (click)="message.set('')">×</button></div>
 }
 
 @if (tab() === 'market' || tab() === 'shortlist') {
@@ -147,7 +147,7 @@
         @if (playerByNegotiation(offer); as player) {
           <article class="offer-card" [class.closed]="isTerminal(offer)">
             <app-player-portrait [player]="player" [size]="54" />
-            <div class="offer-copy"><strong>{{ playerName(player) }}</strong><span>{{ teamName(offer.toTeamId) }} · CR {{ formatCoins(offer.fee) }}</span><p>{{ offer.message }}</p></div>
+            <div class="offer-copy"><strong>{{ playerName(player) }}</strong><span>{{ teamName(offer.toTeamId) }} · CR {{ formatCoins(offer.fee) }}</span><p>{{ localize(offer.message) }}</p></div>
             <span class="status">{{ offer.status }}</span>
             @if (offer.status === 'submitted') { <div class="offer-actions"><button (click)="resolveIncoming(offer, 'reject')">{{ 'transfer.reject' | t }}</button><button (click)="resolveIncoming(offer, 'counter')">{{ 'transfer.counter' | t }}</button><button class="accept" (click)="resolveIncoming(offer, 'accept')">{{ 'transfer.accept' | t }}</button></div> }
           </article>
@@ -160,7 +160,7 @@
         @if (playerByNegotiation(offer); as player) {
           <article class="offer-card" [class.closed]="isTerminal(offer)">
             <app-player-portrait [player]="player" [team]="$any(teamById(offer.fromTeamId))" [size]="54" />
-            <div class="offer-copy"><strong>{{ playerName(player) }}</strong><span>{{ offer.kind }} · CR {{ formatCoins(offer.kind === 'loan' ? offer.loanFee : offer.fee) }}</span><p>{{ offer.message }}</p></div>
+            <div class="offer-copy"><strong>{{ playerName(player) }}</strong><span>{{ offer.kind }} · CR {{ formatCoins(offer.kind === 'loan' ? offer.loanFee : offer.fee) }}</span><p>{{ localize(offer.message) }}</p></div>
             <span class="status">{{ offer.status }}</span>
             @if (offer.status === 'countered') { <div class="offer-actions"><button class="accept" (click)="acceptClubCounter(offer)">{{ 'transfer.acceptCounter' | t }} · {{ formatCoins(offer.requestedFee) }}</button></div> }
             @if (offer.status === 'contract' && !offer.agentCounterUsed) { <div class="offer-actions"><button class="accept" (click)="openContractFromOffer(offer)">{{ 'transfer.negotiateContract' | t }}</button></div> }
@@ -195,7 +195,7 @@
   </main>
 }
 
-<dialog class="deal-dialog" [open]="modal() !== null" (cancel)="closeModal()">
+<dialog class="deal-dialog" appModal [appModalOpen]="modal() !== null" (dismiss)="closeModal()" (cancel)="$event.preventDefault(); closeModal()">
   @if (modalPlayer(); as player) {
     <header><app-player-portrait [player]="player" [team]="$any(transfers.teamFor(player.id))" [size]="64" /><div><span class="eyebrow">{{ player.position }} · OVR {{ player.overall }}</span><h2>{{ playerName(player) }}</h2></div><button class="dialog-close" aria-label="Schließen" (click)="closeModal()">×</button></header>
     @if (modal() === 'offer') {

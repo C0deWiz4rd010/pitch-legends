@@ -30,7 +30,7 @@
 
     <div class="main">
       <header class="topbar">
-        <button class="burger" (click)="menuOpen.set(!menuOpen())" aria-label="Toggle menu">☰</button>
+        <button class="burger" (click)="menuOpen.set(!menuOpen())" [attr.aria-expanded]="menuOpen()" [attr.aria-label]="i18n.pick('Menü umschalten', 'Toggle menu')">☰</button>
         <div class="club">
           @if (gs.playerTeam(); as topTeam) {
             <app-club-crest [team]="topTeam" [size]="28" />
@@ -39,7 +39,7 @@
           <strong>{{ gs.playerTeam()?.shortName }}</strong>
         </div>
         <div class="spacer"></div>
-        <button class="control-help" (click)="controlHelp.open('pass')">? <span>STEUERUNG</span></button>
+        <button class="control-help" (click)="controlHelp.open('pass')">? <span>{{ i18n.pick('STEUERUNG', 'CONTROLS') }}</span></button>
         <div class="stat-pill">
           <span class="k">{{ 'app.week' | t }}</span>
           <span class="v tabular">{{ gs.currentWeek() }}<small>/{{ gs.totalWeeks() }}</small></span>
@@ -57,7 +57,7 @@
     </div>
 
     @if (menuOpen()) {
-      <div class="scrim" (click)="menuOpen.set(false)"></div>
+      <div class="scrim" aria-hidden="true" (click)="menuOpen.set(false)"></div>
     }
     <app-control-handbook />
   </div>

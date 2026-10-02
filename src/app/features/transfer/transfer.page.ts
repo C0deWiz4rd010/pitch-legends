@@ -12,6 +12,9 @@ import {
 import { GameStateService } from '../../core/services/game-state.service';
 import { TransferService, TransferTargetView, MAX_SQUAD_SIZE } from '../../core/services/transfer.service';
 import { I18nPipe } from '../../shared/i18n.pipe';
+import { I18nService } from '../../core/services/i18n.service';
+import { localizeTransferText } from '../../shared/transfer-text';
+import { ModalDirective } from '../../shared/modal.directive';
 import { ratingColor, formatCoins } from '../../shared/rating-color';
 import { playerName } from '../../core/ratings';
 import { Player, PlayerAttributes } from '../../models/player.model';
@@ -40,11 +43,13 @@ const UI_MEMORY = {
 @Component({
   selector: 'app-transfer',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [I18nPipe, ClubCrestComponent, PlayerPortraitComponent, RadarChartComponent],
+  imports: [ModalDirective, I18nPipe, ClubCrestComponent, PlayerPortraitComponent, RadarChartComponent],
   templateUrl: './transfer.page.html',
   styleUrl: './transfer.page.scss',
 })
 export class TransferPage {
+  protected readonly i18n = inject(I18nService);
+  protected localize(text: string | null | undefined): string { return localizeTransferText(text, this.i18n.locale()); }
   protected readonly gs = inject(GameStateService);
   protected readonly transfers = inject(TransferService);
   protected readonly ratingColor = ratingColor;

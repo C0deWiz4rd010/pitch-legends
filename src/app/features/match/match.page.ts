@@ -52,6 +52,10 @@ import { MatchMetrics } from '../../core/football/match-metrics';
 import { createPracticeTeams } from '../../core/football/practice';
 import { interpolateThreeReplay } from './three-render-state';
 import { replayPlayback } from './replay-playback';
+import { SubstitutionPanelComponent, PitchEntry } from '../../shared/components/substitution-panel.component';
+import { ConfirmDialogComponent } from '../../shared/components/confirm-dialog.component';
+import { HeatmapComponent } from '../../shared/components/heatmap.component';
+import { tacticLabel } from '../../shared/tactic-labels';
 import type { ThreePitchRenderer } from './three-pitch.renderer';
 
 type PagePhase = 'preview' | 'intro' | 'simulating' | 'match' | 'halftime' | 'result';
@@ -68,12 +72,15 @@ const EMPTY_MATCH_VIEW: MatchViewState = {
   controlledFitness: 100,
   controllerMode: 'human',
   eventRevision: 0,
+  stoppage: 0,
+  stoppageMinute: 0,
+  extraTime: false,
 };
 
 @Component({
   selector: 'app-match',
   host: { '[class.practice-mode]': 'practice', '[class.live-match]': "phase() === 'match'" },
-  imports: [RouterLink, DecimalPipe, ClubCrestComponent, MiniKitComponent, ManagerPortraitComponent],
+  imports: [RouterLink, DecimalPipe, ClubCrestComponent, MiniKitComponent, ManagerPortraitComponent, SubstitutionPanelComponent, ConfirmDialogComponent, HeatmapComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './match.page.html',
   styleUrls: ['./match.page.scss', './live-match.scss'],
@@ -131,6 +138,37 @@ export class MatchPage implements OnDestroy {
   protected readonly showAudio = signal(false);
   protected readonly subOutId = signal('');
   protected readonly subInId = signal('');
+  protected readonly confirmAction = signal<'forfeit' | 'simulate' | null>(null);
+  protected readonly showMinimap = signal(true);
+  protected readonly reportTab = signal<'overview' | 'stats' | 'ratings' | 'heatmap' | 'timeline'>('overview');
+  protected readonly heatmapPlayerId = signal('');
+  protected readonly reportTabs = [
+    { key: 'overview', de: 'Übersicht', en: 'Overview' },
+    { key: 'stats', de: 'Statistik', en: 'Stats' },
+    { key: 'ratings', de: 'Noten', en: 'Ratings' },
+    { key: 'heatmap', de: 'Heatmap', en: 'Heatmap' },
+    { key: 'timeline', de: 'Verlauf', en: 'Timeline' },
+  ] as const;
+  protected readonly modes: { key: MatchMode; label: string; hintDe: string; hintEn: string }[] = [
+    { key: 'play', label: 'PLAY', hintDe: 'Du steuerst die Spieler.', hintEn: 'You control the players.' },
+    { key: 'coach', label: 'COACH', hintDe: 'Die KI spielt, du coachst von außen.', hintEn: 'The AI plays, you coach from the touchline.' },
+    { key: 'instant', label: 'SIM', hintDe: 'Sofortergebnis.', hintEn: 'Instant result.' },
+  ];
+  protected readonly tacticPresets = [
+    { key: 'attack', de: 'Angriff', en: 'Attack' },
+    { key: 'defend', de: 'Mauern', en: 'Defend' },
+    { key: 'press', de: 'Pressing', en: 'Press' },
+    { key: 'reset', de: 'Standard', en: 'Default' },
+  ] as const;
+  protected readonly touchButtons: { action: TouchAction; css: string; label: string; de: string; en: string }[] = [
+    { action: 'switch', css: 'sw', label: 'SW', de: 'Spieler wechseln', en: 'Switch player' },
+    { action: 'skill', css: 'sk', label: 'SK', de: 'Trick', en: 'Skill move' },
+    { action: 'through', css: 'y', label: 'Y', de: 'Steilpass', en: 'Through ball' },
+    { action: 'lob', css: 'x', label: 'X', de: 'Lob oder Flanke', en: 'Lob or cross' },
+    { action: 'shoot', css: 'b', label: 'B', de: 'Schuss', en: 'Shoot' },
+    { action: 'pass', css: 'a', label: 'A', de: 'Pass oder Tackling', en: 'Pass or tackle' },
+    { action: 'sprint', css: 'rt', label: 'RT', de: 'Sprint', en: 'Sprint' },
+  ];
   protected readonly touchX = signal(0);
   protected readonly touchY = signal(0);
   private readonly touchActions = signal<Record<TouchAction, boolean>>({
@@ -196,7 +234,18 @@ export class MatchPage implements OnDestroy {
     return this.homeTeam()?.id === club?.id ? this.awayTeam() : this.homeTeam();
   });
   protected readonly isHome = computed(() => this.homeTeam()?.id === this.controlledTeam()?.id);
-  protected readonly minute = computed(() => this.result() ? 90 : this.matchView().footballMinute);
+  protected readonly minute = computed(() => this.result() ? (this.result()!.extraTime ? 120 : 90) : this.matchView().footballMinute);
+  /** 45+2' style during stoppage time. */
+  protected readonly minuteLabel = computed(() => {
+    const view = this.matchView();
+    return !this.result() && view.stoppageMinute > 0 ? `${view.footballMinute}+${view.stoppageMinute}'` : `${this.minute()}'`;
+  });
+  protected readonly periodLabel = computed(() => {
+    const phase = this.matchPhase();
+    if (this.result() || phase === 'fulltime') return this.i18n.pick('ENDE', 'FT');
+    if (this.matchView().extraTime) return this.i18n.pick('VERL', 'ET');
+    return phase === 'secondHalf' ? '2H' : '1H';
+  });
   protected readonly homeScore = computed(() => this.result()?.homeScore ?? this.matchView().homeScore);
   protected readonly awayScore = computed(() => this.result()?.awayScore ?? this.matchView().awayScore);
   protected readonly matchPhase = computed(() => this.matchView().phase);
@@ -238,15 +287,15 @@ export class MatchPage implements OnDestroy {
   };
   private readonly keyUp = (event: KeyboardEvent) => { this.keys.delete(event.code); this.captureKeyboard(event.code, false); };
   private readonly visibilityChange = () => {
-    if (document.hidden && (this.phase() === 'match' || this.phase() === 'halftime')) this.pauseFor('Match automatisch pausiert: Browser-Tab verlassen.');
+    if (document.hidden && (this.phase() === 'match' || this.phase() === 'halftime')) this.pauseFor(this.i18n.pick('Match automatisch pausiert: Browser-Tab verlassen.', 'Match paused automatically: browser tab left.'));
   };
   private readonly flushCheckpoint = () => { this.checkpoints.flush(); };
   private readonly blur = () => {
     this.resetInputs();
-    if (this.phase() === 'match') this.pauseFor('Match automatisch pausiert: Fokus verloren.');
+    if (this.phase() === 'match') this.pauseFor(this.i18n.pick('Match automatisch pausiert: Fokus verloren.', 'Match paused automatically: focus lost.'));
   };
   private readonly gamepadDisconnected = () => {
-    if (this.gamepadSeen && this.phase() === 'match') this.pauseFor('Controller getrennt. Bitte Eingabegerät prüfen.');
+    if (this.gamepadSeen && this.phase() === 'match') this.pauseFor(this.i18n.pick('Controller getrennt. Bitte Eingabegerät prüfen.', 'Controller disconnected. Please check your input device.'));
   };
   private readonly fullscreenChange = () => this.fullscreenActive.set(!!this.document.fullscreenElement);
 
@@ -324,13 +373,118 @@ export class MatchPage implements OnDestroy {
     return { home: Math.round(home * 100), draw: Math.round(draw * 100), away: Math.round(away * 100) };
   }
 
+  protected tacticLabel(value: string | undefined | null): string {
+    return tacticLabel(value, this.i18n.locale());
+  }
+
+  protected assistLabel(preset: AssistPreset): string {
+    return preset === 'assisted' ? this.i18n.pick('Stark', 'Assisted') : preset === 'manual' ? this.i18n.pick('Manuell', 'Manual') : this.i18n.pick('Ausgewogen', 'Balanced');
+  }
+
+  protected formLetter(entry: 'W' | 'D' | 'L'): string {
+    return this.i18n.locale() === 'de' ? ({ W: 'S', D: 'U', L: 'N' } as const)[entry] : entry;
+  }
+
+  protected switchLabel(): string {
+    const policy = this.switchPolicy();
+    return policy === 'receivers' ? this.i18n.pick('RUHIG', 'CALM') : policy === 'manual' ? this.i18n.pick('MANUELL', 'MANUAL') : 'AUTO';
+  }
+
+  protected arcadeInExtraTime(): boolean {
+    return !!this.arcade?.inExtraTime;
+  }
+
+  protected openPausePanel(panel: 'subs' | 'tactics'): void {
+    if (panel === 'subs') { this.showSubs.set(true); this.showTactics.set(false); }
+    else { this.showTactics.set(true); this.showSubs.set(false); }
+  }
+
+  protected toggleMinimap(): void {
+    this.showMinimap.update(value => !value);
+    this.renderer?.setMinimap(this.showMinimap());
+  }
+
+  protected askConfirm(action: 'forfeit' | 'simulate'): void {
+    this.confirmAction.set(action);
+  }
+
+  protected runConfirmed(): void {
+    const action = this.confirmAction();
+    this.confirmAction.set(null);
+    if (action === 'forfeit') this.forfeit();
+    else if (action === 'simulate') this.simulateRemainder();
+  }
+
+  protected applyTacticPreset(preset: 'attack' | 'defend' | 'press' | 'reset'): void {
+    if (preset === 'attack') { this.setMentality('attacking'); this.setPressing('high'); this.setWidth('wide'); }
+    else if (preset === 'defend') { this.setMentality('ultra-defensive'); this.setPressing('low'); this.setWidth('narrow'); }
+    else if (preset === 'press') { this.setPressing('gegenpress'); this.setMentality('attacking'); }
+    else { this.setMentality('balanced'); this.setPressing('medium'); this.setWidth('balanced'); }
+  }
+
+  protected onPitchEntries(): PitchEntry[] {
+    const match = this.arcade;
+    if (!match) return [];
+    return match.actors.filter(actor => actor.active && actor.side === match.controlledSide)
+      .map(actor => ({ player: actor.player, fitness: actor.stamina, injured: match.isInjured(actor.player.id), card: actor.card }));
+  }
+
+  protected doSubstitute(change: { outId: string; inId: string }): void {
+    if (!this.arcade) return;
+    if (this.arcade.makeSub(change.outId, change.inId)) {
+      this.showSubs.set(false);
+      this.saveCheckpoint();
+    }
+  }
+
+  protected statRows(report: MatchResult): { label: string; home: number; away: number }[] {
+    const h = report.homeStats, a = report.awayStats;
+    return [
+      { label: 'xG', home: h.xG, away: a.xG },
+      { label: this.i18n.pick('Schüsse', 'Shots'), home: h.shots, away: a.shots },
+      { label: this.i18n.pick('Aufs Tor', 'On target'), home: h.shotsOnTarget, away: a.shotsOnTarget },
+      { label: this.i18n.pick('Ballbesitz %', 'Possession %'), home: h.possession, away: a.possession },
+      { label: this.i18n.pick('Passquote %', 'Pass accuracy %'), home: h.passAccuracy, away: a.passAccuracy },
+      { label: this.i18n.pick('Tacklings', 'Tackles won'), home: h.tacklesWon, away: a.tacklesWon },
+      { label: this.i18n.pick('Geblockt', 'Blocks'), home: h.blocks ?? 0, away: a.blocks ?? 0 },
+      { label: this.i18n.pick('Paraden', 'Saves'), home: h.saves, away: a.saves },
+      { label: this.i18n.pick('Ecken', 'Corners'), home: h.corners, away: a.corners },
+      { label: this.i18n.pick('Fouls', 'Fouls'), home: h.fouls, away: a.fouls },
+      { label: this.i18n.pick('Gelb / Rot', 'Yellow / red'), home: h.yellows + h.reds, away: a.yellows + a.reds },
+    ];
+  }
+
+  protected goalEvents(report: MatchResult): MatchEvent[] {
+    return report.events.filter(event => event.type === 'goal');
+  }
+
+  protected heatmapPoints(report: MatchResult): { x: number; y: number; weight: number }[] {
+    const id = this.heatmapPlayerId() || this.playerRatings()[0]?.player.id;
+    return (id && report.heatmaps?.[id]) || [];
+  }
+
+  protected countTrue(values: boolean[]): number {
+    return values.filter(Boolean).length;
+  }
+
+  /** Arrow keys move between report tabs (WAI-ARIA tabs pattern). */
+  protected moveReportTab(event: KeyboardEvent, from: string = this.reportTab()): void {
+    if (event.key !== 'ArrowRight' && event.key !== 'ArrowLeft' && event.key !== 'Home' && event.key !== 'End') return;
+    event.preventDefault();
+    const keys = this.reportTabs.map(tab => tab.key);
+    const index = Math.max(0, keys.indexOf(from as (typeof keys)[number]));
+    const next = event.key === 'Home' ? 0 : event.key === 'End' ? keys.length - 1 : (index + (event.key === 'ArrowRight' ? 1 : -1) + keys.length) % keys.length;
+    this.reportTab.set(keys[next]);
+    (this.document.getElementById(`report-tab-${keys[next]}`) as HTMLElement | null)?.focus();
+  }
+
   protected weakness(team: Team | null): string {
-    if (!team) return 'Unbekannt';
+    if (!team) return this.i18n.pick('Unbekannt', 'Unknown');
     const groups = ['DEF', 'MID', 'ATT'] as const;
     const weakest = groups
       .map((group) => ({ group, value: team.players.filter((player) => player.positionGroup === group).reduce((sum, player, _, list) => sum + player.overall / Math.max(1, list.length), 0) }))
       .sort((a, b) => a.value - b.value)[0]?.group;
-    return weakest === 'DEF' ? 'Raum hinter der Abwehr' : weakest === 'MID' ? 'Aufbau unter Druck' : 'Abschlussqualität';
+    return weakest === 'DEF' ? this.i18n.pick('Raum hinter der Abwehr', 'Space behind the defence') : weakest === 'MID' ? this.i18n.pick('Aufbau unter Druck', 'Build-up under pressure') : this.i18n.pick('Abschlussqualität', 'Finishing quality');
   }
 
   protected kickOff(): void {
@@ -446,7 +600,7 @@ export class MatchPage implements OnDestroy {
         if (this.disposed || this.arcade !== match || !canvas.isConnected) return;
         const renderer = this.zone.runOutsideAngular(() => new ThreePitchRenderer(canvas));
         this.renderer = renderer;
-        canvas.addEventListener('webglcontextlost', () => this.pauseFor('Grafik unterbrochen. Nach der Wiederherstellung kannst du weiterspielen.'), { once: true });
+        canvas.addEventListener('webglcontextlost', () => this.pauseFor(this.i18n.pick('Grafik unterbrochen. Nach der Wiederherstellung kannst du weiterspielen.', 'Graphics interrupted. You can continue once they are restored.')), { once: true });
         await renderer.prepare(match);
         if (this.disposed || this.arcade !== match || this.renderer !== renderer) return;
       } catch {
@@ -617,6 +771,9 @@ export class MatchPage implements OnDestroy {
       controlledFitness: selected?.stamina ?? 100,
       controllerMode: this.arcade.controllerMode,
       eventRevision: this.arcade.events.length,
+      stoppage: this.arcade.stoppageMinute > 0 || this.arcade.footballMinute >= (this.arcade.half === 1 ? 45 : 90) ? this.arcade.announcedStoppage : 0,
+      stoppageMinute: this.arcade.stoppageMinute,
+      extraTime: this.arcade.inExtraTime,
     };
   }
 
@@ -736,8 +893,8 @@ export class MatchPage implements OnDestroy {
     this.saveCheckpoint();
   }
 
-  protected simulateRemainder(): void {
-    if (!this.arcade || !window.confirm('Den Rest des Spiels unwiderruflich simulieren?')) return;
+  private simulateRemainder(): void {
+    if (!this.arcade) return;
     cancelAnimationFrame(this.raf);
     this.arcade.config.mode = 'instant';
     this.arcade.setPaused(false);
@@ -745,8 +902,8 @@ export class MatchPage implements OnDestroy {
     this.finish();
   }
 
-  protected forfeit(): void {
-    if (!this.arcade || !window.confirm('Match wirklich aufgeben? Das erzeugt mindestens eine 0:3-Niederlage.')) return;
+  private forfeit(): void {
+    if (!this.arcade) return;
     cancelAnimationFrame(this.raf);
     this.result.set(this.arcade.forfeitControlled());
     this.revealed.set([...this.result()!.events]);

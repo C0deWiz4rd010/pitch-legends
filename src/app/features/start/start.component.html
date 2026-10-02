@@ -1,16 +1,16 @@
 <div class="start">
-  <div class="language" aria-label="Language">
-    <button [class.active]="i18n.locale() === 'de'" (click)="i18n.setLocale('de')">DE</button>
-    <button [class.active]="i18n.locale() === 'en'" (click)="i18n.setLocale('en')">EN</button>
+  <div class="language" role="group" [attr.aria-label]="i18n.pick('Sprache', 'Language')">
+    <button [class.active]="i18n.locale() === 'de'" [attr.aria-pressed]="i18n.locale() === 'de'" (click)="i18n.setLocale('de')">DE</button>
+    <button [class.active]="i18n.locale() === 'en'" [attr.aria-pressed]="i18n.locale() === 'en'" (click)="i18n.setLocale('en')">EN</button>
   </div>
 
   <div class="hero fade-up">
     <div class="pixel-ball" aria-hidden="true"><i></i></div>
-    <p class="kicker">YOUR CLUB. YOUR PLAYERS. YOUR FOOTBALL.</p>
+    <p class="kicker">{{ i18n.pick('DEIN VEREIN. DEINE SPIELER. DEIN FUSSBALL.', 'YOUR CLUB. YOUR PLAYERS. YOUR FOOTBALL.') }}</p>
     <h1>PITCH<br /><span>LEGENDS</span></h1>
     <p class="tagline">{{ 'start.tagline' | t }}</p>
-    <a class="btn btn--primary" routerLink="/play">{{ i18n.locale() === 'de' ? '▶ SOFORT SPIELEN · 3D' : '▶ PLAY NOW · 3D' }}</a>
-    <a class="btn" routerLink="/players">{{ i18n.locale() === 'de' ? 'SPIELER ENTDECKEN ↗' : 'MEET THE PLAYERS ↗' }}</a>
+    <a class="btn btn--primary" routerLink="/play">{{ i18n.pick('▶ SOFORT SPIELEN · 3D', '▶ PLAY NOW · 3D') }}</a>
+    <a class="btn" routerLink="/players">{{ i18n.pick('SPIELER ENTDECKEN ↗', 'MEET THE PLAYERS ↗') }}</a>
   </div>
 
   <div class="panel fade-up">
@@ -44,15 +44,15 @@
         <div class="presets">
           @for (p of presets; track p.primary) {
             <button class="preset" [class.active]="primary() === p.primary" [style.--preset]="p.primary"
-              (click)="selectPalette(p.primary, p.secondary)" aria-label="Choose kit colour"></button>
+              (click)="selectPalette(p.primary, p.secondary)" [attr.aria-pressed]="primary() === p.primary" [attr.aria-label]="i18n.pick('Vereinsfarbe wählen', 'Choose kit colour')"></button>
           }
         </div>
       </div>
 
-      <section class="club-studio" aria-label="Pixel Club Studio">
+      <section class="club-studio" [attr.aria-label]="i18n.pick('Vereinsstudio', 'Club studio')">
         <div class="studio-head">
-          <span class="eyebrow">PIXEL CLUB STUDIO</span>
-          <button type="button" class="dice" (click)="rollAll()">↻ ALLES WÜRFELN</button>
+          <span class="eyebrow">{{ i18n.pick('VEREINSSTUDIO', 'CLUB STUDIO') }}</span>
+          <button type="button" class="dice" (click)="rollAll()">↻ {{ i18n.pick('DESIGN WÜRFELN', 'ROLL DESIGN') }}</button>
         </div>
         <div class="studio-stage" [style.--club]="primary()">
           <app-club-crest
@@ -62,23 +62,23 @@
             [size]="92"
           />
           <div class="kit-line">
-            <span><app-mini-kit [kit]="visuals().kits.home" [size]="58" label="Heimtrikot" /><small>HEIM</small></span>
-            <span><app-mini-kit [kit]="visuals().kits.away" [size]="58" label="Auswärtstrikot" /><small>AUSWÄRTS</small></span>
-            <span><app-mini-kit [kit]="visuals().kits.goalkeeper" [size]="58" label="Torwarttrikot" /><small>TOR</small></span>
+            <span><app-mini-kit [kit]="visuals().kits.home" [size]="58" [label]="i18n.pick('Heimtrikot', 'Home kit')" /><small>{{ i18n.pick('HEIM', 'HOME') }}</small></span>
+            <span><app-mini-kit [kit]="visuals().kits.away" [size]="58" [label]="i18n.pick('Auswärtstrikot', 'Away kit')" /><small>{{ i18n.pick('AUSWÄRTS', 'AWAY') }}</small></span>
+            <span><app-mini-kit [kit]="visuals().kits.goalkeeper" [size]="58" [label]="i18n.pick('Torwarttrikot', 'Goalkeeper kit')" /><small>{{ i18n.pick('TOR', 'GK') }}</small></span>
           </div>
         </div>
         <div class="studio-actions">
-          <button type="button" (click)="rollCrest()">WAPPEN WÜRFELN</button>
-          <button type="button" (click)="rollKits()">MUSTER WÜRFELN</button>
-          <button type="button" (click)="swapColors()">FARBEN TAUSCHEN</button>
+          <button type="button" (click)="rollCrest()">{{ i18n.pick('WAPPEN WÜRFELN', 'ROLL CREST') }}</button>
+          <button type="button" (click)="rollKits()">{{ i18n.pick('MUSTER WÜRFELN', 'ROLL PATTERN') }}</button>
+          <button type="button" (click)="swapColors()">{{ i18n.pick('FARBEN TAUSCHEN', 'SWAP COLOURS') }}</button>
         </div>
         <div class="studio-selects">
-          <label>FORM
+          <label>{{ i18n.pick('FORM', 'SHAPE') }}
             <select [ngModel]="visuals().crest.shape" (ngModelChange)="setCrestShape($event)">
               @for (shape of crestShapes; track shape) { <option [value]="shape">{{ shape }}</option> }
             </select>
           </label>
-          <label>MUSTER
+          <label>{{ i18n.pick('MUSTER', 'PATTERN') }}
             <select [ngModel]="visuals().crest.pattern" (ngModelChange)="setCrestPattern($event)">
               @for (pattern of crestPatterns; track pattern) { <option [value]="pattern">{{ pattern }}</option> }
             </select>
@@ -101,19 +101,17 @@
       </div>
 
       <section class="world-studio">
-        <div class="world-head"><span class="eyebrow">LIVING WORLD GENERATOR</span><button type="button" (click)="rollEverything()">⚄ ALLES WÜRFELN</button></div>
-        <div class="seed-row"><label>WORLD SEED<input type="number" [ngModel]="worldSeed()" (ngModelChange)="worldSeed.set(+$event)" /></label><button type="button" (click)="copySeed()">COPY</button><button type="button" (click)="rollWorld()">WELT ↻</button></div>
-        <div class="manager-preview"><app-manager-portrait [manager]="managerPreview()" [size]="72" /><div><small>MANAGER IDENTITY</small><b>{{ managerPreview().firstName }} {{ managerPreview().lastName }}</b><button type="button" (click)="rollManager()">MANAGER WÜRFELN</button></div></div>
-        <div class="philosophies">@for (philosophy of philosophies; track philosophy) { <button type="button" [class.active]="managerPhilosophy() === philosophy" (click)="managerPhilosophy.set(philosophy)">{{ philosophy }}</button> }</div>
+        <div class="world-head"><span class="eyebrow">{{ i18n.pick('WELTGENERATOR', 'WORLD GENERATOR') }}</span><button type="button" (click)="rollEverything()">⚄ {{ i18n.pick('ALLES WÜRFELN', 'ROLL EVERYTHING') }}</button></div>
+        <div class="seed-row"><label>{{ i18n.pick('WELT-SEED', 'WORLD SEED') }}<input type="number" [ngModel]="worldSeed()" (ngModelChange)="worldSeed.set(+$event)" /></label><button type="button" (click)="copySeed()">{{ i18n.pick('KOPIEREN', 'COPY') }}</button><button type="button" (click)="rollWorld()">{{ i18n.pick('WELT ↻', 'WORLD ↻') }}</button></div>
+        <div class="manager-preview"><app-manager-portrait [manager]="managerPreview()" [size]="72" /><div><small>{{ i18n.pick('MANAGER-IDENTITÄT', 'MANAGER IDENTITY') }}</small><b>{{ managerPreview().firstName }} {{ managerPreview().lastName }}</b><button type="button" (click)="rollManager()">{{ i18n.pick('MANAGER WÜRFELN', 'ROLL MANAGER') }}</button></div></div>
+        <div class="philosophies" role="group" [attr.aria-label]="i18n.pick('Spielphilosophie', 'Playing philosophy')">@for (philosophy of philosophies; track philosophy) { <button type="button" [class.active]="managerPhilosophy() === philosophy" [attr.aria-pressed]="managerPhilosophy() === philosophy" (click)="managerPhilosophy.set(philosophy)">{{ label(philosophy) }}</button> }</div>
       </section>
 
       @if (error()) { <p class="error">{{ error() }}</p> }
 
       <button class="btn btn--primary btn--block big" (click)="start()">{{ 'start.begin' | t }} ▶</button>
-      <label class="import btn btn--ghost btn--block">
-        {{ 'start.import' | t }}
-        <input type="file" accept="application/json" (change)="onImport($event)" hidden />
-      </label>
+      <button type="button" class="import btn btn--ghost btn--block" (click)="importInput.click()">{{ 'start.import' | t }}</button>
+      <input #importInput type="file" accept="application/json" (change)="onImport($event)" hidden />
     </div>
   </div>
 </div>

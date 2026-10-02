@@ -50,6 +50,9 @@ jobs:
       - name: Check synchronized version
         run: npm run version:check
 
+      - name: Check minimum text size
+        run: npm run styles:check
+
       - name: Type-check application and tests
         run: npm run typecheck
 

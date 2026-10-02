@@ -264,3 +264,43 @@ Grundlage: neuer, element-weiser Verbesserungsplan (Fundament → Gameplay → G
   - Mit Software-GL bestanden: Performance-, Playground- und Renderer-Test (16,7 / 16,7 / 16,8 ms).
   - Screenshots: [Spiel](screenshots/gameplay-2026-09-25.png), [Strafraum/Stadion](screenshots/stadium-2026-09-25.png).
 - **Offen:** Schnee als Wetter. Eigene Spielerkamera. Eine vollständige Abnahme aller 128 Varianten in Nahansicht.
+
+## Gesamtverbesserung Phase D – UI und Bedienung (2026-10-02)
+
+- **Designsystem:**
+  - Keine Schrift mehr unter 10 px; `npm run styles:check` prüft das in CI.
+  - Feste Hex-Farben durch Tokens ersetzt, neue Tokens `--ink-shadow` und `--on-accent`.
+  - Transfer-Regeln aus `styles.scss` in die Komponente verschoben.
+  - Google Fonts (Inter, ungenutzt) entfernt.
+- **Sprache:**
+  - Kader, Anlagen, Match, Start, Einstellungen, Dashboard und App-Shell vollständig DE/EN.
+  - Enum-Werte (Mentalität, Pressing, Breite, Philosophie, Wetter) über `tacticLabel`.
+  - Gespeicherte Transfermeldungen werden beim Anzeigen übersetzt (`localizeTransferText`).
+  - `<html lang>` folgt der Spracheinstellung.
+- **Match:**
+  - Pausenmenü mit Weiterspielen, Wechsel, Taktik, Kamera, Spielerwahl, Minikarte, Steuerung, Audio, Rest simulieren und Aufgeben.
+  - Werkzeugleiste auf 6 Einträge reduziert.
+  - Bestätigungsdialog (`<dialog>`) statt `window.confirm`.
+  - Gemeinsames Wechsel-Panel mit Bankkarten.
+  - Taktik-Voreinstellungen (Angriff, Mauern, Pressing).
+  - Nachspielzeit-Tafel und Minutenanzeige „45+2'“; Minikarte ausblendbar.
+  - Nachbericht mit Tabs Übersicht / Statistik / Noten / Heatmap / Verlauf (Pfeiltasten), Elfmeterschießen-Zeile, „Revanche“ im Schnellspiel.
+  - Heatmap-Punkte werden in Angriffsrichtung gespeichert, damit beide Halbzeiten auf derselben Seite liegen.
+- **Seiten:**
+  - Dashboard: echte Wochenagenda (Training, Verletzte, Angebote, Spiel), Anstoßzeit aus dem Spiel, News-Verlauf, „Neue Saison starten“ nach Saisonende.
+  - Kader: Gehaltssumme, Saisonspalten, Vertrag und Gehalt, Vergleich zweier Spieler mit überlagertem Radar.
+  - Liga: Bestenlisten für Durchschnittsnote, Weiße Weste und Karten.
+  - Anlagen: konkrete Wirkung, Sperrgründe übersetzt.
+  - Start: ein Würfeln-Button je Bereich.
+- **Barrierefreiheit:**
+  - `appModal` (Fokusfalle, Escape, Fokusrückgabe) für Spielerdetail, Deal-Dialog und Studio.
+  - Tab-Leisten mit `role="tab"`/`aria-selected`, Import-Buttons per Tastatur erreichbar.
+  - „Reduzierte Bewegung“ schaltet auch UI-Animationen ab.
+  - Gamepad-Navigation in Menüs (D-Pad/Stick, A, B).
+- **Nachweis:**
+  - 172 Unit-Tests (neu: `ui-accessibility.spec.ts`).
+  - Build ohne Budgetwarnung, `styles:check` grün.
+  - 21 E2E-Tests gegen den Produktionsbuild bestanden; `living-world` sucht den Karten-Tab jetzt über `role="tab"`.
+  - UI-Rundgang bei 1440 px und 390 px ohne Konsolenfehler und ohne horizontales Scrollen.
+  - Screenshots: [Pausenmenü](screenshots/pause-menu-2026-10-02.png), [Kadervergleich](screenshots/squad-compare-2026-10-02.png), [Nachbericht](screenshots/match-report-2026-10-02.png).
+- **Offen:** Ein Template-Scan auf feste Texte fehlt noch; Übersetzungen nutzen weiter `i18n.pick` statt Schlüsseln. Tiefendiagramm im Kader und Stadionvorschau bei den Anlagen kommen nach Phase E.

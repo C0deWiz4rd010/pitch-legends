@@ -354,7 +354,7 @@ export function createNewGame(opts: NewGameOptions): GameState {
       {
         id: `news-${seed.toString(36)}-welcome`,
         week: 1,
-        icon: 'star',
+        icon: 'NEW',
         titleKey: 'news.welcome.title',
         bodyKey: 'news.welcome.body',
         params: { club: playerIdentity.name, manager: opts.managerName || 'Boss' },

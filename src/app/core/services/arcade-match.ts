@@ -2102,10 +2102,13 @@ export class ArcadeMatch {
     if (this.tick % heatmapInterval === 0) {
       for (const actor of this.actors) {
         if (!actor.active) continue;
+        // Stored in attack-right space, so both halves land on the same end of the heatmap.
+        const forward = this.attackDirection(actor.side) > 0;
+        const x = forward ? actor.x : FIELD_LENGTH - actor.x, y = forward ? actor.y : FIELD_WIDTH - actor.y;
         const list = this.heatmaps[actor.player.id] ?? (this.heatmaps[actor.player.id] = []);
-        const cell = list.find((point) => Math.abs(point.x - actor.x) < 5 && Math.abs(point.y - actor.y) < 5);
+        const cell = list.find((point) => Math.abs(point.x - x) < 5 && Math.abs(point.y - y) < 5);
         if (cell) cell.weight++;
-        else if (list.length < 48) list.push({ x: round(actor.x, 1), y: round(actor.y, 1), weight: 1 });
+        else if (list.length < 48) list.push({ x: round(x, 1), y: round(y, 1), weight: 1 });
       }
     }
     if (this.config.mode !== 'instant' && this.tick % 30 === 0) this.safeSnapshot = this.snapshot();

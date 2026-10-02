@@ -12,6 +12,9 @@ import { MiniKitComponent } from '../../shared/components/mini-kit.component';
 import { PlayerPortraitComponent } from '../../shared/components/player-portrait.component';
 import { ManagerPortraitComponent } from '../../shared/components/manager-portrait.component';
 import { formatCoins, moraleIcon, ratingColor } from '../../shared/rating-color';
+import { SeasonService } from '../../core/services/season.service';
+import { tacticLabel } from '../../shared/tactic-labels';
+import { ModalDirective } from '../../shared/modal.directive';
 
 interface ManagerAlert {
   icon: string;
@@ -22,7 +25,7 @@ interface ManagerAlert {
 
 @Component({
   selector: 'app-dashboard',
-  imports: [RouterLink, ClubCrestComponent, MiniKitComponent, PlayerPortraitComponent, ManagerPortraitComponent],
+  imports: [RouterLink, ClubCrestComponent, MiniKitComponent, PlayerPortraitComponent, ManagerPortraitComponent, ModalDirective],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './dashboard.page.html',
   styleUrl: './dashboard.page.scss',
@@ -30,11 +33,48 @@ interface ManagerAlert {
 export class DashboardPage {
   protected readonly gs = inject(GameStateService);
   protected readonly i18n = inject(I18nService);
+  private readonly season = inject(SeasonService);
   protected readonly playerName = playerName;
   protected readonly formatCoins = formatCoins;
   protected readonly ratingColor = ratingColor;
   protected readonly moraleIcon = moraleIcon;
   protected readonly newsIndex = signal(0);
+
+  /** Kick-off is a stable property of the fixture, not a fixed clock. */
+  protected readonly kickoffTime = computed(() => {
+    const fixture = this.gs.nextFixture();
+    if (!fixture) return '';
+    return ['15:30', '18:30', '20:30', '13:30'][hash32(fixture.id) % 4];
+  });
+
+  /** The real week: training slots, open offers, injuries and the next match. */
+  protected readonly agenda = computed(() => {
+    const game = this.gs.game();
+    const training = game?.trainingWeek;
+    const used = training?.slotsUsed ?? 0, max = training?.maxSlots ?? 0;
+    const clubId = game?.clubId;
+    const offers = (game?.transfers.negotiations ?? []).filter(n => n.fromTeamId === clubId && ['submitted', 'countered', 'fee-agreed', 'contract'].includes(n.status)).length;
+    const injured = this.gs.squad().filter(player => player.injuryWeeks > 0).length;
+    const opponent = this.nextOpponent();
+    return [
+      { key: 'training', day: this.text('MO', 'MON'), icon: used >= max ? '✓' : 'XP', route: '/training',
+        state: used >= max ? 'done' : 'active', label: this.text(`Training ${used}/${max}`, `Training ${used}/${max}`) },
+      { key: 'medical', day: this.text('DI', 'TUE'), icon: injured ? '+' : '✓', route: '/squad',
+        state: injured ? 'active' : 'done', label: injured ? this.text(`${injured} verletzt`, `${injured} injured`) : this.text('Alle fit', 'All fit') },
+      { key: 'transfers', day: this.text('DO', 'THU'), icon: '↔', route: '/transfer',
+        state: offers ? 'active' : 'idle', label: offers ? this.text(`${offers} Angebote offen`, `${offers} open offers`) : this.text('Transfermarkt', 'Transfers') },
+      { key: 'match', day: this.text('SA', 'SAT'), icon: '⚽', route: '/match',
+        state: 'idle', label: opponent ? `${opponent.home ? '' : '@ '}${opponent.team.shortName} · ${this.kickoffTime()}` : this.text('Spielfrei', 'No match') },
+    ];
+  });
+
+  protected philosophyLabel(): string {
+    return tacticLabel(this.gs.manager()?.tacticalPhilosophy, this.i18n.locale());
+  }
+
+  protected startNextSeason(): void {
+    this.season.startNextSeason();
+  }
   protected readonly studioOpen = signal(false);
   private readonly studioNonce = signal(0);
 

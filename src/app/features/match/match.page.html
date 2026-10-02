@@ -1,25 +1,25 @@
 @if (phase() === 'match') {
-  <div class="practice-bar"><a routerLink="/">← {{ i18n.locale() === 'de' ? 'Zur Karriere' : 'Career' }}</a><strong>PITCH LEGENDS <b class="arcade-badge">ARCADE 3D</b></strong><span>{{ i18n.locale() === 'de' ? 'WASD bewegen · J passen · L schießen · Shift sprinten' : 'WASD move · J pass · L shoot · Shift sprint' }}</span></div>
+  <div class="practice-bar"><a routerLink="/">← {{ i18n.pick('Zur Karriere', 'Career') }}</a><strong>PITCH LEGENDS <b class="arcade-badge">ARCADE 3D</b></strong><span>{{ i18n.pick('WASD bewegen · J passen · L schießen · Shift sprinten · O stellen', 'WASD move · J pass · L shoot · Shift sprint · O jockey') }}</span></div>
 }
 @if (phase() === 'preview') {
   <header class="page-head fade-up">
     <div>
-      <p class="eyebrow">SPIELTAG {{ gs.currentWeek() }} · GAMEPLAY V3</p>
-      <h1>Match Centre</h1>
+      <p class="eyebrow">{{ i18n.pick('SPIELTAG', 'MATCHDAY') }} {{ gs.currentWeek() }}</p>
+      <h1>{{ i18n.pick('Matchcenter', 'Match Centre') }}</h1>
     </div>
-    <span class="weather-chip" [attr.data-weather]="expectedWeather()">{{ expectedWeather().toUpperCase() }}</span>
+    <span class="weather-chip" [attr.data-weather]="expectedWeather()">{{ tacticLabel(expectedWeather()).toUpperCase() }}</span>
   </header>
 
   @if (resumeOffer()) {
     <section class="card resume-card fade-up">
       <div>
-        <p class="eyebrow">SICHERER CHECKPOINT GEFUNDEN</p>
-        <strong>{{ resumeOffer()?.phase }} · {{ resumeOffer()?.safeSnapshot?.footballMinute }}'</strong>
-        <span>Der Match-Seed und alle Taktik-/Regelzustände werden exakt fortgesetzt.</span>
+        <p class="eyebrow">{{ i18n.pick('SICHERER CHECKPOINT GEFUNDEN', 'SAFE CHECKPOINT FOUND') }}</p>
+        <strong>{{ resumeOffer()?.safeSnapshot?.footballMinute }}'</strong>
+        <span>{{ i18n.pick('Seed, Taktik und Regeln werden exakt fortgesetzt.', 'Seed, tactics and rules resume exactly.') }}</span>
       </div>
       <div class="row-actions">
-        <button class="btn btn--primary" (click)="resumeMatch()">FORTSETZEN</button>
-        <button class="btn btn--ghost" (click)="discardCheckpoint()">VERWERFEN</button>
+        <button class="btn btn--primary" (click)="resumeMatch()">{{ i18n.pick('FORTSETZEN', 'RESUME') }}</button>
+        <button class="btn btn--ghost" (click)="discardCheckpoint()">{{ i18n.pick('VERWERFEN', 'DISCARD') }}</button>
       </div>
     </section>
   }
@@ -35,7 +35,7 @@
         </div>
         <div class="pv-vs">
           <span>VS</span>
-          <small>{{ isHome() ? 'HOME' : 'AWAY' }}</small>
+          <small>{{ isHome() ? i18n.pick('HEIM', 'HOME') : i18n.pick('AUSWÄRTS', 'AWAY') }}</small>
         </div>
         <div class="pv-team">
           <app-club-crest [team]="$any(awayTeam())" [size]="72" />
@@ -46,36 +46,36 @@
       </div>
 
       <div class="coach-duel">
-        @if (homeManager(); as manager) { <div><app-manager-portrait [manager]="manager" [size]="48" /><span><small>{{ manager.tacticalPhilosophy }}</small><b>{{ manager.firstName }} {{ manager.lastName }}</b></span></div> }
-        <em>COACH DUEL</em>
-        @if (awayManager(); as manager) { <div class="right"><span><small>{{ manager.tacticalPhilosophy }}</small><b>{{ manager.firstName }} {{ manager.lastName }}</b></span><app-manager-portrait [manager]="manager" [size]="48" /></div> }
+        @if (homeManager(); as manager) { <div><app-manager-portrait [manager]="manager" [size]="48" /><span><small>{{ tacticLabel(manager.tacticalPhilosophy) }}</small><b>{{ manager.firstName }} {{ manager.lastName }}</b></span></div> }
+        <em>{{ i18n.pick('TRAINERDUELL', 'COACH DUEL') }}</em>
+        @if (awayManager(); as manager) { <div class="right"><span><small>{{ tacticLabel(manager.tacticalPhilosophy) }}</small><b>{{ manager.firstName }} {{ manager.lastName }}</b></span><app-manager-portrait [manager]="manager" [size]="48" /></div> }
       </div>
 
       <div class="match-options">
         <label>
-          <span>MODUS</span>
-          <div class="segmented">
-            @for (mode of ['play', 'coach', 'instant']; track mode) {
-              <button [class.active]="selectedMode() === mode" (click)="selectedMode.set($any(mode))">{{ mode === 'instant' ? 'SIM' : mode.toUpperCase() }}</button>
+          <span>{{ i18n.pick('MODUS', 'MODE') }}</span>
+          <div class="segmented" role="group">
+            @for (mode of modes; track mode.key) {
+              <button [class.active]="selectedMode() === mode.key" [attr.aria-pressed]="selectedMode() === mode.key" [title]="i18n.pick(mode.hintDe, mode.hintEn)" (click)="selectedMode.set(mode.key)">{{ mode.label }}</button>
             }
           </div>
         </label>
         <label>
-          <span>ASSISTENZ</span>
-          <div class="segmented">
+          <span>{{ i18n.pick('ASSISTENZ', 'ASSIST') }}</span>
+          <div class="segmented" role="group">
             @for (preset of assists; track preset) {
-              <button [class.active]="assist() === preset" (click)="assist.set(preset)">{{ preset }}</button>
+              <button [class.active]="assist() === preset" [attr.aria-pressed]="assist() === preset" (click)="assist.set(preset)">{{ assistLabel(preset) }}</button>
             }
           </div>
         </label>
         <label class="lock-option">
-          <span>STEUERUNG</span>
-          <button class="toggle" [class.active]="playerLock()" [disabled]="selectedMode() !== 'play'" (click)="playerLock.set(!playerLock())">
-            {{ playerLock() ? 'PLAYER LOCK' : 'VOLLES TEAM' }}
+          <span>{{ i18n.pick('STEUERUNG', 'CONTROL') }}</span>
+          <button class="toggle" [class.active]="playerLock()" [attr.aria-pressed]="playerLock()" [disabled]="selectedMode() !== 'play'" (click)="playerLock.set(!playerLock())">
+            {{ playerLock() ? i18n.pick('EIN SPIELER', 'PLAYER LOCK') : i18n.pick('VOLLES TEAM', 'WHOLE TEAM') }}
           </button>
           @if (playerLock() && selectedMode() === 'play') {
-            <select [value]="playerLockId()" (change)="playerLockId.set($any($event.target).value)">
-              <option value="">Automatische Auswahl</option>
+            <select [attr.aria-label]="i18n.pick('Gesteuerter Spieler', 'Controlled player')" [value]="playerLockId()" (change)="playerLockId.set($any($event.target).value)">
+              <option value="">{{ i18n.pick('Automatische Auswahl', 'Automatic choice') }}</option>
               @for (player of starters(); track player.id) {
                 <option [value]="player.id">#{{ player.kitNumber }} {{ playerName(player) }} · {{ player.position }}</option>
               }
@@ -85,86 +85,87 @@
       </div>
 
       @if (kitConflict()) {
-        <p class="info-line">TRIKOTCHECK · Farbkonflikt erkannt – das Auswärtsteam nutzt automatisch die kontrastreiche Sekundärdarstellung.</p>
+        <p class="info-line">{{ i18n.pick('TRIKOTCHECK · Farbkonflikt erkannt – das Auswärtsteam spielt in einer kontrastreichen Ausweichfarbe.', 'KIT CHECK · Colour clash detected – the away side wears a high-contrast alternative.') }}</p>
       }
       @if (lineupErrors().length) {
         <div class="validation" role="alert">
           @for (error of lineupErrors(); track error) { <span>{{ error }}</span> }
-          <a routerLink="/tactics">Aufstellung korrigieren →</a>
+          <a routerLink="/tactics">{{ i18n.pick('Aufstellung korrigieren →', 'Fix the line-up →') }}</a>
         </div>
       }
 
       <div class="pv-actions">
-        <a routerLink="/tactics" class="btn btn--ghost">TAKTIK & AUFSTELLUNG</a>
-        <button class="btn btn--primary big" [disabled]="lineupErrors().length > 0" (click)="kickOff()">ANPFIFF →</button>
+        <a routerLink="/tactics" class="btn btn--ghost">{{ i18n.pick('TAKTIK & AUFSTELLUNG', 'TACTICS & LINE-UP') }}</a>
+        <button class="btn btn--primary big" [disabled]="lineupErrors().length > 0" (click)="kickOff()">{{ i18n.pick('ANPFIFF →', 'KICK OFF →') }}</button>
       </div>
     </section>
 
     <section class="scout-layout fade-up">
       <article class="card scout-card">
-        <p class="eyebrow">GEGNERBERICHT</p>
+        <p class="eyebrow">{{ i18n.pick('GEGNERBERICHT', 'SCOUTING REPORT') }}</p>
         <div class="report-grid">
-          <div><span>FORMATION</span><strong>{{ opponent()?.formation?.name }}</strong></div>
-          <div><span>FORM</span><strong class="form-inline">@for (entry of form(opponent()?.id); track $index) { <i [class.w]="entry === 'W'" [class.d]="entry === 'D'" [class.l]="entry === 'L'">{{ entry }}</i> } @empty { — }</strong></div>
-          <div><span>SCHLÜSSELSPIELER</span><strong>{{ keyPlayer() ? playerName(keyPlayer()!) : '—' }} · {{ keyPlayer()?.overall }}</strong></div>
-          <div><span>VERMUTETE SCHWÄCHE</span><strong>{{ scoutingDetail() ? weakness(opponent()) : 'Mehr Scouting nötig' }}</strong></div>
-          <div><span>SPIELWEISE</span><strong>{{ opponent()?.tactics?.pressing }} press · {{ opponent()?.tactics?.passing }}</strong></div>
-          <div><span>WETTER</span><strong>{{ expectedWeather() }} · Ballkontrolle angepasst</strong></div>
+          <div><span>{{ i18n.pick('FORMATION', 'FORMATION') }}</span><strong>{{ opponent()?.formation?.name }}</strong></div>
+          <div><span>{{ i18n.pick('FORM', 'FORM') }}</span><strong class="form-inline">@for (entry of form(opponent()?.id); track $index) { <i [class.w]="entry === 'W'" [class.d]="entry === 'D'" [class.l]="entry === 'L'">{{ formLetter(entry) }}</i> } @empty { — }</strong></div>
+          <div><span>{{ i18n.pick('SCHLÜSSELSPIELER', 'KEY PLAYER') }}</span><strong>{{ keyPlayer() ? playerName(keyPlayer()!) : '—' }} · {{ keyPlayer()?.overall }}</strong></div>
+          <div><span>{{ i18n.pick('VERMUTETE SCHWÄCHE', 'LIKELY WEAKNESS') }}</span><strong>{{ scoutingDetail() ? weakness(opponent()) : i18n.pick('Mehr Scouting nötig', 'More scouting needed') }}</strong></div>
+          <div><span>{{ i18n.pick('SPIELWEISE', 'STYLE') }}</span><strong>{{ tacticLabel(opponent()?.tactics?.pressing) }} · {{ opponent()?.tactics?.passing }}</strong></div>
+          <div><span>{{ i18n.pick('WETTER', 'WEATHER') }}</span><strong>{{ tacticLabel(expectedWeather()) }} · {{ i18n.pick('Ballkontrolle angepasst', 'ball control adjusted') }}</strong></div>
         </div>
       </article>
       <article class="card odds-card">
-        <p class="eyebrow">FAIRE PROGNOSE</p>
+        <p class="eyebrow">{{ i18n.pick('FAIRE PROGNOSE', 'FAIR PREDICTION') }}</p>
         <div class="ratings-line">
           <strong [style.color]="ratingColor(teamRating(homeTeam()))">{{ teamRating(homeTeam()) }}</strong>
-          <span>TEAMRATING</span>
+          <span>{{ i18n.pick('TEAMRATING', 'TEAM RATING') }}</span>
           <strong [style.color]="ratingColor(teamRating(awayTeam()))">{{ teamRating(awayTeam()) }}</strong>
         </div>
-        <div class="odds-bar"><i [style.width.%]="prediction().home"></i><i [style.width.%]="prediction().draw"></i><i [style.width.%]="prediction().away"></i></div>
-        <div class="odds-labels"><span>{{ prediction().home }}% H</span><span>{{ prediction().draw }}% X</span><span>{{ prediction().away }}% A</span></div>
-        <small>Schwierigkeit verändert KI-Entscheidungen, niemals Attribute oder Ballphysik.</small>
+        <div class="odds-bar" aria-hidden="true"><i [style.width.%]="prediction().home"></i><i [style.width.%]="prediction().draw"></i><i [style.width.%]="prediction().away"></i></div>
+        <div class="odds-labels"><span>{{ prediction().home }}% {{ i18n.pick('H', 'H') }}</span><span>{{ prediction().draw }}% X</span><span>{{ prediction().away }}% {{ i18n.pick('A', 'A') }}</span></div>
+        <small>{{ i18n.pick('Die Schwierigkeit verändert nur die gegnerische KI, niemals Attribute oder Ballphysik.', 'Difficulty only changes the opponent AI, never attributes or ball physics.') }}</small>
       </article>
     </section>
 
     <section class="card control-guide fade-up pass-guide">
-      <p class="eyebrow">PASSEN · SOFORT LOSLEGEN</p>
+      <p class="eyebrow">{{ i18n.pick('PASSEN · SOFORT LOSLEGEN', 'PASSING · QUICK START') }}</p>
       <div class="control-grid">
-        <span><kbd>J</kbd> drücken = Kurzpass</span><span><kbd>J</kbd> halten = Passkraft</span><span><kbd>K</kbd> Steilpass in den Lauf</span>
+        <span><kbd>J</kbd> {{ i18n.pick('drücken = Kurzpass', 'tap = short pass') }}</span><span><kbd>J</kbd> {{ i18n.pick('halten = Passkraft', 'hold = pass power') }}</span><span><kbd>K</kbd> {{ i18n.pick('Steilpass in den Lauf', 'through ball into the run') }}</span>
       </div>
-      <button class="btn btn--ghost" (click)="openControls()">? VISUELLES SPIELHANDBUCH</button>
+      <button class="btn btn--ghost" (click)="openControls()">? {{ i18n.pick('VISUELLES SPIELHANDBUCH', 'VISUAL CONTROLS GUIDE') }}</button>
     </section>
   } @else {
-    <section class="card empty"><p>Die Saison ist beendet.</p><a routerLink="/league" class="btn btn--primary">TABELLE ÖFFNEN</a></section>
+    <section class="card empty"><p>{{ i18n.pick('Die Saison ist beendet.', 'The season is over.') }}</p><a routerLink="/league" class="btn btn--primary">{{ i18n.pick('TABELLE ÖFFNEN', 'OPEN TABLE') }}</a></section>
   }
 }
 
 @if (phase() === 'intro') {
   <section class="intro-screen fade-up">
     <p class="eyebrow">PIXEL LEAGUE · LIVE</p>
-    <div class="intro-stadium"><i></i><i></i><i></i><i></i><i></i></div>
+    <div class="intro-stadium" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div>
     <div class="intro-teams">
       <div><app-club-crest [team]="$any(homeTeam())" [size]="76" /><strong>{{ homeTeam()?.name }}</strong><small>{{ homeTeam()?.formation?.name }}</small></div>
       <b>VS</b>
       <div><app-club-crest [team]="$any(awayTeam())" [size]="76" /><strong>{{ awayTeam()?.name }}</strong><small>{{ awayTeam()?.formation?.name }}</small></div>
     </div>
-    <p>REF · M. BYTE · {{ expectedWeather().toUpperCase() }}</p>
-    <button class="btn btn--ghost" (click)="skipIntro()">INTRO ÜBERSPRINGEN</button>
+    <p>{{ i18n.pick('SCHIRI', 'REF') }} · M. BYTE · {{ tacticLabel(expectedWeather()).toUpperCase() }}</p>
+    <button class="btn btn--ghost" (click)="skipIntro()">{{ i18n.pick('INTRO ÜBERSPRINGEN', 'SKIP INTRO') }}</button>
   </section>
 }
 
 @if (phase() === 'simulating') {
-  <section class="card sim-screen fade-up">
-    <div class="pixel-spinner"></div>
-    <p class="eyebrow">HEADLESS MATCHKERN</p>
-    <h2>Spiel wird deterministisch simuliert…</h2>
-    <span>Dieselbe Physik, KI und Regelengine wie im Direktspiel.</span>
+  <section class="card sim-screen fade-up" role="status">
+    <div class="pixel-spinner" aria-hidden="true"></div>
+    <p class="eyebrow">{{ i18n.pick('SIMULATION', 'SIMULATION') }}</p>
+    <h2>{{ i18n.pick('Spiel wird simuliert …', 'Simulating the match …') }}</h2>
+    <span>{{ i18n.pick('Dieselbe Physik, KI und Regeln wie im Direktspiel.', 'The same physics, AI and rules as live play.') }}</span>
   </section>
 }
 
 @if (phase() === 'match' || phase() === 'halftime' || phase() === 'result') {
   <header class="scoreboard fade-up">
     <div class="sb-team"><app-club-crest class="crest sm" [team]="$any(homeTeam())" [size]="36" /><strong>{{ homeTeam()?.shortName }}</strong></div>
-    <div class="sb-score"><span>{{ homeScore() }}</span><b>{{ minute() }}' · {{ matchPhase() === 'secondHalf' ? '2H' : matchPhase() === 'fulltime' ? 'FT' : '1H' }}</b><span>{{ awayScore() }}</span></div>
+    <div class="sb-score" [attr.aria-label]="homeScore() + ':' + awayScore() + ', ' + minuteLabel()"><span>{{ homeScore() }}</span><b>{{ minuteLabel() }} · {{ periodLabel() }}</b><span>{{ awayScore() }}</span></div>
     <div class="sb-team right"><strong>{{ awayTeam()?.shortName }}</strong><app-club-crest class="crest sm" [team]="$any(awayTeam())" [size]="36" /></div>
+    @if (matchView().stoppage > 0 && phase() === 'match') { <span class="stoppage-board" [attr.aria-label]="i18n.pick('Nachspielzeit ', 'Added time ') + matchView().stoppage">+{{ matchView().stoppage }}</span> }
   </header>
 }
 
@@ -173,91 +174,93 @@
     <div class="pitch-panel">
       <div class="canvas-wrap">
         <canvas #pitch aria-label="Live football pitch"></canvas>
-        @if (graphicsLoading()) { <div class="graphics-loading" role="status">{{ i18n.locale() === 'de' ? 'Dein Stadion wird vorbereitet …' : 'Preparing your stadium …' }}</div> }
-        @if (graphicsError()) { <div class="graphics-loading" role="alert"><p>{{ graphicsError() }}</p><a routerLink="/" class="btn btn--primary">← {{ i18n.locale() === 'de' ? 'Zurück' : 'Back' }}</a></div> }
-        <div class="rotate-notice"><strong>GERÄT DREHEN</strong><span>Touchmatches benötigen Querformat.</span></div>
-        @if (flash(); as scorer) { <div class="goal-flash"><strong>GOAL!</strong><span>{{ scorer }}</span></div> }
-        @if (matchPhase() === 'goalReplay') { <button class="replay-skip" (click)="skipReplay()">REPLAY ÜBERSPRINGEN</button> }
-        <button class="auto-chip" [class.on]="autoEnabled()" (click)="toggleAuto()">◈ AUTO · {{ autoEnabled() ? 'KI STEUERT' : 'AUS' }}</button>
+        @if (graphicsLoading()) { <div class="graphics-loading" role="status">{{ i18n.pick('Dein Stadion wird vorbereitet …', 'Preparing your stadium …') }}</div> }
+        @if (graphicsError()) { <div class="graphics-loading" role="alert"><p>{{ graphicsError() }}</p><a routerLink="/" class="btn btn--primary">← {{ i18n.pick('Zurück', 'Back') }}</a></div> }
+        <div class="rotate-notice"><strong>{{ i18n.pick('GERÄT DREHEN', 'ROTATE DEVICE') }}</strong><span>{{ i18n.pick('Touch-Spiele benötigen das Querformat.', 'Touch matches need landscape.') }}</span></div>
+        @if (flash(); as scorer) { <div class="goal-flash" role="status"><strong>{{ i18n.pick('TOR!', 'GOAL!') }}</strong><span>{{ scorer }}</span></div> }
+        @if (matchPhase() === 'goalReplay') { <button class="replay-skip" (click)="skipReplay()">{{ i18n.pick('REPLAY ÜBERSPRINGEN', 'SKIP REPLAY') }}</button> }
+        <button class="auto-chip" [class.on]="autoEnabled()" [attr.aria-pressed]="autoEnabled()" (click)="toggleAuto()">◈ AUTO · {{ autoEnabled() ? i18n.pick('KI STEUERT', 'AI PLAYS') : i18n.pick('AUS', 'OFF') }}</button>
         <button
           class="fullscreen-chip"
           [class.on]="fullscreenActive()"
           [attr.aria-pressed]="fullscreenActive()"
-          aria-label="Vollbild umschalten"
+          [attr.aria-label]="i18n.pick('Vollbild umschalten', 'Toggle fullscreen')"
           (click)="toggleImmersive()"
-        >⛶ {{ fullscreenActive() ? 'VOLL' : 'FULL' }}</button>
+        >⛶ {{ fullscreenActive() ? i18n.pick('VOLL', 'FULL') : 'FULL' }}</button>
         @if (!playing()) {
-          <div class="pause-layer">
-            <p class="eyebrow">MATCH PAUSIERT</p>
+          <div class="pause-layer" role="dialog" aria-modal="false" [attr.aria-label]="i18n.pick('Pausenmenü', 'Pause menu')">
+            <p class="eyebrow">{{ i18n.pick('MATCH PAUSIERT', 'MATCH PAUSED') }}</p>
             @if (performanceMessage()) { <span>{{ performanceMessage() }}</span> }
-            <button class="btn btn--primary" (click)="togglePlay()">WEITERSPIELEN</button>
-            <button class="btn btn--ghost" (click)="openControls()">? STEUERUNG</button>
+            <div class="pause-menu">
+              <button class="btn btn--primary" (click)="togglePlay()" autofocus>{{ i18n.pick('WEITERSPIELEN', 'RESUME') }}</button>
+              <button class="btn btn--ghost" (click)="openPausePanel('subs')">{{ i18n.pick('WECHSEL', 'SUBS') }} · {{ subsRemaining() }}</button>
+              <button class="btn btn--ghost" (click)="openPausePanel('tactics')">{{ i18n.pick('TAKTIK', 'TACTICS') }}</button>
+              <button class="btn btn--ghost" (click)="cycleCamera()">{{ i18n.pick('KAMERA', 'CAMERA') }}: {{ cameraView() }}</button>
+              <button class="btn btn--ghost" (click)="cycleSwitchPolicy()">{{ i18n.pick('SPIELERWAHL', 'SWITCHING') }}: {{ switchLabel() }}</button>
+              <button class="btn btn--ghost" [attr.aria-pressed]="showMinimap()" (click)="toggleMinimap()">{{ i18n.pick('MINIKARTE', 'MINIMAP') }}: {{ showMinimap() ? i18n.pick('AN', 'ON') : i18n.pick('AUS', 'OFF') }}</button>
+              <button class="btn btn--ghost" (click)="openControls()">? {{ i18n.pick('STEUERUNG', 'CONTROLS') }}</button>
+              <button class="btn btn--ghost" (click)="showAudio.set(true)">{{ i18n.pick('AUDIO', 'AUDIO') }}</button>
+              <button class="btn btn--ghost" (click)="askConfirm('simulate')">{{ i18n.pick('REST SIMULIEREN', 'SIMULATE REST') }}</button>
+              <button class="btn btn--danger" (click)="askConfirm('forfeit')">{{ i18n.pick('AUFGEBEN', 'FORFEIT') }}</button>
+            </div>
           </div>
         }
-        <button class="device-chip" (click)="openControls()">? {{ inputDevice().toUpperCase() }} · {{ assist().toUpperCase() }}</button>
+        <button class="device-chip" (click)="openControls()">? {{ inputDevice().toUpperCase() }} · {{ assistLabel(assist()).toUpperCase() }}</button>
       </div>
 
       @if (selectedMode() === 'play') {
-        <div class="touch-controls" aria-label="Touch-Steuerung">
-          <div class="touch-stick" (pointerdown)="touchStickStart($event)" (pointermove)="touchStickMove($event)" (pointerup)="touchStickEnd($event)" (pointercancel)="touchStickEnd($event)">
+        <div class="touch-controls" [attr.aria-label]="i18n.pick('Touch-Steuerung', 'Touch controls')">
+          <div class="touch-stick" role="application" [attr.aria-label]="i18n.pick('Bewegungsstick', 'Movement stick')" (pointerdown)="touchStickStart($event)" (pointermove)="touchStickMove($event)" (pointerup)="touchStickEnd($event)" (pointercancel)="touchStickEnd($event)">
             <i [style.transform]="'translate(' + touchX() * 30 + 'px,' + touchY() * 30 + 'px)'">+</i>
           </div>
           <div class="touch-actions">
-            <button class="sw" (pointerdown)="setTouchAction('switch',true)" (pointerup)="setTouchAction('switch',false)" (pointercancel)="setTouchAction('switch',false)">SW</button>
-            <button class="sk" (pointerdown)="setTouchAction('skill',true)" (pointerup)="setTouchAction('skill',false)" (pointercancel)="setTouchAction('skill',false)">SK</button>
-            <button class="y" (pointerdown)="setTouchAction('through',true)" (pointerup)="setTouchAction('through',false)" (pointercancel)="setTouchAction('through',false)">Y</button>
-            <button class="x" (pointerdown)="setTouchAction('lob',true)" (pointerup)="setTouchAction('lob',false)" (pointercancel)="setTouchAction('lob',false)">X</button>
-            <button class="b" (pointerdown)="setTouchAction('shoot',true)" (pointerup)="setTouchAction('shoot',false)" (pointercancel)="setTouchAction('shoot',false)">B</button>
-            <button class="a" (pointerdown)="setTouchAction('pass',true)" (pointerup)="setTouchAction('pass',false)" (pointercancel)="setTouchAction('pass',false)">A</button>
-            <button class="rt" (pointerdown)="setTouchAction('sprint',true)" (pointerup)="setTouchAction('sprint',false)" (pointercancel)="setTouchAction('sprint',false)">RT</button>
+            @for (button of touchButtons; track button.action) {
+              <button [class]="button.css" [attr.aria-label]="i18n.pick(button.de, button.en)" (pointerdown)="setTouchAction(button.action,true)" (pointerup)="setTouchAction(button.action,false)" (pointercancel)="setTouchAction(button.action,false)">{{ button.label }}</button>
+            }
           </div>
         </div>
       }
 
       <div class="match-toolbar">
-        <button class="btn btn--ghost btn--sm camera-choice" (click)="cycleCamera()">KAMERA · {{ cameraView() }}</button>
-        <button class="btn btn--ghost btn--sm" (click)="cycleSwitchPolicy()">SPIELERWAHL · {{ switchPolicy()==='receivers'?'RUHIG':switchPolicy()==='manual'?'MANUELL':'AUTO' }}</button>
-        <button class="btn btn--ghost btn--sm" (click)="togglePlay()">{{ playing() ? 'PAUSE' : 'PLAY' }}</button>
-        <button class="btn btn--ghost btn--sm auto-toggle" [class.on]="autoEnabled()" (click)="toggleAuto()">◈ AUTO · {{ autoEnabled() ? 'KI STEUERT' : 'AUS' }}</button>
-        <button class="btn btn--ghost btn--sm" (click)="openControls()">? STEUERUNG</button>
+        <button class="btn btn--ghost btn--sm camera-choice" (click)="cycleCamera()">{{ i18n.pick('KAMERA', 'CAMERA') }} · {{ cameraView() }}</button>
+        <button class="btn btn--ghost btn--sm" (click)="togglePlay()">{{ playing() ? i18n.pick('PAUSE', 'PAUSE') : i18n.pick('PLAY', 'PLAY') }}</button>
+        <button class="btn btn--ghost btn--sm" (click)="openControls()">? {{ i18n.pick('STEUERUNG', 'CONTROLS') }}</button>
         <button class="btn btn--ghost btn--sm" [attr.aria-expanded]="showAudio()" (click)="showAudio.set(!showAudio())">AUDIO</button>
-        @if (selectedMode() === 'coach' && autoEnabled()) { <button class="btn btn--ghost btn--sm" (click)="cycleSpeed()">{{ speed() }}× SPEED</button> }
-        <button class="btn btn--ghost btn--sm" [class.on]="showTactics()" (click)="showTactics.set(!showTactics())">Q · TAKTIK</button>
-        <button class="btn btn--ghost btn--sm" [class.on]="showSubs()" (click)="showSubs.set(!showSubs())">WECHSEL {{ subsRemaining() }}</button>
-        <button class="btn btn--ghost btn--sm" (click)="simulateRemainder()">REST SIM</button>
-        <button class="btn btn--danger btn--sm" (click)="forfeit()">AUFGEBEN</button>
+        @if (selectedMode() === 'coach' && autoEnabled()) { <button class="btn btn--ghost btn--sm" (click)="cycleSpeed()">{{ speed() }}× {{ i18n.pick('TEMPO', 'SPEED') }}</button> }
+        <button class="btn btn--ghost btn--sm" [class.on]="showTactics()" [attr.aria-expanded]="showTactics()" (click)="showTactics.set(!showTactics())">Q · {{ i18n.pick('TAKTIK', 'TACTICS') }}</button>
+        <button class="btn btn--ghost btn--sm" [class.on]="showSubs()" [attr.aria-expanded]="showSubs()" (click)="showSubs.set(!showSubs())">{{ i18n.pick('WECHSEL', 'SUBS') }} {{ subsRemaining() }}</button>
       </div>
 
       @if (showTactics()) {
         <div class="quick-wheel card">
-          <div><span>MENTALITÄT</span>@for (value of mentalities; track value) { <button [class.active]="currentMentality() === value" (click)="setMentality(value)">{{ value }}</button> }</div>
-          <div><span>PRESSING</span>@for (value of pressings; track value) { <button [class.active]="currentPressing() === value" (click)="setPressing(value)">{{ value }}</button> }</div>
-          <div><span>BREITE</span>@for (value of widths; track value) { <button [class.active]="currentWidth() === value" (click)="setWidth(value)">{{ value }}</button> }<button (click)="toggleCounter()">KONTER ↔</button></div>
+          <div class="presets"><span>{{ i18n.pick('SCHNELL', 'QUICK') }}</span>
+            @for (preset of tacticPresets; track preset.key) { <button (click)="applyTacticPreset(preset.key)">{{ i18n.pick(preset.de, preset.en) }}</button> }
+          </div>
+          <div><span>{{ i18n.pick('MENTALITÄT', 'MENTALITY') }}</span>@for (value of mentalities; track value) { <button [class.active]="currentMentality() === value" [attr.aria-pressed]="currentMentality() === value" (click)="setMentality(value)">{{ tacticLabel(value) }}</button> }</div>
+          <div><span>PRESSING</span>@for (value of pressings; track value) { <button [class.active]="currentPressing() === value" [attr.aria-pressed]="currentPressing() === value" (click)="setPressing(value)">{{ tacticLabel(value) }}</button> }</div>
+          <div><span>{{ i18n.pick('BREITE', 'WIDTH') }}</span>@for (value of widths; track value) { <button [class.active]="currentWidth() === value" [attr.aria-pressed]="currentWidth() === value" (click)="setWidth(value)">{{ tacticLabel(value) }}</button> }<button (click)="toggleCounter()">{{ i18n.pick('KONTER ↔', 'COUNTER ↔') }}</button></div>
         </div>
       }
       @if (showAudio()) {
         <section class="audio-panel" aria-label="Audio">
-          <button class="btn btn--ghost btn--sm" (click)="showAudio.set(false)">{{ i18n.locale()==='de'?'Schließen':'Close' }}</button>
-          <label><input type="checkbox" [checked]="audio.settings().soundEnabled" (change)="audio.toggleSound()" /> {{ i18n.locale()==='de'?'Sound aktivieren':'Enable sound' }}</label>
-          <label>{{ i18n.locale()==='de'?'Musik':'Music' }}<input aria-label="Music" type="range" min="0" max="1" step=".05" [value]="audio.settings().musicVolume" (input)="audio.setVolume('musicVolume',+$any($event.target).value)" /></label>
-          <label>{{ i18n.locale()==='de'?'Effekte':'Effects' }}<input aria-label="Effects" type="range" min="0" max="1" step=".05" [value]="audio.settings().sfxVolume" (input)="audio.setVolume('sfxVolume',+$any($event.target).value)" /></label>
-          <label>{{ i18n.locale()==='de'?'Publikum':'Crowd' }}<input aria-label="Crowd" type="range" min="0" max="1" step=".05" [value]="audio.settings().crowdVolume ?? .45" (input)="audio.setVolume('crowdVolume',+$any($event.target).value)" /></label>
+          <button class="btn btn--ghost btn--sm" (click)="showAudio.set(false)">{{ i18n.pick('Schließen', 'Close') }}</button>
+          <label><input type="checkbox" [checked]="audio.settings().soundEnabled" (change)="audio.toggleSound()" /> {{ i18n.pick('Sound aktivieren', 'Enable sound') }}</label>
+          <label>{{ i18n.pick('Musik', 'Music') }}<input aria-label="Music" type="range" min="0" max="1" step=".05" [value]="audio.settings().musicVolume" (input)="audio.setVolume('musicVolume',+$any($event.target).value)" /></label>
+          <label>{{ i18n.pick('Effekte', 'Effects') }}<input aria-label="Effects" type="range" min="0" max="1" step=".05" [value]="audio.settings().sfxVolume" (input)="audio.setVolume('sfxVolume',+$any($event.target).value)" /></label>
+          <label>{{ i18n.pick('Publikum', 'Crowd') }}<input aria-label="Crowd" type="range" min="0" max="1" step=".05" [value]="audio.settings().crowdVolume ?? .45" (input)="audio.setVolume('crowdVolume',+$any($event.target).value)" /></label>
         </section>
       }
       @if (showSubs()) {
         <div class="sub-panel card">
-          <select [value]="subOutId()" (change)="subOutId.set($any($event.target).value)"><option value="">SPIELER RAUS</option>@for (player of onPitchPlayers(); track player.id) { <option [value]="player.id">{{ playerName(player) }} · {{ player.position }}</option> }</select>
-          <span>→</span>
-          <select [value]="subInId()" (change)="subInId.set($any($event.target).value)"><option value="">SPIELER REIN</option>@for (player of benchPlayers(); track player.id) { <option [value]="player.id">{{ playerName(player) }} · {{ player.overall }}</option> }</select>
-          <button class="btn btn--primary btn--sm" [disabled]="!subOutId() || !subInId()" (click)="doSub()">WECHSELN</button>
+          <app-substitution-panel [onPitch]="onPitchEntries()" [bench]="benchPlayers()" [remaining]="subsRemaining()" (substitute)="doSubstitute($event)" />
         </div>
       }
     </div>
 
     <aside class="card ticker">
-      <p class="eyebrow">MATCH EVENTS</p>
-      <div class="momentum"><i [style.width.%]="momentumHome()"></i></div>
-      <div class="events">
+      <p class="eyebrow">{{ i18n.pick('SPIELGESCHEHEN', 'MATCH EVENTS') }}</p>
+      <div class="momentum" aria-hidden="true"><i [style.width.%]="momentumHome()"></i></div>
+      <div class="events" aria-live="polite">
         @for (event of tickerEvents(); track $index) {
           <div class="event" [class.goal]="event.type === 'goal'" [class.card-event]="event.type === 'yellow' || event.type === 'red'">
             <b>{{ event.minute }}'</b><span>{{ i18n.event(event) }}</span>
@@ -271,31 +274,25 @@
 @if (phase() === 'halftime') {
   <section class="halftime fade-up">
     <div class="card half-summary">
-      <p class="eyebrow">HALBZEIT · SIMULATION PAUSIERT</p>
+      <p class="eyebrow">{{ arcadeInExtraTime() ? i18n.pick('VOR DER VERLÄNGERUNG', 'BEFORE EXTRA TIME') : i18n.pick('HALBZEIT', 'HALF-TIME') }}</p>
       <h2>{{ homeScore() }} — {{ awayScore() }}</h2>
       <div class="half-stats">
-        <span><b>{{ matchStats('home')?.shots }} / {{ matchStats('away')?.shots }}</b>SCHÜSSE</span>
+        <span><b>{{ matchStats('home')?.shots }} / {{ matchStats('away')?.shots }}</b>{{ i18n.pick('SCHÜSSE', 'SHOTS') }}</span>
         <span><b>{{ matchStats('home')?.xG }} / {{ matchStats('away')?.xG }}</b>xG</span>
-        <span><b>{{ matchStats('home')?.possession }} / {{ matchStats('away')?.possession }}</b>BALLBESITZ</span>
-        <span><b>{{ matchStats('home')?.passAccuracy }} / {{ matchStats('away')?.passAccuracy }}</b>PASS %</span>
+        <span><b>{{ matchStats('home')?.possession }} / {{ matchStats('away')?.possession }}</b>{{ i18n.pick('BALLBESITZ', 'POSSESSION') }}</span>
+        <span><b>{{ matchStats('home')?.passAccuracy }} / {{ matchStats('away')?.passAccuracy }}</b>{{ i18n.pick('PASS %', 'PASS %') }}</span>
       </div>
     </div>
     <div class="card half-management">
-      <p class="eyebrow">HALBZEITANPASSUNGEN</p>
+      <p class="eyebrow">{{ i18n.pick('ANPASSUNGEN', 'ADJUSTMENTS') }}</p>
       <div class="half-grid">
-        <label>MENTALITÄT<select [value]="currentMentality()" (change)="setMentality($any($event.target).value)">@for (value of mentalities; track value) { <option [value]="value">{{ value }}</option> }</select></label>
-        <label>PRESSING<select [value]="currentPressing()" (change)="setPressing($any($event.target).value)">@for (value of pressings; track value) { <option [value]="value">{{ value }}</option> }</select></label>
-        @if (playerLock()) { <label>PLAYER LOCK<select [value]="playerLockId()" (change)="playerLockId.set($any($event.target).value)">@for (player of onPitchPlayers(); track player.id) { <option [value]="player.id">{{ playerName(player) }}</option> }</select></label> }
+        <label>{{ i18n.pick('MENTALITÄT', 'MENTALITY') }}<select [value]="currentMentality()" (change)="setMentality($any($event.target).value)">@for (value of mentalities; track value) { <option [value]="value">{{ tacticLabel(value) }}</option> }</select></label>
+        <label>PRESSING<select [value]="currentPressing()" (change)="setPressing($any($event.target).value)">@for (value of pressings; track value) { <option [value]="value">{{ tacticLabel(value) }}</option> }</select></label>
+        <label>{{ i18n.pick('BREITE', 'WIDTH') }}<select [value]="currentWidth()" (change)="setWidth($any($event.target).value)">@for (value of widths; track value) { <option [value]="value">{{ tacticLabel(value) }}</option> }</select></label>
+        @if (playerLock()) { <label>{{ i18n.pick('EIN SPIELER', 'PLAYER LOCK') }}<select [value]="playerLockId()" (change)="playerLockId.set($any($event.target).value)">@for (player of onPitchPlayers(); track player.id) { <option [value]="player.id">{{ playerName(player) }}</option> }</select></label> }
       </div>
-      <button class="btn btn--ghost" (click)="showSubs.set(!showSubs())">WECHSEL · {{ subsRemaining() }} VERFÜGBAR</button>
-      @if (showSubs()) {
-        <div class="sub-panel">
-          <select [value]="subOutId()" (change)="subOutId.set($any($event.target).value)"><option value="">RAUS</option>@for (player of onPitchPlayers(); track player.id) { <option [value]="player.id">{{ playerName(player) }}</option> }</select>
-          <select [value]="subInId()" (change)="subInId.set($any($event.target).value)"><option value="">REIN</option>@for (player of benchPlayers(); track player.id) { <option [value]="player.id">{{ playerName(player) }}</option> }</select>
-          <button class="btn btn--primary btn--sm" (click)="doSub()">BESTÄTIGEN</button>
-        </div>
-      }
-      <button class="btn btn--primary big" (click)="resumeSecondHalf()">2. HALBZEIT →</button>
+      <app-substitution-panel [onPitch]="onPitchEntries()" [bench]="benchPlayers()" [remaining]="subsRemaining()" (substitute)="doSubstitute($event)" />
+      <button class="btn btn--primary big" (click)="resumeSecondHalf()">{{ arcadeInExtraTime() ? i18n.pick('VERLÄNGERUNG →', 'EXTRA TIME →') : i18n.pick('2. HALBZEIT →', '2ND HALF →') }}</button>
     </div>
   </section>
 }
@@ -304,51 +301,98 @@
   @if (result(); as report) {
     <section class="report fade-up">
       <article class="card final-card">
-        <p class="eyebrow">FULL TIME · MATCH-ID {{ report.id }}</p>
+        <p class="eyebrow">{{ i18n.pick('ABPFIFF', 'FULL TIME') }}@if (report.extraTime) { · {{ i18n.pick('NACH VERLÄNGERUNG', 'AFTER EXTRA TIME') }} }</p>
         <div><span>{{ homeTeam()?.shortName }}</span><strong>{{ report.homeScore }} — {{ report.awayScore }}</strong><span>{{ awayTeam()?.shortName }}</span></div>
-        <p>MVP · <b>{{ motmName() }}</b> · {{ report.weather?.toUpperCase() ?? expectedWeather().toUpperCase() }}</p>
-      </article>
-
-      <article class="card report-stats">
-        <p class="eyebrow">TEAMSTATISTIKEN</p>
-        @for (row of [
-          { label: 'xG', home: report.homeStats.xG, away: report.awayStats.xG },
-          { label: 'Schüsse', home: report.homeStats.shots, away: report.awayStats.shots },
-          { label: 'Aufs Tor', home: report.homeStats.shotsOnTarget, away: report.awayStats.shotsOnTarget },
-          { label: 'Ballbesitz %', home: report.homeStats.possession, away: report.awayStats.possession },
-          { label: 'Passquote %', home: report.homeStats.passAccuracy, away: report.awayStats.passAccuracy },
-          { label: 'Tacklings', home: report.homeStats.tacklesWon, away: report.awayStats.tacklesWon },
-          { label: 'Paraden', home: report.homeStats.saves, away: report.awayStats.saves },
-          { label: 'Fouls', home: report.homeStats.fouls, away: report.awayStats.fouls }
-        ]; track row.label) {
-          <div class="report-row"><b>{{ row.home }}</b><span>{{ row.label }}</span><b>{{ row.away }}</b></div>
+        @if (report.shootout; as shootout) {
+          <p class="shootout-line">{{ i18n.pick('Elfmeterschießen', 'Penalties') }} {{ countTrue(shootout.home) }}:{{ countTrue(shootout.away) }}</p>
         }
+        <p>MVP · <b>{{ motmName() }}</b> · {{ tacticLabel(report.weather ?? expectedWeather()).toUpperCase() }}</p>
       </article>
 
-      <article class="card ratings-card">
-        <p class="eyebrow">SPIELERBEWERTUNGEN</p>
-        <div class="rating-list">
-          @for (entry of playerRatings(); track entry.player.id) {
-            <div>
-              <span>#{{ entry.player.kitNumber }} {{ playerName(entry.player) }} @if (entry.motm) { <i>MVP</i> }</span>
-              <small>{{ entry.contribution?.goals ?? 0 }} T · {{ entry.contribution?.assists ?? 0 }} A · Fitness {{ report.endingFitness?.[entry.player.id] ?? entry.player.fitness }}</small>
-              <b [style.background]="ratingColor(entry.rating * 10)">{{ entry.rating | number:'1.1-1' }}</b>
-            </div>
+      <nav class="report-tabs" role="tablist" [attr.aria-label]="i18n.pick('Spielbericht', 'Match report')">
+        @for (tab of reportTabs; track tab.key) {
+          <button role="tab" [id]="'report-tab-' + tab.key" [attr.aria-selected]="reportTab() === tab.key" [attr.aria-controls]="'report-panel'" [attr.tabindex]="reportTab() === tab.key ? 0 : -1" [class.active]="reportTab() === tab.key" (click)="reportTab.set(tab.key)" (keydown)="moveReportTab($event, tab.key)">{{ i18n.pick(tab.de, tab.en) }}</button>
+        }
+      </nav>
+
+      <div id="report-panel" role="tabpanel" class="report-panel" [attr.aria-labelledby]="'report-tab-' + reportTab()">
+        @switch (reportTab()) {
+          @case ('stats') {
+            <article class="card report-stats">
+              @for (row of statRows(report); track row.label) {
+                <div class="report-row"><b>{{ row.home }}</b><span>{{ row.label }}</span><b>{{ row.away }}</b></div>
+              }
+            </article>
           }
-        </div>
-      </article>
-
-      <article class="card timeline-card">
-        <p class="eyebrow">EREIGNIS-TIMELINE</p>
-        <div class="timeline">
-          @for (event of report.events; track $index) {
-            @if (event.type !== 'commentary' || event.messageKey) { <div [class.goal]="event.type === 'goal'"><b>{{ event.minute }}'</b><span>{{ i18n.event(event) }}</span></div> }
+          @case ('ratings') {
+            <article class="card ratings-card">
+              <div class="rating-list">
+                @for (entry of playerRatings(); track entry.player.id) {
+                  <div>
+                    <span>#{{ entry.player.kitNumber }} {{ playerName(entry.player) }} @if (entry.motm) { <i>MVP</i> }</span>
+                    <small>{{ entry.contribution?.goals ?? 0 }} {{ i18n.pick('T', 'G') }} · {{ entry.contribution?.assists ?? 0 }} {{ i18n.pick('V', 'A') }} · Fitness {{ report.endingFitness?.[entry.player.id] ?? entry.player.fitness }}</small>
+                    <b [style.background]="ratingColor(entry.rating * 10)">{{ entry.rating | number:'1.1-1' }}</b>
+                  </div>
+                }
+              </div>
+            </article>
           }
-        </div>
-        <p class="heatmap-note">HEATMAP · {{ report.heatmaps ? 'Positionsdaten für ' + playerRatings().length + ' Spieler erfasst' : 'Keine Daten' }}</p>
-      </article>
+          @case ('heatmap') {
+            <article class="card heatmap-card">
+              <label>{{ i18n.pick('Spieler', 'Player') }}
+                <select [value]="heatmapPlayerId()" (change)="heatmapPlayerId.set($any($event.target).value)">
+                  @for (entry of playerRatings(); track entry.player.id) { <option [value]="entry.player.id">#{{ entry.player.kitNumber }} {{ playerName(entry.player) }}</option> }
+                </select>
+              </label>
+              <app-heatmap [points]="heatmapPoints(report)" [label]="i18n.pick('Heatmap des gewählten Spielers', 'Heatmap of the selected player')" />
+              <small class="muted">{{ i18n.pick('Die eigene Mannschaft spielt immer nach rechts.', 'Your side always attacks to the right.') }}</small>
+            </article>
+          }
+          @case ('timeline') {
+            <article class="card timeline-card">
+              <div class="timeline">
+                @for (event of report.events; track $index) {
+                  @if (event.type !== 'commentary' || event.messageKey) { <div [class.goal]="event.type === 'goal'"><b>{{ event.minute }}'</b><span>{{ i18n.event(event) }}</span></div> }
+                }
+              </div>
+            </article>
+          }
+          @default {
+            <article class="card report-overview">
+              <div class="overview-grid">
+                @for (row of statRows(report).slice(0, 4); track row.label) {
+                  <div class="report-row"><b>{{ row.home }}</b><span>{{ row.label }}</span><b>{{ row.away }}</b></div>
+                }
+              </div>
+              <p class="eyebrow">{{ i18n.pick('TORE', 'GOALS') }}</p>
+              <div class="timeline compact">
+                @for (event of goalEvents(report); track $index) { <div class="goal"><b>{{ event.minute }}'</b><span>{{ i18n.event(event) }}</span></div> } @empty { <span class="muted">{{ i18n.pick('Keine Tore.', 'No goals.') }}</span> }
+              </div>
+              @if (!practice) { <p class="muted">{{ i18n.pick('XP, Form, Fitness und Tabelle werden beim Fortsetzen verbucht.', 'XP, form, fitness and the table are updated when you continue.') }}</p> }
+            </article>
+          }
+        }
+      </div>
 
-      <button class="btn btn--primary big continue" [disabled]="committing()" (click)="confirm()">{{ committing() ? 'LIGASPIELE WERDEN SIMULIERT…' : 'KARRIERE FORTSETZEN →' }}</button>
+      <div class="report-actions">
+        @if (practice) {
+          <a routerLink="/" class="btn btn--ghost">{{ i18n.pick('ZUM MENÜ', 'MAIN MENU') }}</a>
+          <button class="btn btn--primary big continue" (click)="confirm()">{{ i18n.pick('REVANCHE →', 'REMATCH →') }}</button>
+        } @else {
+          <button class="btn btn--primary big continue" [disabled]="committing()" (click)="confirm()">{{ committing() ? i18n.pick('LIGASPIELE WERDEN SIMULIERT …', 'SIMULATING LEAGUE MATCHES …') : i18n.pick('KARRIERE FORTSETZEN →', 'CONTINUE CAREER →') }}</button>
+        }
+      </div>
     </section>
   }
 }
+
+<app-confirm-dialog
+  [open]="!!confirmAction()"
+  [title]="confirmAction() === 'forfeit' ? i18n.pick('Match aufgeben?', 'Forfeit the match?') : i18n.pick('Rest simulieren?', 'Simulate the rest?')"
+  [message]="confirmAction() === 'forfeit' ? i18n.pick('Das Spiel endet sofort mit mindestens einer 0:3-Niederlage.', 'The match ends immediately with at least a 0-3 defeat.') : i18n.pick('Die restliche Spielzeit wird unwiderruflich simuliert.', 'The remaining time is simulated and cannot be undone.')"
+  [confirmLabel]="confirmAction() === 'forfeit' ? i18n.pick('AUFGEBEN', 'FORFEIT') : i18n.pick('SIMULIEREN', 'SIMULATE')"
+  [cancelLabel]="i18n.pick('ABBRECHEN', 'CANCEL')"
+  [danger]="confirmAction() === 'forfeit'"
+  (confirmed)="runConfirmed()"
+  (cancelled)="confirmAction.set(null)"
+/>

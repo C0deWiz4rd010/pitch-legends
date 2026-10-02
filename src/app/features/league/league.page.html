@@ -4,11 +4,11 @@
       <div class="country-flag" [style.--flag-a]="map.country.flag.primary" [style.--flag-b]="map.country.flag.secondary"><i></i></div>
       <div class="league-title"><span>{{ map.country.name }} · {{ text('SAISON', 'SEASON') }} {{ gs.season() }}</span><h1>{{ map.country.leagueName }}</h1></div>
     }
-    <nav class="league-tabs" aria-label="Ligaansichten">
-      <button [class.active]="tab() === 'overview'" (click)="tab.set('overview')">{{ text('ÜBERSICHT', 'OVERVIEW') }}</button>
-      <button [class.active]="tab() === 'fixtures'" (click)="tab.set('fixtures')">{{ text('SPIELTAGE', 'FIXTURES') }}</button>
-      <button [class.active]="tab() === 'map'" (click)="tab.set('map')">{{ text('KARTE', 'MAP') }}</button>
-      <button [class.active]="tab() === 'stats'" (click)="tab.set('stats')">{{ text('STATISTIKEN', 'STATS') }}</button>
+    <nav class="league-tabs" role="tablist" [attr.aria-label]="text('Ligaansichten', 'League views')">
+      <button role="tab" [attr.aria-selected]="tab() === 'overview'" [class.active]="tab() === 'overview'" (click)="tab.set('overview')">{{ text('ÜBERSICHT', 'OVERVIEW') }}</button>
+      <button role="tab" [attr.aria-selected]="tab() === 'fixtures'" [class.active]="tab() === 'fixtures'" (click)="tab.set('fixtures')">{{ text('SPIELTAGE', 'FIXTURES') }}</button>
+      <button role="tab" [attr.aria-selected]="tab() === 'map'" [class.active]="tab() === 'map'" (click)="tab.set('map')">{{ text('KARTE', 'MAP') }}</button>
+      <button role="tab" [attr.aria-selected]="tab() === 'stats'" [class.active]="tab() === 'stats'" (click)="tab.set('stats')">{{ text('STATISTIKEN', 'STATS') }}</button>
     </nav>
   </header>
 
@@ -99,6 +99,12 @@
         <section class="stats-grid">
           <article class="panel ranking"><header><span>{{ text('TORJÄGER', 'TOP SCORERS') }}</span><b>G</b></header>@for (entry of gs.topScorers(); track entry.player.id; let rank = $index) { @if (teamForPlayer(entry.player.id); as team) { <div><i>{{ rank + 1 }}</i><app-player-portrait [player]="entry.player" [team]="team" [size]="40" /><span><b>{{ playerName(entry.player) }}</b><small>{{ team.shortName }} · {{ entry.player.position }}</small></span><strong>{{ entry.player.seasonStats.goals }}</strong></div> } }</article>
           <article class="panel ranking"><header><span>{{ text('VORLAGEN', 'ASSISTS') }}</span><b>A</b></header>@for (entry of topAssists(); track entry.player.id; let rank = $index) { <div><i>{{ rank + 1 }}</i><app-player-portrait [player]="entry.player" [team]="entry.team" [size]="40" /><span><b>{{ playerName(entry.player) }}</b><small>{{ entry.team.shortName }} · {{ entry.player.position }}</small></span><strong>{{ entry.player.seasonStats.assists }}</strong></div> }</article>
+          @for (board of leaders(); track board.key) {
+            <article class="panel ranking"><header><span>{{ text(board.de, board.en) }}</span><b>{{ board.unit }}</b></header>
+              @for (entry of board.entries; track entry.player.id; let rank = $index) { <div><i>{{ rank + 1 }}</i><app-player-portrait [player]="entry.player" [team]="entry.team" [size]="40" /><span><b>{{ playerName(entry.player) }}</b><small>{{ entry.team.shortName }} · {{ entry.player.position }}</small></span><strong>{{ entry.value }}</strong></div> }
+              @empty { <p class="muted">{{ text('Noch keine Daten in dieser Saison.', 'No data yet this season.') }}</p> }
+            </article>
+          }
         </section>
       }
     }

@@ -3,6 +3,7 @@ import { Router } from '@angular/router';
 import { GameStateService } from '../../core/services/game-state.service';
 import { SaveService } from '../../core/services/save.service';
 import { SeasonService } from '../../core/services/season.service';
+import { tacticLabel } from '../../shared/tactic-labels';
 import { GameSettings } from '../../models/game.model';
 import { I18nPipe } from '../../shared/i18n.pipe';
 import { I18nService } from '../../core/services/i18n.service';
@@ -23,7 +24,7 @@ export class SettingsPage {
   private readonly saves = inject(SaveService);
   private readonly season = inject(SeasonService);
   private readonly router = inject(Router);
-  private readonly i18n = inject(I18nService);
+  protected readonly i18n = inject(I18nService);
   private readonly rpg = inject(RpgService);
   private readonly audio = inject(AudioService);
 
@@ -107,6 +108,10 @@ export class SettingsPage {
       }
     };
     reader.readAsText(file);
+  }
+
+  protected label(value: string | undefined | null): string {
+    return tacticLabel(value, this.i18n.locale());
   }
 
   protected startNextSeason(): void {

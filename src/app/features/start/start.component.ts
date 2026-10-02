@@ -1,3 +1,4 @@
+import { tacticLabel } from '../../shared/tactic-labels';
 import { ChangeDetectionStrategy, Component, computed, effect, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
@@ -180,6 +181,10 @@ export class StartComponent {
 
   continueGame(): void {
     if (this.gs.loadFromStorage()) this.router.navigateByUrl('/');
+  }
+
+  protected label(value: string): string {
+    return tacticLabel(value, this.i18n.locale());
   }
 
   onImport(event: Event): void {

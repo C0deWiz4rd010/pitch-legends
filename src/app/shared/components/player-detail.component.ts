@@ -1,4 +1,5 @@
 import { ChangeDetectionStrategy, Component, computed, inject, input, output } from '@angular/core';
+import { ModalDirective } from '../modal.directive';
 import { DecimalPipe } from '@angular/common';
 import { GameStateService } from '../../core/services/game-state.service';
 import { RpgService } from '../../core/services/rpg.service';
@@ -15,7 +16,7 @@ import { MedicalService } from '../../core/services/medical.service';
 
 @Component({
   selector: 'app-player-detail',
-  imports: [RadarChartComponent, DecimalPipe, PlayerPortraitComponent, PlayerPaperDollComponent],
+  imports: [RadarChartComponent, DecimalPipe, PlayerPortraitComponent, PlayerPaperDollComponent, ModalDirective],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './player-detail.component.html',
   styleUrl: './player-detail.component.scss',

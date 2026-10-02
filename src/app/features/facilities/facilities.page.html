@@ -1,48 +1,48 @@
 <header class="page-head fade-up">
   <div>
-    <p class="eyebrow">Club Infrastructure</p>
-    <h1>Facilities</h1>
+    <p class="eyebrow">{{ i18n.pick('Vereinsinfrastruktur', 'Club infrastructure') }}</p>
+    <h1>{{ i18n.pick('Anlagen', 'Facilities') }}</h1>
   </div>
   <div class="budget">
-    <span class="muted">Budget</span>
+    <span class="muted">{{ i18n.pick('Budget', 'Budget') }}</span>
     <strong class="gold">CR {{ formatCoins(gs.coins()) }}</strong>
   </div>
 </header>
 
 @if (message()) {
-  <div class="toast fade-up">{{ message() }}</div>
+  <div class="toast fade-up" role="status">{{ message() }}</div>
 }
 
 <div class="grid fade-up">
   @for (f of facilities; track f.key) {
     <div class="fcard">
       <div class="fc-head">
-        <span class="fico">{{ f.icon }}</span>
+        <span class="fico" aria-hidden="true">{{ f.icon }}</span>
         <div>
-          <strong>{{ f.name }}</strong>
-          <p class="muted">{{ f.description }}</p>
+          <strong>{{ text(f.name) }}</strong>
+          <p class="muted">{{ text(f.description) }}</p>
         </div>
       </div>
 
-      <div class="levels">
+      <div class="levels" [attr.aria-label]="i18n.pick('Stufe ', 'Level ') + level(f.key) + ' / ' + maxLevel">
         @for (l of levels; track l) {
-          <span class="pip" [class.on]="l <= level(f.key)"></span>
+          <span class="pip" [class.on]="l <= level(f.key)" aria-hidden="true"></span>
         }
-        <span class="lvl-num">Lv {{ level(f.key) }}</span>
+        <span class="lvl-num">{{ i18n.pick('Stufe', 'Lv') }} {{ level(f.key) }}</span>
       </div>
 
       <div class="effect">
-        <span class="muted">Current effect</span>
-        <strong class="accent">{{ f.effect(level(f.key)) }}</strong>
+        <span class="muted">{{ i18n.pick('Aktuelle Wirkung', 'Current effect') }}</span>
+        <strong class="accent">{{ text(f.effect(level(f.key))) }}</strong>
       </div>
 
       <div class="fc-foot">
         @if (level(f.key) >= maxLevel) {
-          <span class="chip max">MAX LEVEL</span>
+          <span class="chip max">{{ i18n.pick('HÖCHSTE STUFE', 'MAX LEVEL') }}</span>
         } @else {
-          <span class="next muted">Next: {{ f.effect(level(f.key) + 1) }}</span>
-          <button class="btn btn--primary btn--sm" [disabled]="!canUpgrade(f.key)" (click)="upgrade(f.key, f.name)">
-            Upgrade · CR {{ formatCoins(cost(f.key)) }}
+          <span class="next muted">{{ i18n.pick('Nächste Stufe: ', 'Next: ') }}{{ text(f.effect(level(f.key) + 1)) }}</span>
+          <button class="btn btn--primary btn--sm" [disabled]="!canUpgrade(f.key)" (click)="upgrade(f)">
+            {{ i18n.pick('Ausbauen', 'Upgrade') }} · CR {{ formatCoins(cost(f.key)) }}
           </button>
         }
       </div>

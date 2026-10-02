@@ -43,7 +43,7 @@
             <app-mini-kit [kit]="club.visuals.kits.home" [size]="48" />
           </div>
 
-          <div class="versus-mark"><span>{{ opponent.home ? 'VS' : '@' }}</span><small>20:00</small></div>
+          <div class="versus-mark"><span>{{ opponent.home ? 'VS' : '@' }}</span><small>{{ kickoffTime() }}</small></div>
 
           <div class="team team-away">
             <app-club-crest [team]="opponent.team" [size]="92" />
@@ -69,7 +69,10 @@
           <app-club-crest [team]="club" [size]="112" />
           <h2>{{ text('SAISON ABGESCHLOSSEN', 'SEASON COMPLETE') }}</h2>
           <p>{{ text('Dein Abschlussbericht und die finale Tabelle warten.', 'Your final report and league table are ready.') }}</p>
-          <a routerLink="/league" class="primary-action">{{ text('FINALE TABELLE', 'FINAL TABLE') }}</a>
+          <div class="match-actions">
+            <a routerLink="/league" class="auto-action">{{ text('FINALE TABELLE', 'FINAL TABLE') }}</a>
+            <button type="button" class="primary-action" (click)="startNextSeason()">{{ text('NEUE SAISON STARTEN →', 'START NEXT SEASON →') }}</button>
+          </div>
         </div>
       }
     </section>
@@ -80,7 +83,7 @@
         <div>
           <span class="eyebrow">{{ text('MANAGER', 'MANAGER') }}</span>
           <strong>{{ gs.game()?.managerName }}</strong>
-          <small>{{ gs.manager()?.tacticalPhilosophy }} · LV {{ gs.manager()?.level }} · {{ gs.manager()?.skillPoints }} SP</small>
+          <small>{{ philosophyLabel() }} · LV {{ gs.manager()?.level }} · {{ gs.manager()?.skillPoints }} SP</small>
         </div>
       </div>
       <div class="xp-track"><i [style.width.%]="(gs.manager()?.xp ?? 0) / (gs.manager()?.xpToNext ?? 1) * 100"></i></div>
@@ -146,22 +149,22 @@
     <article class="agenda card-rise">
       <div class="section-head"><span>{{ text('WOCHENAGENDA', 'WEEK AGENDA') }}</span><span>KW {{ gs.currentWeek() }}</span></div>
       <div class="timeline">
-        <div class="done"><i>MO</i><b>✓</b><span>{{ text('Regeneration', 'Recovery') }}</span></div>
-        <div class="active"><i>DI</i><b>XP</b><span>{{ text('Training', 'Training') }}</span></div>
-        <div><i>DO</i><b>↔</b><span>{{ text('Transfers', 'Transfers') }}</span></div>
-        <div class="match"><i>SA</i><b>⚽</b><span>{{ text('Spieltag', 'Matchday') }}</span></div>
+        @for (item of agenda(); track item.key) {
+          <a [routerLink]="item.route" [class.done]="item.state === 'done'" [class.active]="item.state === 'active'" [class.match]="item.key === 'match'">
+            <i>{{ item.day }}</i><b>{{ item.icon }}</b><span>{{ item.label }}</span>
+          </a>
+        }
       </div>
     </article>
 
     <article class="news-card card-rise">
-      <div class="section-head"><span>{{ text('VEREINSNACHRICHTEN', 'CLUB NEWS') }}</span><span>{{ newsIndex() + 1 }}/{{ gs.news().length || 1 }}</span></div>
-      @if (activeNews(); as item) {
-        <div class="news-content">
-          <app-club-crest [team]="club" [size]="58" />
-          <span class="news-icon">{{ item.icon }}</span>
-          <div><strong>{{ i18n.t(item.titleKey, item.params) }}</strong><p>{{ i18n.t(item.bodyKey, item.params) }}</p></div>
-        </div>
-        <div class="news-controls"><button (click)="nextNews(-1)" aria-label="Previous news">‹</button><button (click)="nextNews(1)" aria-label="Next news">›</button></div>
+      <div class="section-head"><span>{{ text('VEREINSNACHRICHTEN', 'CLUB NEWS') }}</span><span>{{ gs.news().length }}</span></div>
+      @if (gs.news().length) {
+        <ul class="news-feed" [attr.aria-label]="text('Neueste Nachrichten', 'Latest news')">
+          @for (item of gs.news().slice(0, 6); track $index) {
+            <li><span class="news-icon" aria-hidden="true">{{ item.icon }}</span><div><strong>{{ i18n.t(item.titleKey, item.params) }}</strong><p>{{ i18n.t(item.bodyKey, item.params) }}</p></div></li>
+          }
+        </ul>
       } @else {
         <p class="empty-news">{{ text('Spiele dein erstes Match – hier entsteht deine Clubgeschichte.', 'Play your first match and your club story will appear here.') }}</p>
       }
@@ -180,7 +183,7 @@
 
   @if (studioOpen()) {
     <div class="studio-backdrop" (click)="studioOpen.set(false)">
-      <section class="club-studio-modal" role="dialog" aria-modal="true" aria-labelledby="studio-title" (click)="$event.stopPropagation()">
+      <section class="club-studio-modal" role="dialog" appModal (dismiss)="studioOpen.set(false)" aria-labelledby="studio-title" (click)="$event.stopPropagation()">
         <button class="modal-close" (click)="studioOpen.set(false)" aria-label="Close">×</button>
         <p class="eyebrow">PIXEL WORKSHOP</p><h2 id="studio-title">{{ text('CLUB STUDIO', 'CLUB STUDIO') }}</h2>
         <div class="studio-preview">

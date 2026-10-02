@@ -72,6 +72,7 @@ export class ThreePitchRenderer {
   private celebration: { scorerId: string; elapsed: number } | null = null;
   private pitchMaterial: THREE.MeshStandardMaterial | THREE.MeshBasicMaterial | null = null;
   private sunHeight = 75;
+  private minimap = true;
   private readonly cullFrustum = new THREE.Frustum();
   private readonly cullMatrix = new THREE.Matrix4();
   private readonly cullSphere = new THREE.Sphere(new THREE.Vector3(), 2.3);
@@ -925,6 +926,7 @@ export class ThreePitchRenderer {
     const bottomInset = touch ? 0 : 55;
     const mapW = 150 * s, mapH = mapW * FIELD_WIDTH / FIELD_LENGTH;
     const mapX = (w - mapW) / 2, mapY = h - mapH - 15 * s - bottomInset;
+    if (this.minimap && !(replay && !this.celebration)) {
     ctx.fillStyle = 'rgba(9,26,33,.67)';
     ctx.beginPath(); ctx.roundRect(mapX - 9 * s, mapY - 9 * s, mapW + 18 * s, mapH + 18 * s, 6 * s); ctx.fill();
     ctx.strokeStyle = 'rgba(223,240,225,.36)'; ctx.lineWidth = s;
@@ -940,6 +942,7 @@ export class ThreePitchRenderer {
     }
     ctx.fillStyle = '#ffffff';
     ctx.beginPath(); ctx.arc(mapX + (state.attackDirection > 0 ? state.ball.x : FIELD_LENGTH - state.ball.x) / FIELD_LENGTH * mapW, mapY + state.ball.y / FIELD_WIDTH * mapH, 2.4 * s, 0, Math.PI * 2); ctx.fill();
+    }
     const selected = match.actors.find(actor => actor.player.id === state.controlledPlayerId);
     if (selected) {
       const left = 18 * s, bottom = touch ? 98 * s : h - 25 * s - bottomInset;
@@ -981,6 +984,11 @@ export class ThreePitchRenderer {
     ctx.fillStyle = '#fff1c9'; ctx.textAlign = 'center'; ctx.font = '600 20px system-ui';
     ctx.fillText('Grafik wird wiederhergestellt …', this.hud.width / 2, this.hud.height / 2);
     ctx.textAlign = 'left';
+  }
+
+  setMinimap(visible: boolean): void {
+    this.minimap = visible;
+    this.lastHud = -1;
   }
 
   /** One step down after a stalled frame burst instead of dropping straight to the lowest profile. */

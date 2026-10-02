@@ -14,7 +14,7 @@
     <div>
       <p class="eyebrow">{{ 'settings.manager' | t }}</p>
       <h2>{{ gs.game()?.managerName }}</h2>
-      <span class="muted">{{ gs.manager()?.tacticalPhilosophy }} · {{ gs.manager()?.recruitmentPhilosophy }} · {{ gs.manager()?.xp }} / {{ gs.manager()?.xpToNext }} XP · {{ gs.manager()?.skillPoints }} SP</span>
+      <span class="muted">{{ label(gs.manager()?.tacticalPhilosophy) }} · {{ label(gs.manager()?.recruitmentPhilosophy) }} · {{ gs.manager()?.xp }} / {{ gs.manager()?.xpToNext }} XP · {{ gs.manager()?.skillPoints }} SP</span>
     </div>
   </div>
   <div class="perk-grid">
@@ -22,7 +22,7 @@
       <button class="perk" [disabled]="!gs.manager()?.skillPoints || (gs.manager()?.perks?.[path] ?? 0) >= 5" (click)="unlockPerk(path)">
         <strong>{{ ('perk.' + path) | t }}</strong>
         <span>{{ ('perk.' + path + '.desc') | t }}</span>
-        <small>RANK {{ gs.manager()?.perks?.[path] ?? 0 }}/5</small>
+        <small>{{ i18n.pick('STUFE', 'RANK') }} {{ gs.manager()?.perks?.[path] ?? 0 }}/5</small>
       </button>
     }
   </div>
@@ -33,9 +33,9 @@
     <p class="eyebrow">{{ 'settings.gameplay' | t }}</p>
     <div class="setting">
       <span>{{ 'settings.language' | t }}</span>
-      <div class="mini-seg">
-        <button [class.active]="gs.game()?.settings?.locale === 'de'" (click)="setLocale('de')">DE</button>
-        <button [class.active]="gs.game()?.settings?.locale === 'en'" (click)="setLocale('en')">EN</button>
+      <div class="mini-seg" role="group" [attr.aria-label]="'settings.language' | t">
+        <button [class.active]="gs.game()?.settings?.locale === 'de'" [attr.aria-pressed]="gs.game()?.settings?.locale === 'de'" (click)="setLocale('de')">DE</button>
+        <button [class.active]="gs.game()?.settings?.locale === 'en'" [attr.aria-pressed]="gs.game()?.settings?.locale === 'en'" (click)="setLocale('en')">EN</button>
       </div>
     </div>
     <div class="setting">
@@ -55,17 +55,17 @@
       </div>
     </div>
     <div class="setting">
-      <span>Match assist</span>
+      <span>{{ i18n.pick('Spielhilfe', 'Match assist') }}</span>
       <div class="mini-seg">
         @for (preset of assistPresets; track preset) {
-          <button [class.active]="gs.game()?.settings?.assistPreset === preset" (click)="setAssistPreset(preset)">{{ preset }}</button>
+          <button [class.active]="gs.game()?.settings?.assistPreset === preset" [attr.aria-pressed]="gs.game()?.settings?.assistPreset === preset" (click)="setAssistPreset(preset)">{{ preset === 'assisted' ? i18n.pick('Stark', 'Assisted') : preset === 'manual' ? i18n.pick('Manuell', 'Manual') : i18n.pick('Ausgewogen', 'Balanced') }}</button>
         }
       </div>
     </div>
     <label class="toggle"><input type="checkbox" [checked]="gs.game()?.settings?.autoSave" (change)="toggleAutosave()" /><span>{{ 'settings.autosave' | t }}</span></label>
     <label class="toggle"><input type="checkbox" [checked]="gs.game()?.settings?.soundEnabled" (change)="toggleSound()" /><span>{{ 'settings.sound' | t }}</span></label>
-    <label class="toggle"><input type="checkbox" [checked]="gs.game()?.settings?.cameraShake" (change)="toggleCameraShake()" /><span>Camera shake</span></label>
-    <label class="toggle"><input type="checkbox" [checked]="gs.game()?.settings?.reducedMotion" (change)="toggleReducedMotion()" /><span>Reduced motion</span></label>
+    <label class="toggle"><input type="checkbox" [checked]="gs.game()?.settings?.cameraShake" (change)="toggleCameraShake()" /><span>{{ i18n.pick('Kamerawackeln', 'Camera shake') }}</span></label>
+    <label class="toggle"><input type="checkbox" [checked]="gs.game()?.settings?.reducedMotion" (change)="toggleReducedMotion()" /><span>{{ i18n.pick('Reduzierte Bewegung (auch Menüs)', 'Reduced motion (menus too)') }}</span></label>
     <label class="range"><span>{{ 'settings.music' | t }}</span><input type="range" min="0" max="1" step="0.05" [value]="gs.game()?.settings?.musicVolume" (input)="setVolume('musicVolume', $event)" /></label>
     <label class="range"><span>{{ 'settings.sfx' | t }}</span><input type="range" min="0" max="1" step="0.05" [value]="gs.game()?.settings?.sfxVolume" (input)="setVolume('sfxVolume', $event)" /></label>
     <label class="range"><span>{{ 'settings.crowd' | t }}</span><input type="range" min="0" max="1" step="0.05" [value]="gs.game()?.settings?.crowdVolume ?? 0.45" (input)="setVolume('crowdVolume', $event)" /></label>
@@ -82,9 +82,10 @@
 
   <div class="card">
     <p class="eyebrow">{{ 'settings.saveData' | t }}</p>
-    <button class="btn btn--ghost btn--block" (click)="saveNow()">SAVE</button>
-    <button class="btn btn--ghost btn--block" (click)="exportSave()">EXPORT JSON</button>
-    <label class="btn btn--ghost btn--block import">IMPORT JSON<input type="file" accept="application/json" (change)="onImport($event)" hidden /></label>
+    <button class="btn btn--ghost btn--block" (click)="saveNow()">{{ i18n.pick('JETZT SPEICHERN', 'SAVE NOW') }}</button>
+    <button class="btn btn--ghost btn--block" (click)="exportSave()">{{ i18n.pick('ALS JSON EXPORTIEREN', 'EXPORT JSON') }}</button>
+    <button type="button" class="btn btn--ghost btn--block" (click)="importInput.click()">{{ i18n.pick('JSON IMPORTIEREN', 'IMPORT JSON') }}</button>
+    <input #importInput type="file" accept="application/json" (change)="onImport($event)" hidden />
   </div>
 
   <div class="card danger-zone">

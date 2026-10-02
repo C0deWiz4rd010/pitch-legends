@@ -1,6 +1,6 @@
 @if (player(); as p) {
   <div class="overlay" (click)="close.emit()">
-    <div class="modal" (click)="$event.stopPropagation()">
+    <div class="modal" role="dialog" appModal (dismiss)="close.emit()" [attr.aria-label]="p.firstName + ' ' + p.lastName" (click)="$event.stopPropagation()">
       <button class="close" (click)="close.emit()" aria-label="Close">✕</button>
 
       <div class="head">
