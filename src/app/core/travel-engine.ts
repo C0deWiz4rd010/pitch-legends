@@ -3,6 +3,8 @@ import { TravelEvent, TravelEventChoice, TravelEffect } from '../models/world.mo
 import { hash32 } from './visual-identity';
 import { Rng, clamp } from './util';
 import { applyInjury, createInjury, isPlayerAvailable } from './injury-engine';
+import { record } from './career/finance';
+import { travelScoutReport } from './career/scouting';
 
 const CATEGORIES: TravelEvent['category'][] = ['traffic', 'weather', 'fans', 'media', 'bonding', 'scouting', 'sponsor'];
 
@@ -50,6 +52,9 @@ export function resolveTravelEvent(state: GameState, eventId: string, choiceId?:
     player.morale = clamp(player.morale + choice.effect.morale, 0, 100);
   }
   club.coins = Math.max(0, club.coins + choice.effect.coins);
+  record(state, club, 'other', choice.effect.coins);
+  // The scout's sighting turns into precise reports on talents from the host city's region.
+  if (choice.effect.scoutReport) travelScoutReport(state, String(event.params['city'] ?? ''));
   if (choice.effect.injuryRisk > 0) {
     const rng = new Rng(hash32(`${event.id}|${choice.id}|travel-injury`));
     const candidates = club.players.filter((player) => event.affectedPlayerIds.includes(player.id) && isPlayerAvailable(player));

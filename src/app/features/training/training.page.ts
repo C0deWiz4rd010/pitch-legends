@@ -49,6 +49,22 @@ export class TrainingPage {
   protected readonly trainingGround = computed(() => this.team()?.facilities.trainingGround ?? 1);
   protected readonly selectedPlan = computed(() => this.plans().find((plan) => plan.slot === this.selectedSlot()) ?? null);
   protected readonly activeDrill = computed(() => this.drill(this.activeDrillId()) ?? TRAINING_DRILLS[0]);
+  /** Where the trained attribute shows up in a match. */
+  protected readonly matchEffect = computed(() => {
+    const effects: Record<string, [string, string]> = {
+      pace: ['Sprintduelle, Steilpässe erlaufen, Rückwärtslaufen', 'Sprint duels, chasing through balls, tracking back'],
+      shooting: ['Abschlussqualität, Distanzschüsse, Elfmeter', 'Finishing, long shots, penalties'],
+      passing: ['Passgenauigkeit, Steilpässe, Flanken', 'Pass accuracy, through balls, crosses'],
+      dribbling: ['Ballkontrolle, Skill-Moves, enge Räume', 'Ball control, skill moves, tight spaces'],
+      defending: ['Tacklings, Stellungsspiel, Abfangen', 'Tackles, positioning, interceptions'],
+      physical: ['Zweikämpfe, Kopfbälle, Abschirmen', 'Duels, headers, shielding'],
+      stamina: ['Sprintdauer und Leistung in der Schlussphase', 'Sprint duration and late-game sharpness'],
+      goalkeeping: ['Paraden, Hechtsprünge, Strafraumbeherrschung', 'Saves, dives, command of the box'],
+      recovery: ['Fitness für den nächsten Spieltag', 'Fitness for the next matchday'],
+    };
+    const [de, en] = effects[this.activeDrill().focus] ?? ['', ''];
+    return this.text(de, en);
+  });
   protected readonly preview = computed(() => {
     const state = this.gs.game();
     return state ? this.training.preview(state, this.plans()) : { valid: false, errors: ['game-missing'], sessions: [] };

@@ -17,8 +17,8 @@ export class MatchEngineService {
   }
 
   /** Fast full simulation used for league fixtures. It is the same core as PLAY. */
-  simulate(home: Team, away: Team, week: number, seed?: number, fixtureId?: string): MatchResult {
-    const match = this.createSession(home, away, this.headlessConfig(home, away, week, seed, fixtureId));
+  simulate(home: Team, away: Team, week: number, seed?: number, fixtureId?: string, knockout = false): MatchResult {
+    const match = this.createSession(home, away, this.headlessConfig(home, away, week, seed, fixtureId, knockout));
     match.simulateToEnd();
     const result = match.result();
     result.week = week;
@@ -26,12 +26,12 @@ export class MatchEngineService {
   }
 
   /** Worker-first simulation for the visible instant-SIM action. */
-  simulateAsync(home: Team, away: Team, week: number, seed?: number, fixtureId?: string): Promise<MatchResult> {
+  simulateAsync(home: Team, away: Team, week: number, seed?: number, fixtureId?: string, knockout = false): Promise<MatchResult> {
     const request: HeadlessMatchRequest = {
       home: structuredClone(home),
       away: structuredClone(away),
       week,
-      config: this.headlessConfig(home, away, week, seed, fixtureId),
+      config: this.headlessConfig(home, away, week, seed, fixtureId, knockout),
     };
     if (typeof Worker === 'undefined') return this.simulateCooperatively(request);
     return new Promise((resolve) => {
@@ -81,8 +81,9 @@ export class MatchEngineService {
     });
   }
 
-  private headlessConfig(home: Team, away: Team, week: number, seed?: number, fixtureId?: string): MatchConfig {
+  private headlessConfig(home: Team, away: Team, week: number, seed?: number, fixtureId?: string, knockout = false): MatchConfig {
     return {
+      knockout,
       mode: 'instant',
       controllerMode: 'auto',
       seed: seed ?? this.stableSeed(`${home.id}|${away.id}|${week}`),

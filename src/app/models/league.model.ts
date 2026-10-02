@@ -6,6 +6,8 @@ export interface Fixture {
   homeScore: number | null;
   awayScore: number | null;
   played: boolean;
+  /** Absent on league fixtures of older saves. */
+  competition?: 'league' | 'cup';
 }
 
 export interface StandingRow {
@@ -42,4 +44,6 @@ export interface League {
   totalWeeks: number;
   teamIds: string[];
   fixtures: Fixture[];
+  /** 1 = top flight, 2 = second division. */
+  tier: 1 | 2;
 }

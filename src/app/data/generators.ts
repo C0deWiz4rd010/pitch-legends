@@ -22,7 +22,11 @@ import { TRAITS } from './traits';
 import { ARCHETYPES_BY_GROUP } from './talents';
 import { createClubVisualIdentity, createManagerVisualIdentity, createPlayerVisualIdentity, hash32 } from '../core/visual-identity';
 import { ClubVisualIdentity } from '../models/visual.model';
-import { generatePersonName, generateWorld } from './world-generator';
+import { countryRoot, extendWorldWithDivision, generatePersonName, generateWorld, uniqueShortName } from './world-generator';
+import { emptyTeamFinance } from '../models/career.model';
+import { WorldState } from '../models/world.model';
+import { createCup } from '../core/career/cup';
+import { generateSeasonObjectives } from '../core/career/objectives';
 
 /** Squad template: which positions to fill and their alternates. */
 const SQUAD_TEMPLATE: { position: Position; alts: Position[] }[] = [
@@ -196,6 +200,7 @@ export function generateTeam(
     managerId: meta?.managerId ?? `manager-${teamId}`,
     cityId: meta?.cityId ?? `city-${teamId}`,
     rivalTeamIds: [],
+    finance: emptyTeamFinance(1),
   };
   autoFillLineup(team);
   return team;
@@ -283,6 +288,49 @@ export interface NewGameOptions {
   seed?: number;
   visuals?: ClubVisualIdentity;
   managerPhilosophy?: TacticalPhilosophy;
+  /** Start the career in the second division. */
+  startTier?: 1 | 2;
+}
+
+/**
+ * Twelve further clubs for the second division: weaker squads, smaller towns, own managers.
+ * Deterministic for the world seed and independent of the first division's random stream.
+ */
+export function createSecondDivision(world: WorldState, leagueId: string, season: number, managerOffset: number, existing: Team[] = []): { league: League; teams: Team[]; managers: ManagerProfile[] } {
+  const seed = world.seed;
+  const teamIds = Array.from({ length: 12 }, (_, index) => `team-${hash32(`${seed}|team-d2|${index}`).toString(36)}`);
+  const taken = new Set(existing.map((team) => team.shortName));
+  const identities = extendWorldWithDivision(world, teamIds, 2).map((identity) => ({ ...identity, short: uniqueShortName(identity.name, taken) }));
+  const rng = new Rng(hash32(`${seed}|division-2-squads`));
+  const managers = teamIds.map((teamId, index) => generateManager(seed, managerOffset + index, teamId, undefined, identities[index].primary, false));
+  const teams = identities.map((identity, index) => {
+    const strength = clamp(Math.round(47 + rng.gaussian(7, 8) + (index % 3)), 44, 66);
+    const city = world.cities.find((candidate) => candidate.teamId === teamIds[index])!;
+    const team = generateTeam(rng, identity, strength, false, undefined, { id: teamIds[index], cityId: city.id, managerId: managers[index].id, worldSeed: seed });
+    team.coins = 220_000;
+    team.reputation = clamp(Math.round(strength - 6), 25, 80);
+    team.finance = emptyTeamFinance(season);
+    applyManagerPhilosophy(team, managers[index].tacticalPhilosophy);
+    return team;
+  });
+  for (const rivalry of world.rivalries) {
+    const a = teams.find((team) => team.id === rivalry.teamAId);
+    const b = teams.find((team) => team.id === rivalry.teamBId);
+    if (a && !a.rivalTeamIds.includes(rivalry.teamBId)) a.rivalTeamIds.push(rivalry.teamBId);
+    if (b && !b.rivalTeamIds.includes(rivalry.teamAId)) b.rivalTeamIds.push(rivalry.teamAId);
+  }
+  const fixtures = generateFixtures(teamIds, new Rng(hash32(`${seed}|fixtures-d2|${season}`)));
+  const league: League = {
+    id: leagueId,
+    name: `${countryRoot(world)} Division 2`,
+    season,
+    currentWeek: 1,
+    totalWeeks: Math.max(...fixtures.map((fixture) => fixture.week)),
+    teamIds,
+    fixtures,
+    tier: 2,
+  };
+  return { league, teams, managers };
 }
 
 /** Build a full, ready-to-play GameState. */
@@ -301,14 +349,22 @@ export function createNewGame(opts: NewGameOptions): GameState {
     secondary: opts.secondary || '#04240f',
   };
 
+  // Club codes must be unique across the whole world (the player's code wins).
+  const takenShorts = new Set([playerIdentity.short]);
+  for (const identity of worldBlueprint.clubIdentities.slice(1)) {
+    if (takenShorts.has(identity.short)) identity.short = uniqueShortName(identity.name, takenShorts);
+    else takenShorts.add(identity.short);
+  }
+
   const teams: Team[] = [];
+  const startTier = opts.startTier ?? 1;
   const ownManager = generateManager(seed, 0, teamIds[0], opts.managerName || 'Manager', opts.primary || '#38e07b', true, opts.managerPhilosophy);
   const aiManagers = Array.from({ length: totalTeams - 1 }, (_, index) =>
     generateManager(seed, index + 1, teamIds[index + 1], undefined, worldBlueprint.clubIdentities[index + 1].primary, false),
   );
 
   // Player team is mid-table strength so there's room to grow.
-  teams.push(generateTeam(rng, playerIdentity, 66, true, opts.visuals, {
+  teams.push(generateTeam(rng, playerIdentity, startTier === 2 ? 58 : 66, true, opts.visuals, {
     id: teamIds[0], cityId: worldBlueprint.world.cities[0].id, managerId: ownManager.id, worldSeed: seed,
   }));
   worldBlueprint.clubIdentities.slice(1).forEach((identity, i) => {
@@ -338,17 +394,37 @@ export function createNewGame(opts: NewGameOptions): GameState {
     totalWeeks,
     teamIds,
     fixtures,
+    tier: 1,
   };
+  const second = createSecondDivision(worldBlueprint.world, `${league.id}-d2`, 1, totalTeams, teams);
+  teams.push(...second.teams);
+  aiManagers.push(...second.managers);
+  let playerLeague = league;
+  let otherLeague = second.league;
+  if (startTier === 2) {
+    // Swap the player's club with the strongest second-division side.
+    const promoted = [...second.teams].sort((a, b) => b.strength - a.strength)[0];
+    league.teamIds = league.teamIds.map((id) => id === teams[0].id ? promoted.id : id);
+    second.league.teamIds = second.league.teamIds.map((id) => id === promoted.id ? teams[0].id : id);
+    league.fixtures = generateFixtures(league.teamIds, new Rng(hash32(`${seed}|fixtures-d1|1`)));
+    second.league.fixtures = generateFixtures(second.league.teamIds, new Rng(hash32(`${seed}|fixtures-d2|1`)));
+    playerLeague = second.league;
+    otherLeague = league;
+  }
+  const cup = createCup({
+    teams, leagues: [league, second.league], season: 1, seed, totalWeeks: playerLeague.totalWeeks,
+    name: `${countryRoot(worldBlueprint.world)} Cup`,
+  });
 
   const now = Date.now();
-  return {
+  const game: GameState = {
     version: SAVE_VERSION,
     createdAt: now,
     updatedAt: now,
     managerName: `${ownManager.firstName} ${ownManager.lastName}`.trim(),
     clubId: teams[0].id,
     teams,
-    league,
+    league: playerLeague,
     results: [],
     news: [
       {
@@ -368,32 +444,22 @@ export function createNewGame(opts: NewGameOptions): GameState {
     manager: ownManager,
     managers: aiManagers,
     trainingWeek: { season: 1, week: 1, slotsUsed: 0, maxSlots: 3, completedSessions: [] },
-    objectives: [
-      {
-        id: `objective-${seed.toString(36)}-league`,
-        type: 'league-position',
-        target: 6,
-        progress: 12,
-        rewardCoins: 180000,
-        rewardXp: 300,
-        completed: false,
-      },
-      {
-        id: `objective-${seed.toString(36)}-growth`,
-        type: 'player-growth',
-        target: 3,
-        progress: 0,
-        rewardCoins: 80000,
-        rewardXp: 180,
-        completed: false,
-      },
-    ],
+    objectives: [],
     transfers: emptyTransferState(1, 1),
     world: worldBlueprint.world,
+    otherLeagues: [otherLeague],
+    cup,
+    archive: [],
+    board: { confidence: 60, warnedSeason: null, expectedPosition: 6, jobOffer: null },
+    scouting: [],
+    academy: { season: 1, prospects: [] },
   };
+  game.objectives = generateSeasonObjectives(game);
+  game.board.expectedPosition = game.objectives.find((objective) => objective.type === 'league-position')?.target ?? 6;
+  return game;
 }
 
-function generateManager(seed: number, index: number, clubId: string, explicitName: string | undefined, clubPrimary: string, playerControlled: boolean, preferredPhilosophy?: TacticalPhilosophy): ManagerProfile {
+export function generateManager(seed: number, index: number, clubId: string, explicitName: string | undefined, clubPrimary: string, playerControlled: boolean, preferredPhilosophy?: TacticalPhilosophy): ManagerProfile {
   const generated = generatePersonName(seed, `manager-${index}`);
   const parts = explicitName?.trim().split(/\s+/).filter(Boolean) ?? [];
   const firstName = parts.length ? parts[0] : generated.firstName;
@@ -428,7 +494,7 @@ function generateManager(seed: number, index: number, clubId: string, explicitNa
   };
 }
 
-function applyManagerPhilosophy(team: Team, philosophy: TacticalPhilosophy): void {
+export function applyManagerPhilosophy(team: Team, philosophy: TacticalPhilosophy): void {
   if (philosophy === 'possession') Object.assign(team.tactics, { mentality: 'balanced', pressing: 'medium', tempo: 'slow', buildUp: 'play-out-of-defence', passing: 'short', counterAttack: false });
   if (philosophy === 'gegenpress') Object.assign(team.tactics, { mentality: 'attacking', pressing: 'gegenpress', tempo: 'fast', defensiveLine: 'high', counterAttack: true });
   if (philosophy === 'counter') Object.assign(team.tactics, { mentality: 'defensive', pressing: 'medium', tempo: 'fast', defensiveLine: 'deep', buildUp: 'long-ball', passing: 'direct', counterAttack: true });

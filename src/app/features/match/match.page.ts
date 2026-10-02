@@ -56,6 +56,7 @@ import { SubstitutionPanelComponent, PitchEntry } from '../../shared/components/
 import { ConfirmDialogComponent } from '../../shared/components/confirm-dialog.component';
 import { HeatmapComponent } from '../../shared/components/heatmap.component';
 import { tacticLabel } from '../../shared/tactic-labels';
+import { CUP_ROUND_LABELS } from '../../core/career/cup';
 import type { ThreePitchRenderer } from './three-pitch.renderer';
 
 type PagePhase = 'preview' | 'intro' | 'simulating' | 'match' | 'halftime' | 'result';
@@ -234,6 +235,18 @@ export class MatchPage implements OnDestroy {
     return this.homeTeam()?.id === club?.id ? this.awayTeam() : this.homeTeam();
   });
   protected readonly isHome = computed(() => this.homeTeam()?.id === this.controlledTeam()?.id);
+  /** Cup ties go to extra time and penalties when level. */
+  protected readonly isCupTie = computed(() => {
+    const fixture = this.matchFixture();
+    return !this.practice && !!fixture && 'competition' in fixture && fixture.competition === 'cup';
+  });
+  protected readonly cupRoundName = computed(() => {
+    const fixture = this.matchFixture();
+    const cup = this.gs.game()?.cup;
+    if (!this.isCupTie() || !fixture || !cup || !('round' in fixture)) return '';
+    const key = cup.rounds.find((round) => round.round === (fixture as { round: number }).round)?.key;
+    return key ? this.i18n.pick(CUP_ROUND_LABELS[key].de, CUP_ROUND_LABELS[key].en) : '';
+  });
   protected readonly minute = computed(() => this.result() ? (this.result()!.extraTime ? 120 : 90) : this.matchView().footballMinute);
   /** 45+2' style during stoppage time. */
   protected readonly minuteLabel = computed(() => {
@@ -496,7 +509,7 @@ export class MatchPage implements OnDestroy {
     if (!this.practice) this.travel.resolveSafeForFixture(fixture.id);
     if (this.selectedMode() === 'instant') {
       this.phase.set('simulating');
-      void this.engine.simulateAsync(home, away, fixture.week, this.stableSeed(fixture.id), fixture.id).then((result) => {
+      void this.engine.simulateAsync(home, away, fixture.week, this.stableSeed(fixture.id), fixture.id, this.isCupTie()).then((result) => {
         this.result.set(result);
         this.revealed.set([...result.events]);
         this.phase.set('result');
@@ -519,6 +532,7 @@ export class MatchPage implements OnDestroy {
       weather: this.practice ? 'clear' : this.expectedWeather(),
       inputDevice: this.selectedMode() === 'coach' ? 'ai' : this.inputDevice(),
       camera: { zoom: 1, lookAhead: 0.18, shake: settings?.cameraShake ?? true, reducedMotion: settings?.reducedMotion ?? false },
+      knockout: this.isCupTie(),
     }, this.gs.manager()?.perks.tactics ?? 0);
     this.autoEnabled.set(this.arcade.controllerMode === 'auto');
     this.prevHome = this.arcade.homeScore;
@@ -932,7 +946,7 @@ export class MatchPage implements OnDestroy {
     const committed = await this.season.commitWeek(result);
     if (committed) this.checkpoints.clear();
     this.reset();
-    await this.router.navigateByUrl(this.gs.seasonOver() ? '/league' : '/');
+    await this.router.navigateByUrl(this.gs.seasonOver() ? '/season-review' : '/');
   }
 
   protected currentMentality(): Mentality | undefined { return this.arcade?.controlledTeam.tactics.mentality; }

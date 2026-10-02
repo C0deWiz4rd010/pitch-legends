@@ -2,10 +2,14 @@ import { Injectable } from '@angular/core';
 import { defaultSettings, GameState, SAVE_VERSION } from '../../models/game.model';
 import { ensureGameVisuals } from '../visual-identity';
 import { createManagerVisualIdentity, hash32 } from '../visual-identity';
-import { generatePersonName, generateWorld } from '../../data/world-generator';
+import { countryRoot, generatePersonName, generateWorld } from '../../data/world-generator';
 import { ManagerProfile } from '../../models/game.model';
+import { createSecondDivision } from '../../data/generators';
+import { emptyTeamFinance } from '../../models/career.model';
+import { createCup } from '../career/cup';
 
-const STORAGE_KEY = 'pitch-legends:save:v5';
+const STORAGE_KEY = 'pitch-legends:save:v6';
+const V5_STORAGE_KEY = 'pitch-legends:save:v5';
 const V4_STORAGE_KEY = 'pitch-legends:save:v4';
 const V3_STORAGE_KEY = 'pitch-legends:save:v3';
 const V2_STORAGE_KEY = 'pitch-legends:save:v2';
@@ -15,15 +19,15 @@ const LEGACY_STORAGE_KEY = 'pitch-legends:save:v1';
 export class SaveService {
   load(): GameState | null {
     try {
-      const raw = localStorage.getItem(STORAGE_KEY) ?? localStorage.getItem(V4_STORAGE_KEY);
+      const raw = localStorage.getItem(STORAGE_KEY) ?? localStorage.getItem(V5_STORAGE_KEY) ?? localStorage.getItem(V4_STORAGE_KEY);
       if (!raw) return null;
       const parsed = JSON.parse(raw) as GameState;
       if (!this.validateBase(parsed)) return null;
-      const migrated = this.migrateToV5(parsed);
+      const migrated = this.migrateToV6(this.migrateToV5(parsed));
       migrated.settings = { ...defaultSettings(), ...migrated.settings };
       migrated.trainingWeek = this.normaliseTrainingWeek(migrated.trainingWeek);
       const ready = ensureGameVisuals(migrated);
-      if (parsed.version === 4) this.save(ready);
+      if (parsed.version !== SAVE_VERSION) this.save(ready);
       return ready;
     } catch {
       return null;
@@ -40,11 +44,12 @@ export class SaveService {
 
   clear(): void {
     localStorage.removeItem(STORAGE_KEY);
+    localStorage.removeItem(V5_STORAGE_KEY);
     localStorage.removeItem(V4_STORAGE_KEY);
   }
 
   hasSave(): boolean {
-    return !!localStorage.getItem(STORAGE_KEY) || !!localStorage.getItem(V4_STORAGE_KEY);
+    return !!localStorage.getItem(STORAGE_KEY) || !!localStorage.getItem(V5_STORAGE_KEY) || !!localStorage.getItem(V4_STORAGE_KEY);
   }
 
   hasLegacySave(): boolean {
@@ -68,7 +73,7 @@ export class SaveService {
     if (!this.validateBase(parsed)) {
       throw new Error('Invalid save file.');
     }
-    const game = this.migrateToV5(parsed as GameState);
+    const game = this.migrateToV6(this.migrateToV5(parsed as GameState));
     game.settings = { ...defaultSettings(), ...game.settings };
     game.trainingWeek = this.normaliseTrainingWeek(game.trainingWeek);
     return ensureGameVisuals(game);
@@ -103,6 +108,41 @@ export class SaveService {
       for (const player of team.players) this.normaliseMedical(player, game.league.season, game.league.currentWeek);
     }
     for (const player of game.transfers.freeAgents) this.normaliseMedical(player, game.league.season, game.league.currentWeek);
+    game.version = 5;
+    return game;
+  }
+
+  /**
+   * Version 6: second division, cup, club finances, archive, board, scouting and academy.
+   * Existing clubs, players and results stay untouched; the new division is added around them.
+   */
+  private migrateToV6(game: GameState): GameState {
+    const season = game.league.season;
+    game.league.tier ??= 1;
+    game.otherLeagues ??= [];
+    for (const team of game.teams) team.finance ??= emptyTeamFinance(season);
+    if (!game.otherLeagues.length) {
+      const second = createSecondDivision(game.world, `${game.league.id}-d2`, season, game.teams.length, game.teams);
+      second.league.currentWeek = game.league.currentWeek;
+      // Weeks already played in the top flight are played in the new division as goalless draws on paper.
+      for (const fixture of second.league.fixtures) {
+        if (fixture.week >= game.league.currentWeek) continue;
+        fixture.homeScore = 0;
+        fixture.awayScore = 0;
+        fixture.played = true;
+      }
+      game.teams.push(...second.teams);
+      game.managers.push(...second.managers);
+      game.otherLeagues.push(second.league);
+    }
+    game.cup ??= createCup({
+      teams: game.teams, leagues: [game.league, ...game.otherLeagues], season, seed: game.world.seed,
+      totalWeeks: game.league.totalWeeks, name: `${countryRoot(game.world)} Cup`, firstWeek: game.league.currentWeek,
+    });
+    game.archive ??= [];
+    game.board ??= { confidence: 60, warnedSeason: null, expectedPosition: game.objectives.find((objective) => objective.type === 'league-position')?.target ?? 6, jobOffer: null };
+    game.scouting ??= [];
+    game.academy ??= { season, prospects: [] };
     game.version = SAVE_VERSION;
     return game;
   }
@@ -147,7 +187,7 @@ export class SaveService {
   private validateBase(value: unknown): value is GameState {
     if (!value || typeof value !== 'object') return false;
     const g = value as Partial<GameState>;
-    if (![4, SAVE_VERSION].includes(g.version ?? -1) || typeof g.clubId !== 'string') return false;
+    if (![4, 5, SAVE_VERSION].includes(g.version ?? -1) || typeof g.clubId !== 'string') return false;
     if (!Array.isArray(g.teams) || !g.teams.length || !g.league || !Array.isArray(g.league.fixtures)) return false;
     if (!g.settings || !['de', 'en'].includes(g.settings.locale) || ![3, 5, 8].includes(g.settings.matchDuration)) return false;
     if (!g.manager || !g.trainingWeek || !Array.isArray(g.objectives) || !g.transfers) return false;

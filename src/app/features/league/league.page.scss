@@ -19,3 +19,47 @@
 
 @media(max-width:900px){:host{overflow:auto}.league-workspace{height:auto;min-height:100%;display:block}.league-head{grid-template-columns:auto 1fr}.league-tabs{grid-column:1/-1;overflow:auto}.league-content{overflow:visible;margin-top:10px}.overview-grid,.map-layout,.stats-grid{height:auto;grid-template-columns:1fr}.standings-panel{height:560px}.atlas-panel{min-height:480px}.map-dossier{min-height:320px}.fixture-board{height:650px}}
 @media(max-width:560px){.league-head{padding:8px}.country-flag{width:42px;height:30px}.league-title h1{font-size:13px}.league-tabs button{padding:8px;font-size:10px}.standing-head,.standing-row{grid-template-columns:28px minmax(130px,1fr) 28px 34px 38px}.standing-head i:nth-of-type(2),.standing-row>i:nth-of-type(2){display:none}.form{display:none}.spotlight-hero{grid-template-columns:74px 1fr}.spotlight-hero app-mini-kit{display:none}.fixture-card{grid-template-columns:1fr 72px 1fr;padding-inline:7px}.fixture-team{font-size:10px}.fixture-team app-club-crest{width:36px!important;height:36px!important}.atlas-panel{min-height:360px}.world-map{min-width:650px;transform:scale(.78)}.stats-grid{display:block}.ranking{max-height:520px;margin-bottom:10px}}
+
+// Divisions, cup bracket and archive
+.league-head { grid-template-columns:auto minmax(0,1fr) auto; }
+.league-controls { display:flex; align-items:center; gap:8px; flex-wrap:wrap; justify-content:end; }
+.division-switch { display:flex; gap:4px; padding:4px; border:1px solid var(--border); background:var(--ink-950); }
+.division-switch button { border:0; padding:9px 10px; color:var(--text-mute); background:transparent; font:10px var(--font-display); cursor:pointer; }
+.division-switch button.active { color:var(--ink-950); background:var(--accent-3); }
+.standing-row.up { box-shadow:inset -4px 0 0 var(--accent); }
+.standing-row.down { box-shadow:inset -4px 0 0 var(--danger); }
+.zone-legend { margin:0; padding:8px 14px; display:flex; align-items:center; gap:8px; color:var(--text-mute); font-size:11px; border-top:1px solid var(--border); }
+.zone-legend i { width:10px; height:10px; display:inline-block; background:var(--accent); }
+.zone-legend i.down { background:var(--danger); margin-left:10px; }
+.cup-board { height:100%; display:grid; grid-template-rows:auto minmax(0,1fr); }
+.cup-head { display:flex; justify-content:space-between; gap:12px; padding:12px 14px; border-bottom:1px solid var(--border); font:11px var(--font-display); }
+.cup-head b { color:var(--accent-3); }
+.bracket { min-height:0; overflow:auto; display:grid; grid-auto-flow:column; grid-auto-columns:minmax(170px,1fr); gap:12px; padding:12px; }
+.bracket-round { display:flex; flex-direction:column; gap:6px; justify-content:space-around; }
+.bracket-round h3 { margin:0 0 4px; font:11px var(--font-display); color:var(--accent-2); }
+.bracket-round h3 small { display:block; margin-top:3px; color:var(--text-mute); font:11px var(--font-body, inherit); }
+.tie { display:grid; grid-template-columns:1fr auto 1fr; align-items:center; gap:6px; padding:8px; background:#080c18; border-left:3px solid transparent; font-size:12px; }
+.tie span:last-child { text-align:right; }
+.tie b { font:11px var(--font-display); color:var(--accent-3); white-space:nowrap; }
+.tie .won { color:var(--accent); font-weight:700; }
+.tie.me { border-left-color:var(--accent); background:#0d241f; }
+.bye { font-size:11px; }
+.archive-grid { height:100%; min-height:0; display:grid; grid-template-columns:minmax(260px,.7fr) minmax(0,1.3fr); gap:10px; }
+.trophy-room,.season-archive { overflow:auto; }
+.trophy-room > header,.season-archive > header { padding:12px 14px; border-bottom:1px solid var(--border); font:11px var(--font-display); }
+.trophies { display:grid; grid-template-columns:repeat(3,1fr); gap:6px; padding:12px; }
+.trophies p { margin:0; padding:10px 6px; text-align:center; background:var(--ink-950); border:1px solid var(--border); }
+.trophies b { display:block; font:20px var(--font-display); color:var(--accent-3); }
+.trophies small { color:var(--text-mute); font-size:11px; }
+.trophy-room h3 { margin:6px 14px; font:11px var(--font-display); color:var(--accent-2); }
+.fame-row { display:grid; grid-template-columns:30px 1fr auto; align-items:center; gap:8px; padding:6px 14px; font-size:12px; }
+.archive-row { display:flex; flex-direction:column; gap:4px; padding:10px 14px; border-bottom:1px solid #202947; font-size:12px; }
+.archive-row strong { font:11px var(--font-display); color:var(--accent-3); }
+.archive-row small { color:var(--text-mute); }
+.cup-board .muted,.archive-grid .muted { padding:0 14px; color:var(--text-mute); }
+@media (max-width: 760px) {
+  .league-head { grid-template-columns:auto minmax(0,1fr); }
+  .league-controls { grid-column:1 / -1; justify-content:start; }
+  .league-tabs { overflow-x:auto; max-width:100%; }
+  .archive-grid { grid-template-columns:1fr; height:auto; }
+}

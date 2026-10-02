@@ -1,6 +1,7 @@
 import { Formation, Tactics } from './tactics.model';
 import { Player } from './player.model';
 import { ClubVisualIdentity } from './visual.model';
+import { TeamFinance } from './career.model';
 
 export type FacilityKey = 'trainingGround' | 'medicalCenter' | 'stadium' | 'youthAcademy';
 
@@ -39,4 +40,6 @@ export interface Team {
   managerId: string;
   cityId: string;
   rivalTeamIds: string[];
+  /** Season ledger: income, wages, transfers and upkeep. */
+  finance: TeamFinance;
 }

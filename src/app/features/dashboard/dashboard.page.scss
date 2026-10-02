@@ -142,3 +142,14 @@
 .season-complete .match-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .season-complete button.primary-action { border: 0; cursor: pointer; font: inherit; }
 .news-feed .news-icon { font: 10px var(--font-display); color: var(--accent-2); text-transform: uppercase; overflow: hidden; }
+
+// Board meter, cup label and news pages
+.board-meter { display: grid; grid-template-columns: 1fr auto; gap: 6px; margin-top: 10px; font: 10px var(--font-display); color: var(--text-mute); }
+.board-meter b { color: var(--text); }
+.board-meter i { grid-column: 1 / -1; height: 6px; background: var(--ink-950); border: 1px solid var(--border); }
+.board-meter em { display: block; height: 100%; background: var(--accent); }
+.board-meter em.low { background: var(--danger); }
+.eyebrow.cup { color: var(--accent-3); }
+.news-pager { display: inline-flex; align-items: center; gap: 6px; }
+.news-pager button { min-width: 26px; min-height: 26px; border: 1px solid var(--border); background: var(--ink-950); color: var(--text); cursor: pointer; }
+.news-pager button:disabled { opacity: .4; cursor: default; }

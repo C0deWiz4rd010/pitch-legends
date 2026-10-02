@@ -12,9 +12,12 @@ import { MiniKitComponent } from '../../shared/components/mini-kit.component';
 import { PlayerPortraitComponent } from '../../shared/components/player-portrait.component';
 import { ManagerPortraitComponent } from '../../shared/components/manager-portrait.component';
 import { formatCoins, moraleIcon, ratingColor } from '../../shared/rating-color';
-import { SeasonService } from '../../core/services/season.service';
 import { tacticLabel } from '../../shared/tactic-labels';
 import { ModalDirective } from '../../shared/modal.directive';
+import { objectiveLabel, objectiveProgress } from '../../shared/objective-labels';
+import { CUP_ROUND_LABELS } from '../../core/career/cup';
+import { tierOfTeam } from '../../core/career/finance';
+import { CupTie } from '../../models/career.model';
 
 interface ManagerAlert {
   icon: string;
@@ -33,12 +36,26 @@ interface ManagerAlert {
 export class DashboardPage {
   protected readonly gs = inject(GameStateService);
   protected readonly i18n = inject(I18nService);
-  private readonly season = inject(SeasonService);
   protected readonly playerName = playerName;
   protected readonly formatCoins = formatCoins;
   protected readonly ratingColor = ratingColor;
   protected readonly moraleIcon = moraleIcon;
   protected readonly newsIndex = signal(0);
+  protected readonly newsPage = signal(0);
+  protected readonly newsPageSize = 6;
+  protected readonly newsPages = computed(() => Math.max(1, Math.ceil(this.gs.news().length / this.newsPageSize)));
+  protected readonly pagedNews = computed(() => {
+    const page = Math.min(this.newsPage(), this.newsPages() - 1);
+    return this.gs.news().slice(page * this.newsPageSize, (page + 1) * this.newsPageSize);
+  });
+  protected readonly boardConfidence = computed(() => Math.round(this.gs.game()?.board?.confidence ?? 60));
+  protected readonly cupLabel = computed(() => {
+    const fixture = this.gs.nextFixture();
+    const cup = this.gs.game()?.cup;
+    if (!fixture || fixture.competition !== 'cup' || !cup) return '';
+    const key = cup.rounds.find((round) => round.round === (fixture as CupTie).round)?.key;
+    return key ? `${cup.name} · ${this.text(CUP_ROUND_LABELS[key].de, CUP_ROUND_LABELS[key].en)}` : cup.name;
+  });
 
   /** Kick-off is a stable property of the fixture, not a fixed clock. */
   protected readonly kickoffTime = computed(() => {
@@ -72,9 +89,6 @@ export class DashboardPage {
     return tacticLabel(this.gs.manager()?.tacticalPhilosophy, this.i18n.locale());
   }
 
-  protected startNextSeason(): void {
-    this.season.startNextSeason();
-  }
   protected readonly studioOpen = signal(false);
   private readonly studioNonce = signal(0);
 
@@ -102,6 +116,7 @@ export class DashboardPage {
       home: fixture.homeTeamId === team.id,
       rating: this.teamRating(opponent.players),
       rank: this.gs.standings().findIndex((row) => row.teamId === opponent.id) + 1,
+      tierLabel: this.text(`${tierOfTeam(this.gs.game()!, opponent.id)}. Liga`, `Div ${tierOfTeam(this.gs.game()!, opponent.id)}`),
       form: this.formFor(opponent.id),
       weather: (['clear', 'rain', 'storm'] as const)[hash32(`${fixture.id}|weather`) % 3],
     };
@@ -122,6 +137,8 @@ export class DashboardPage {
     else if (injured) alerts.push({ icon: '+', label: this.text(`${injured} Verletzte im Kader`, `${injured} players injured`), route: '/squad', tone: 'warning' });
     if (expiring) alerts.push({ icon: '⌛', label: this.text(`${expiring} Verträge laufen bald aus`, `${expiring} contracts expiring`), route: '/transfer', tone: 'warning' });
     if (this.gs.trainingSlotsRemaining() > 0) alerts.push({ icon: 'XP', label: this.text(`${this.gs.trainingSlotsRemaining()} Trainingsplätze frei`, `${this.gs.trainingSlotsRemaining()} training slots open`), route: '/training', tone: 'info' });
+    if (this.boardConfidence() < 30) alerts.push({ icon: '!', label: this.text(`Vorstand unruhig (${this.boardConfidence()} %)`, `Board restless (${this.boardConfidence()}%)`), route: '/season-review', tone: 'danger' });
+    if (this.gs.game()?.academy?.prospects.length) alerts.push({ icon: '✦', label: this.text(`${this.gs.game()!.academy.prospects.length} Talente in der Akademie`, `${this.gs.game()!.academy.prospects.length} academy prospects`), route: '/academy', tone: 'info' });
     if (this.skillPointsAvailable() > 0) alerts.push({ icon: 'SP', label: this.text(`${this.skillPointsAvailable()} Skillpunkte verteilen`, `Spend ${this.skillPointsAvailable()} skill points`), route: '/squad', tone: 'info' });
     return alerts.slice(0, 3);
   });
@@ -172,17 +189,11 @@ export class DashboardPage {
   }
 
   protected objectiveLabel(objective: CareerObjective): string {
-    if (objective.type === 'league-position') return this.text(`Liga-Platz ${objective.target} erreichen`, `Finish in league position ${objective.target}`);
-    if (objective.type === 'player-growth') return this.text(`${objective.target} Spieler-Level gewinnen`, `Gain ${objective.target} player levels`);
-    return this.text(`${objective.target} Siege holen`, `Win ${objective.target} matches`);
+    return objectiveLabel(objective, (de, en) => this.text(de, en));
   }
 
   protected objectiveProgress(objective: CareerObjective): number {
-    if (objective.type === 'league-position') {
-      const progress = objective.completed ? 100 : 100 - (this.rank() - objective.target) * 14;
-      return Math.min(100, Math.max(5, progress));
-    }
-    return Math.min(100, Math.round(objective.progress / objective.target * 100));
+    return objectiveProgress(objective, this.rank());
   }
 
   private teamRating(players: Player[]): number {

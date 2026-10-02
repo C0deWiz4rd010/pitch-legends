@@ -38,7 +38,7 @@ describe('Living world V1.4', () => {
 
     const migrated = new SaveService().parseImport(raw);
 
-    expect(migrated.version).toBe(5);
+    expect(migrated.version).toBe(6);
     expect(migrated.world.cities).toHaveLength(migrated.teams.length);
     expect(migrated.managers).toHaveLength(migrated.teams.length - 1);
     expect(migrated.teams[0].players.find((player) => player.id === injuredId)?.medical.activeInjury?.diagnosisId).toBe('legacy-knock');

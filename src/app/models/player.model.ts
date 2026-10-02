@@ -123,6 +123,8 @@ export interface Player {
 
   // Season stats
   seasonStats: PlayerSeasonStats;
+  /** Totals of all completed seasons. */
+  career?: import('./career.model').PlayerCareerStats;
 }
 
 export interface PlayerSeasonStats {

@@ -20,7 +20,7 @@
       @if (nextOpponent(); as opponent) {
         <div class="stage-top">
           <div>
-            <p class="eyebrow">{{ text('NÄCHSTER SPIELTAG', 'NEXT MATCHDAY') }}</p>
+            @if (cupLabel()) { <p class="eyebrow cup">🏆 {{ cupLabel() }}</p> } @else { <p class="eyebrow">{{ text('NÄCHSTER SPIELTAG', 'NEXT MATCHDAY') }}</p> }
             <strong>{{ text('Woche', 'Week') }} {{ gs.currentWeek() }} / {{ gs.totalWeeks() }}</strong>
           </div>
           <div class="fixture-meta">
@@ -49,7 +49,7 @@
             <app-club-crest [team]="opponent.team" [size]="92" />
             <div class="team-copy">
               <strong>{{ opponent.team.name }}</strong>
-              <span>#{{ opponent.rank }} · {{ text('Stärke', 'Rating') }} {{ opponent.rating }}</span>
+              <span>{{ opponent.rank ? '#' + opponent.rank : opponent.tierLabel }} · {{ text('Stärke', 'Rating') }} {{ opponent.rating }}</span>
               <div class="form-row">
                 @for (result of opponent.form; track $index) { <i [class]="result.toLowerCase()">{{ result }}</i> }
                 @empty { <small>{{ text('Unbekannte Form', 'Unknown form') }}</small> }
@@ -68,10 +68,10 @@
         <div class="season-complete">
           <app-club-crest [team]="club" [size]="112" />
           <h2>{{ text('SAISON ABGESCHLOSSEN', 'SEASON COMPLETE') }}</h2>
-          <p>{{ text('Dein Abschlussbericht und die finale Tabelle warten.', 'Your final report and league table are ready.') }}</p>
+          <p>{{ text('Meister, Auszeichnungen, Auf- und Abstieg: dein Saisonabschluss wartet.', 'Champions, awards, promotion and relegation: your season review is ready.') }}</p>
           <div class="match-actions">
             <a routerLink="/league" class="auto-action">{{ text('FINALE TABELLE', 'FINAL TABLE') }}</a>
-            <button type="button" class="primary-action" (click)="startNextSeason()">{{ text('NEUE SAISON STARTEN →', 'START NEXT SEASON →') }}</button>
+            <a routerLink="/season-review" class="primary-action">{{ text('SAISONABSCHLUSS →', 'SEASON REVIEW →') }}</a>
           </div>
         </div>
       }
@@ -100,6 +100,10 @@
       <div class="manager-stats">
         <div><span>{{ text('BUDGET', 'BUDGET') }}</span><strong>{{ formatCoins(gs.coins()) }}</strong></div>
         <div><span>{{ text('LIGAPLATZ', 'LEAGUE') }}</span><strong>#{{ rank() }}</strong></div>
+      </div>
+      <div class="board-meter" role="meter" [attr.aria-valuenow]="boardConfidence()" aria-valuemin="0" aria-valuemax="100" [attr.aria-label]="text('Vertrauen des Vorstands', 'Board confidence')">
+        <span>{{ text('VORSTAND', 'BOARD') }}</span><b>{{ boardConfidence() }}%</b>
+        <i><em [style.width.%]="boardConfidence()" [class.low]="boardConfidence() < 30"></em></i>
       </div>
     </aside>
   </div>
@@ -158,10 +162,18 @@
     </article>
 
     <article class="news-card card-rise">
-      <div class="section-head"><span>{{ text('VEREINSNACHRICHTEN', 'CLUB NEWS') }}</span><span>{{ gs.news().length }}</span></div>
+      <div class="section-head"><span>{{ text('VEREINSNACHRICHTEN', 'CLUB NEWS') }}</span>
+        @if (newsPages() > 1) {
+          <span class="news-pager">
+            <button type="button" [disabled]="newsPage() === 0" (click)="newsPage.set(newsPage() - 1)" [attr.aria-label]="text('Neuere Nachrichten', 'Newer news')">‹</button>
+            {{ newsPage() + 1 }}/{{ newsPages() }}
+            <button type="button" [disabled]="newsPage() >= newsPages() - 1" (click)="newsPage.set(newsPage() + 1)" [attr.aria-label]="text('Ältere Nachrichten', 'Older news')">›</button>
+          </span>
+        } @else { <span>{{ gs.news().length }}</span> }
+      </div>
       @if (gs.news().length) {
         <ul class="news-feed" [attr.aria-label]="text('Neueste Nachrichten', 'Latest news')">
-          @for (item of gs.news().slice(0, 6); track $index) {
+          @for (item of pagedNews(); track $index) {
             <li><span class="news-icon" aria-hidden="true">{{ item.icon }}</span><div><strong>{{ i18n.t(item.titleKey, item.params) }}</strong><p>{{ i18n.t(item.bodyKey, item.params) }}</p></div></li>
           }
         </ul>

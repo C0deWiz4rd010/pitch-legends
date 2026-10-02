@@ -105,6 +105,11 @@
         <div class="seed-row"><label>{{ i18n.pick('WELT-SEED', 'WORLD SEED') }}<input type="number" [ngModel]="worldSeed()" (ngModelChange)="worldSeed.set(+$event)" /></label><button type="button" (click)="copySeed()">{{ i18n.pick('KOPIEREN', 'COPY') }}</button><button type="button" (click)="rollWorld()">{{ i18n.pick('WELT ↻', 'WORLD ↻') }}</button></div>
         <div class="manager-preview"><app-manager-portrait [manager]="managerPreview()" [size]="72" /><div><small>{{ i18n.pick('MANAGER-IDENTITÄT', 'MANAGER IDENTITY') }}</small><b>{{ managerPreview().firstName }} {{ managerPreview().lastName }}</b><button type="button" (click)="rollManager()">{{ i18n.pick('MANAGER WÜRFELN', 'ROLL MANAGER') }}</button></div></div>
         <div class="philosophies" role="group" [attr.aria-label]="i18n.pick('Spielphilosophie', 'Playing philosophy')">@for (philosophy of philosophies; track philosophy) { <button type="button" [class.active]="managerPhilosophy() === philosophy" [attr.aria-pressed]="managerPhilosophy() === philosophy" (click)="managerPhilosophy.set(philosophy)">{{ label(philosophy) }}</button> }</div>
+        <div class="start-tier" role="group" [attr.aria-label]="i18n.pick('Startliga', 'Starting division')">
+          <span class="eyebrow">{{ i18n.pick('STARTLIGA', 'STARTING DIVISION') }}</span>
+          <button type="button" [class.active]="startTier() === 1" [attr.aria-pressed]="startTier() === 1" (click)="startTier.set(1)">{{ i18n.pick('1. LIGA', 'TOP FLIGHT') }}<small>{{ i18n.pick('Mittelfeldklub', 'Mid-table club') }}</small></button>
+          <button type="button" [class.active]="startTier() === 2" [attr.aria-pressed]="startTier() === 2" (click)="startTier.set(2)">{{ i18n.pick('2. LIGA', 'DIVISION 2') }}<small>{{ i18n.pick('Aufstieg als Ziel', 'Aim for promotion') }}</small></button>
+        </div>
       </section>
 
       @if (error()) { <p class="error">{{ error() }}</p> }

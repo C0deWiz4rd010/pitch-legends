@@ -4,7 +4,11 @@
 @if (phase() === 'preview') {
   <header class="page-head fade-up">
     <div>
-      <p class="eyebrow">{{ i18n.pick('SPIELTAG', 'MATCHDAY') }} {{ gs.currentWeek() }}</p>
+      @if (isCupTie()) {
+        <p class="eyebrow cup-eyebrow">{{ gs.game()?.cup?.name }} · {{ cupRoundName() }}</p>
+      } @else {
+        <p class="eyebrow">{{ i18n.pick('SPIELTAG', 'MATCHDAY') }} {{ gs.currentWeek() }}</p>
+      }
       <h1>{{ i18n.pick('Matchcenter', 'Match Centre') }}</h1>
     </div>
     <span class="weather-chip" [attr.data-weather]="expectedWeather()">{{ tacticLabel(expectedWeather()).toUpperCase() }}</span>
@@ -36,6 +40,7 @@
         <div class="pv-vs">
           <span>VS</span>
           <small>{{ isHome() ? i18n.pick('HEIM', 'HOME') : i18n.pick('AUSWÄRTS', 'AWAY') }}</small>
+          @if (isCupTie()) { <small class="ko-note">{{ i18n.pick('K.-o.: Verlängerung & Elfmeter', 'Knockout: extra time & penalties') }}</small> }
         </div>
         <div class="pv-team">
           <app-club-crest [team]="$any(awayTeam())" [size]="72" />

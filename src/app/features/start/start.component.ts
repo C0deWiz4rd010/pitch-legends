@@ -42,6 +42,8 @@ export class StartComponent {
   readonly difficulty = signal<Difficulty>('normal');
   readonly worldSeed = signal(Math.floor(Math.random() * 0x7fffffff));
   readonly managerPhilosophy = signal<TacticalPhilosophy>('balanced');
+  /** Start in the top flight or work up from the second division. */
+  readonly startTier = signal<1 | 2>(1);
   readonly error = signal('');
   private readonly visualNonce = signal(0);
   readonly visuals = signal(createClubVisualIdentity('Harbour City', 'HBC', '#38e07b', '#04240f', hash32('pitch-legends-club-studio')));
@@ -161,7 +163,7 @@ export class StartComponent {
 
   start(): void {
     if (!this.managerName().trim() || !this.clubName().trim()) {
-      this.error.set('Please enter a manager and club name.');
+      this.error.set(this.i18n.pick('Bitte Manager- und Vereinsnamen eingeben.', 'Please enter a manager and club name.'));
       return;
     }
     this.gs.newGame({
@@ -175,6 +177,7 @@ export class StartComponent {
       visuals: structuredClone(this.visuals()),
       seed: this.worldSeed(),
       managerPhilosophy: this.managerPhilosophy(),
+      startTier: this.startTier(),
     });
     this.router.navigateByUrl('/');
   }

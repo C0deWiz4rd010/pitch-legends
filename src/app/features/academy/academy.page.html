@@ -1,0 +1,65 @@
+<section class="academy fade-up">
+  <header class="page-head">
+    <div><span>{{ text('AKADEMIE-STUFE', 'ACADEMY LEVEL') }} {{ academyLevel() }}</span><h1>{{ text('NACHWUCHS & SCOUTING', 'YOUTH & SCOUTING') }}</h1></div>
+    <nav class="tabs" role="tablist" [attr.aria-label]="text('Akademieansichten', 'Academy views')">
+      <button role="tab" [attr.aria-selected]="tab() === 'intake'" [class.active]="tab() === 'intake'" (click)="tab.set('intake')">{{ text('JAHRGANG', 'INTAKE') }}</button>
+      <button role="tab" [attr.aria-selected]="tab() === 'scouting'" [class.active]="tab() === 'scouting'" (click)="tab.set('scouting')">SCOUTING</button>
+    </nav>
+  </header>
+  @if (message()) { <p class="message" role="status">{{ message() }}</p> }
+
+  @if (tab() === 'intake') {
+    <p class="lead">{{ text('Jede Saison kommen neue Talente aus der Akademie. Übernimm sie in den Profikader oder entlasse sie. Nicht übernommene Talente gehen zum Saisonende.', 'Each season brings new academy talents. Promote them to the first team or release them. Prospects you do not keep leave at the end of the season.') }}</p>
+    <div class="cards">
+      @for (prospect of prospects(); track prospect.id) {
+        <article class="prospect">
+          @if (gs.playerTeam(); as team) { <app-player-portrait [player]="prospect" [team]="team" [size]="56" /> }
+          <div class="who"><b>{{ playerName(prospect) }}</b><small>{{ prospect.position }} · {{ prospect.age }} {{ text('J.', 'y') }} · {{ prospect.nationality }}</small></div>
+          <div class="ratings"><span [style.background]="ratingColor(prospect.overall)">{{ prospect.overall }}</span><em>↑ {{ prospect.potential }}</em></div>
+          <div class="buttons">
+            <button type="button" class="btn btn--primary btn--sm" (click)="promote(prospect.id)">{{ text('HOCHZIEHEN', 'PROMOTE') }}</button>
+            <button type="button" class="btn btn--ghost btn--sm" (click)="release(prospect.id)">{{ text('ENTLASSEN', 'RELEASE') }}</button>
+          </div>
+        </article>
+      } @empty {
+        <p class="muted">{{ text('Der nächste Jahrgang kommt zum Start der neuen Saison.', 'The next intake arrives at the start of the new season.') }}</p>
+      }
+    </div>
+    <h2>{{ text('JUNGE SPIELER IM KADER', 'YOUNG PLAYERS IN THE SQUAD') }}</h2>
+    <div class="young">
+      @for (player of youngsters(); track player.id) {
+        <p><b>{{ playerName(player) }}</b><span>{{ player.position }} · {{ player.age }} · {{ player.overall }} → {{ player.potential }}</span><small>{{ player.seasonStats.appearances }} {{ text('Einsätze', 'apps') }}</small></p>
+      } @empty { <p class="muted">{{ text('Keine U21-Spieler im Kader.', 'No U21 players in the squad.') }}</p> }
+    </div>
+  } @else {
+    <article class="card scout-form">
+      <h2>{{ text('SCOUT LOSSCHICKEN', 'DISPATCH A SCOUT') }}</h2>
+      <p class="lead">{{ text('Ein Scout bereist eine Region und liefert nach einigen Wochen genaue Berichte zu den größten Talenten einer Position.', 'A scout tours a region and after a few weeks delivers precise reports on the best talents for one position.') }}</p>
+      <div class="form-row">
+        <label>{{ text('Region', 'Region') }}
+          <select [value]="regionId() || regions()[0]?.id" (change)="regionId.set($any($event.target).value)">
+            @for (region of regions(); track region.id) { <option [value]="region.id">{{ region.name }}</option> }
+          </select>
+        </label>
+        <label>{{ text('Position', 'Position') }}
+          <select [value]="group()" (change)="group.set($any($event.target).value)">
+            @for (item of groups; track item) { <option [value]="item">{{ groupLabel(item) }}</option> }
+          </select>
+        </label>
+        <button type="button" class="btn btn--primary" (click)="sendScout()">{{ text('SCOUT SENDEN', 'SEND SCOUT') }} · {{ formatCoins(scoutCost) }}</button>
+      </div>
+    </article>
+    @for (entry of assignments(); track entry.assignment.id) {
+      <article class="card assignment" [class.done]="entry.assignment.delivered">
+        <h3>{{ entry.region }} · {{ groupLabel(entry.assignment.positionGroup) }}
+          <small>{{ entry.assignment.delivered ? text('Bericht da', 'Report ready') : text('Unterwegs bis Woche', 'Out until week') + ' ' + entry.assignment.readyWeek }}</small></h3>
+        @for (found of entry.players; track found.player.id) {
+          <div class="found"><b>{{ playerName(found.player) }}</b><span>{{ found.team?.shortName ?? text('vereinslos', 'free') }} · {{ found.player.position }} · {{ found.player.age }}</span>
+            @if (found.report; as report) { <em>{{ report.overallMin }}–{{ report.overallMax }} · ↑ {{ report.potentialMin }}–{{ report.potentialMax }}</em> }
+          </div>
+        }
+        @if (entry.assignment.delivered) { <a routerLink="/transfer" class="link">{{ text('ZUM TRANSFERMARKT', 'TO THE TRANSFER MARKET') }} ›</a> }
+      </article>
+    } @empty { <p class="muted">{{ text('Noch keine Scout-Aufträge.', 'No scout assignments yet.') }}</p> }
+  }
+</section>

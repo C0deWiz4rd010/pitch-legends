@@ -16,6 +16,7 @@ import {
 import { createPlayerVisualIdentity, hash32 } from './visual-identity';
 import { marketValueFor, playerName, weeklySalaryFor } from './ratings';
 import { clamp, Rng } from './util';
+import { record } from './career/finance';
 
 export const MIN_SQUAD_SIZE = 16;
 export const MAX_SQUAD_SIZE = 26;
@@ -279,8 +280,10 @@ function executeNegotiation(game: GameState, negotiation: TransferNegotiation): 
   if (located.team && !canReleasePlayer(located.team, located.player.id)) return { ok: false, reason: 'Der abgebende Club kann den Spieler nicht freigeben.' };
 
   buyer.coins -= immediateCost;
+  record(game, buyer, 'transfersOut', immediateCost);
   if (located.team) {
     located.team.coins += transferCost;
+    record(game, located.team, 'transfersIn', transferCost);
     located.team.players = located.team.players.filter((player) => player.id !== located.player.id);
     autoFillLineup(located.team);
   } else {
@@ -328,6 +331,7 @@ export function renewPlayerContract(game: GameState, playerId: string, proposal:
   const projected = weeklyWageBill(game, team.id) - player.salary + proposal.salary;
   if (projected > team.wageBudget || team.coins < proposal.signingBonus) return { ok: false, reason: 'Budget reicht nicht für die Verlängerung.' };
   team.coins -= proposal.signingBonus;
+  record(game, team, 'wages', proposal.signingBonus);
   player.salary = proposal.salary;
   player.contractWeeks = Math.max(player.contractWeeks, 0) + proposal.weeks;
   player.morale = clamp(player.morale + 8, 0, 100);
@@ -363,6 +367,8 @@ export function processTransferWeek(game: GameState): void {
     if (!buyer) continue;
     buyer.coins -= listing.askingPrice;
     located.team.coins += listing.askingPrice;
+    record(game, buyer, 'transfersOut', listing.askingPrice);
+    record(game, located.team, 'transfersIn', listing.askingPrice);
     located.team.players = located.team.players.filter((player) => player.id !== located.player.id);
     located.player.kitNumber = nextKitNumber(buyer, located.player.kitNumber);
     buyer.players.push(located.player);
@@ -449,6 +455,8 @@ function executeIncomingTransfer(game: GameState, negotiation: TransferNegotiati
   if (buyer.coins - negotiation.fee < fourWeekReserve(game, buyer.id)) return { ok: false, reason: 'Der Käufer hat nicht mehr genug Budget.' };
   buyer.coins -= negotiation.fee;
   seller.coins += negotiation.fee;
+  record(game, buyer, 'transfersOut', negotiation.fee);
+  record(game, seller, 'transfersIn', negotiation.fee);
   seller.players = seller.players.filter((candidate) => candidate.id !== player.id);
   player.kitNumber = nextKitNumber(buyer, player.kitNumber);
   buyer.players.push(player);

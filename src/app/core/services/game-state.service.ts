@@ -8,6 +8,8 @@ import { playerName } from '../ratings';
 import { SaveService } from './save.service';
 import { prepareTravelEvent } from '../travel-engine';
 import { computeStandings } from '../standings';
+import { openCupTie } from '../career/cup';
+import { allLeagues } from '../career/divisions';
 
 @Injectable({ providedIn: 'root' })
 export class GameStateService {
@@ -41,16 +43,32 @@ export class GameStateService {
   });
   readonly manager = computed(() => this.state()?.manager ?? null);
 
+  /** Clubs of the division the player's club plays in. */
+  readonly leagueTeams = computed<Team[]>(() => {
+    const g = this.state();
+    if (!g) return [];
+    const ids = new Set(g.league.teamIds);
+    return g.teams.filter((team) => ids.has(team.id));
+  });
+
+  readonly leagues = computed(() => {
+    const g = this.state();
+    return g ? allLeagues(g) : [];
+  });
+
   /** Full league standings sorted by points, then goal difference, then goals. */
   readonly standings = computed<StandingRow[]>(() => {
     const g = this.state();
-    return g ? computeStandings(g.teams, g.league.fixtures) : [];
+    return g ? computeStandings(this.leagueTeams(), g.league.fixtures) : [];
   });
 
+  /** The cup tie of this week comes before the league fixture. */
   readonly nextFixture = computed<Fixture | null>(() => {
     const g = this.state();
     const team = this.playerTeam();
     if (!g || !team) return null;
+    const cupTie = openCupTie(g.cup, team.id, g.league.currentWeek);
+    if (cupTie) return cupTie;
     return (
       g.league.fixtures.find(
         (f) => !f.played && (f.homeTeamId === team.id || f.awayTeamId === team.id),
@@ -67,7 +85,7 @@ export class GameStateService {
   readonly topScorers = computed(() => {
     const g = this.state();
     if (!g) return [];
-    return g.teams
+    return this.leagueTeams()
       .flatMap((t) => t.players.map((p) => ({ player: p, teamName: t.shortName })))
       .filter((e) => e.player.seasonStats.goals > 0)
       .sort((a, b) => b.player.seasonStats.goals - a.player.seasonStats.goals)

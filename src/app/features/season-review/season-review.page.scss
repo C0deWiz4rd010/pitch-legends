@@ -1,0 +1,41 @@
+:host { display: block; }
+.review { display: flex; flex-direction: column; gap: 14px; max-width: 1200px; }
+.review-head span { color: var(--accent-2); font: 11px var(--font-display); }
+.review-head h1 { margin: 6px 0; font: 24px var(--font-display); }
+.banner { margin: 8px 0 0; padding: 10px 14px; font: 12px var(--font-display); border: 2px solid; }
+.banner.up { color: var(--accent); border-color: var(--accent); background: rgba(56, 224, 123, 0.08); }
+.banner.down { color: var(--danger); border-color: var(--danger); background: rgba(255, 92, 120, 0.08); }
+.review-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.card { padding: 16px; border: 2px solid var(--border); background: var(--ink-900, #0b1020); box-shadow: 4px 4px 0 var(--ink-shadow); }
+.card h2 { margin: 0 0 12px; font: 12px var(--font-display); color: var(--accent-3); }
+.card h3 { margin: 14px 0 8px; font: 11px var(--font-display); color: var(--accent-2); }
+.winner { display: grid; grid-template-columns: 48px 1fr auto; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--border); }
+.winner span { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.winner small { color: var(--text-mute); font-size: 11px; }
+.winner em { font-style: normal; font-size: 20px; }
+.moves { display: flex; flex-wrap: wrap; gap: 6px; margin: 0; }
+.moves span { padding: 4px 8px; font: 11px var(--font-display); border: 1px solid var(--border); }
+.moves .up { color: var(--accent); }
+.moves .down { color: var(--danger); }
+.facts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.facts p { margin: 0; padding: 10px 6px; text-align: center; background: var(--ink-950); border: 1px solid var(--border); }
+.facts small { display: block; color: var(--text-mute); font-size: 11px; margin-bottom: 4px; }
+.facts b { font: 15px var(--font-display); }
+.confidence { height: 10px; margin-top: 10px; background: var(--ink-950); border: 1px solid var(--border); }
+.confidence i { display: block; height: 100%; background: var(--accent); }
+.confidence i.low { background: var(--danger); }
+.objectives { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
+.objectives li { display: flex; gap: 8px; color: var(--text-mute); }
+.objectives li span { color: var(--danger); font-weight: 700; }
+.objectives li.met { color: var(--text); }
+.objectives li.met span { color: var(--accent); }
+.award { display: flex; flex-direction: column; gap: 3px; padding: 8px 0; border-bottom: 1px solid var(--border); }
+.award small { color: var(--accent-2); font: 10px var(--font-display); }
+.award span { color: var(--text-mute); font-size: 12px; }
+.retiring { margin: 4px 0; font-size: 13px; }
+.retiring small { color: var(--text-mute); }
+.sacked { border-color: var(--danger); }
+.sacked h2 { color: var(--danger); }
+.actions { display: flex; gap: 10px; justify-content: flex-end; flex-wrap: wrap; }
+.empty { max-width: 560px; }
+@media (max-width: 960px) { .review-grid { grid-template-columns: 1fr; } }

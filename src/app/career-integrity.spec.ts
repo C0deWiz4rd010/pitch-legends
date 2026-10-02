@@ -49,6 +49,13 @@ describe('Career season integrity', () => {
       }
       while (!gs.seasonOver()) {
         const result = season.simulatePlayerMatch()!;
+        if (gs.nextFixture()?.competition === 'cup') {
+          // Cup ties are played before the league fixture and keep the week.
+          const week = gs.currentWeek();
+          expect(await season.commitWeek({ ...result, ...(result.homeScore === result.awayScore ? { homeScore: result.homeScore + 1 } : {}) })).toBe(true);
+          expect(gs.currentWeek()).toBe(week);
+          continue;
+        }
         const nextWeek = gs.currentWeek() + 1;
         gs.mutate((draft) => {
           for (const event of draft.world.travelEvents.filter((event) => !event.resolved)) {

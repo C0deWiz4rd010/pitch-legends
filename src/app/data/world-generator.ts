@@ -81,6 +81,66 @@ export function generateWorld(seed: number, teamIds: string[], playerClubName: s
   };
 }
 
+/**
+ * Adds the clubs of a further division to an existing world. It uses its own random stream, so the
+ * cities and clubs of the first division stay exactly as they were generated.
+ */
+export function extendWorldWithDivision(world: WorldState, teamIds: string[], tier: number): ClubIdentity[] {
+  const rng = new Rng(hash32(`${world.seed}|world-division-${tier}-v1`));
+  const used = new Set(world.cities.map((city) => city.name));
+  const start = world.cities.length;
+  const cities: WorldCity[] = teamIds.map((teamId, index) => {
+    const region = world.regions[(index + 1) % world.regions.length];
+    let name = uniqueWord(rng, index + 300);
+    for (let attempt = 0; used.has(name) && attempt < 40; attempt++) name = uniqueWord(rng, index + attempt * 7 + 400);
+    if (used.has(name)) name = `${name} ${['North', 'South', 'East', 'West'][index % 4]}`;
+    used.add(name);
+    return {
+      id: `city-${start + index + 1}`,
+      name,
+      regionId: region.id,
+      teamId,
+      position: {
+        x: snap(clampMap(region.centre.x + rng.float(-130, 130), 100, 860)),
+        y: snap(clampMap(region.centre.y + rng.float(-85, 85), 80, 520)),
+      },
+      stadiumName: `${name} ${rng.pick(STADIUM_SUFFIXES)}`,
+      landmark: rng.pick(LANDMARKS),
+      populationBand: rng.pick(['town', 'town', 'city'] as const),
+    };
+  });
+  world.cities.push(...cities);
+  world.routes = generateRoutes(world.cities);
+  for (const rivalry of generateRivalries(cities, generateRoutes(cities), teamIds).slice(0, 2)) world.rivalries.push(rivalry);
+  return cities.map((city, index) => ({
+    name: `${city.name} ${CLUB_SUFFIXES[(hash32(`${world.seed}|club-d${tier}|${index}`) + index) % CLUB_SUFFIXES.length]}`,
+    short: shortName(city.name, index + 5),
+    primary: PRIMARY_COLORS[(start + index * 3) % PRIMARY_COLORS.length],
+    secondary: SECONDARY_COLORS[(start + index * 5) % SECONDARY_COLORS.length],
+  }));
+}
+
+/** The country's word root, e.g. "Eldenhaven" for the "Eldenhaven Legends League". */
+export function countryRoot(world: Pick<WorldState, 'country'>): string {
+  return world.country.leagueName.replace(/ Legends League$/, '') || world.country.name;
+}
+
+/** A three-letter club code that no other club uses yet. */
+export function uniqueShortName(name: string, taken: Set<string>): string {
+  const letters = name.replace(/[^a-z]/gi, '').toUpperCase().padEnd(3, 'X');
+  for (let second = 1; second < letters.length; second++) {
+    for (let third = second + 1; third < letters.length; third++) {
+      const code = `${letters[0]}${letters[second]}${letters[third]}`;
+      if (!taken.has(code)) { taken.add(code); return code; }
+    }
+  }
+  for (let digit = 2; digit < 10; digit++) {
+    const code = `${letters.slice(0, 2)}${digit}`;
+    if (!taken.has(code)) { taken.add(code); return code; }
+  }
+  return letters.slice(0, 3);
+}
+
 function generateOutline(rng: Rng): WorldPoint[] {
   const points: WorldPoint[] = [];
   const count = 34;

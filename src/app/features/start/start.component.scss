@@ -159,3 +159,9 @@
 @media (prefers-reduced-motion: reduce) {
   .studio-stage app-club-crest { animation: none; }
 }
+
+.start-tier { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 10px; }
+.start-tier .eyebrow { grid-column: 1 / -1; }
+.start-tier button { display: flex; flex-direction: column; gap: 3px; padding: 9px; border: 1px solid var(--border); background: var(--ink-950); color: var(--text-mute); font: 11px var(--font-display); cursor: pointer; text-align: left; }
+.start-tier button small { font: 11px var(--font-body, inherit); color: var(--text-mute); }
+.start-tier button.active { border-color: var(--accent); color: var(--accent); background: #0d241f; }

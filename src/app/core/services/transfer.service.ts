@@ -24,6 +24,7 @@ import {
 import { hash32 } from '../visual-identity';
 import { clamp } from '../util';
 import { GameStateService } from './game-state.service';
+import { record } from '../career/finance';
 
 export { MAX_SQUAD_SIZE } from '../transfer-engine';
 
@@ -146,6 +147,7 @@ export class TransferService {
         return;
       }
       club.coins -= cost;
+      record(draft, club, 'other', -cost);
       const variance = Math.max(0, 4 - scoutingRank - Math.floor(scoutingAbility / 15));
       const seedNoise = (hash32(`${draft.league.id}|${draft.league.season}|${playerId}|scout`) % 3) - 1;
       draft.transfers.reports.unshift({

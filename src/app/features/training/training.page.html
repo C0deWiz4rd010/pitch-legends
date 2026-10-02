@@ -37,7 +37,7 @@
         }
       </div>
       <div class="program-action">
-        <div><span>{{ activeDrill().icon }}</span><p><b>{{ drillName(activeDrill()) }}</b><small>{{ activeDrill().focus === 'recovery' ? text('Kein Risiko', 'No risk') : text('Attribut: ', 'Attribute: ') + activeDrill().focus }}</small></p></div>
+        <div><span>{{ activeDrill().icon }}</span><p><b>{{ drillName(activeDrill()) }}</b><small>{{ activeDrill().focus === 'recovery' ? text('Kein Risiko', 'No risk') : text('Attribut: ', 'Attribute: ') + activeDrill().focus }}</small><small class="match-effect">{{ text('Im Spiel: ', 'In matches: ') }}{{ matchEffect() }}</small></p></div>
         <button class="btn btn--primary" [disabled]="gs.trainingSlotsRemaining() <= plans().length" (click)="addSession()">+ {{ text('ZUM PLAN', 'ADD TO PLAN') }}</button>
       </div>
     </aside>

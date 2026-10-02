@@ -304,3 +304,55 @@ Grundlage: neuer, element-weiser Verbesserungsplan (Fundament → Gameplay → G
   - UI-Rundgang bei 1440 px und 390 px ohne Konsolenfehler und ohne horizontales Scrollen.
   - Screenshots: [Pausenmenü](screenshots/pause-menu-2026-10-02.png), [Kadervergleich](screenshots/squad-compare-2026-10-02.png), [Nachbericht](screenshots/match-report-2026-10-02.png).
 - **Offen:** Ein Template-Scan auf feste Texte fehlt noch; Übersetzungen nutzen weiter `i18n.pick` statt Schlüsseln. Tiefendiagramm im Kader und Stadionvorschau bei den Anlagen kommen nach Phase E.
+
+## Gesamtverbesserung Phase E – Karriere und Vereinswelt (2026-10-02)
+
+- **Zwei Ligen (E5):**
+  - Neue 2. Liga mit 12 Vereinen. Sie hat eigene Städte, Manager und Kader und einen eigenen Zufallsstrom, sodass die 1. Liga zu einem Seed exakt gleich bleibt.
+  - Am Saisonende tauschen die letzten 2 der 1. Liga mit den ersten 2 der 2. Liga.
+  - Die Liga-Seite hat einen Ligaumschalter und markiert Auf- und Abstiegszonen.
+  - Auf der Startseite lässt sich „2. Liga“ als Startliga wählen.
+  - Vereinskürzel sind jetzt weltweit eindeutig. Das behebt auch eine alte Kollision in der 1. Liga, die etwa jede sechste Welt betraf.
+- **Pokal (E4):**
+  - K.-o.-Pokal mit 24 Vereinen: Die 8 besten Erstligisten haben ein Freilos, danach folgen 1. Runde, Achtelfinale, Viertelfinale, Halbfinale und Finale in den Wochen 3, 7, 11, 15 und 19.
+  - Der unterklassige Verein hat Heimrecht. Unentschiedene Spiele gehen in die Verlängerung und ins Elfmeterschießen.
+  - Das eigene Pokalspiel wird vor dem Ligaspiel derselben Woche gespielt (PLAY, COACH oder SIM).
+  - Prämien gibt es je Runde, der Sieger erhält 250k.
+  - Turnierbaum im neuen Pokal-Tab.
+- **Simulation:**
+  - Die eigene Liga und die eigenen Pokalspiele laufen weiter über die 60-Hz-Engine.
+  - Die andere Liga und KI-Pokalspiele nutzen ein deterministisches Statistikmodell (`core/career/quick-sim.ts`). So bleibt eine Woche mit 17 zusätzlichen Spielen schnell.
+- **Wirtschaft (E1):**
+  - Zuschauer, Prämien, TV-Gelder, Sponsoren und Unterhalt gelten nach denselben Formeln für alle Vereine, mit einem Faktor für die 2. Liga.
+  - Jeder Verein führt ein Saisonbuch (`Team.finance`); Transfers, Anlagen, Scouting und Reisen werden darin gebucht.
+  - KI-Vereine investieren Überschüsse in Anlagen.
+  - Neue Seite **Finanzen** mit Einnahmen, Ausgaben, Vorjahr, Kontoverlauf, tragbarer Gehaltssumme und Ligavergleich.
+  - Abgestimmt über 5 simulierte Saisons: Alle Vereine bleiben liquide, die KI handelt weiter.
+- **Lebenszyklus (E2):**
+  - Spieler wachsen bis 27, danach Plateau. Ab 31 lassen sie nach, zuerst beim Tempo.
+  - Karriereende ab 33 mit festgelegter Wahrscheinlichkeit; wer aufhört, wird im Saisonabschluss angekündigt.
+  - Bei auslaufenden Verträgen verlängern KI-Vereine Leistungsträger und geben den Rest auf den Markt. Im eigenen Verein gehen Spieler ohne neuen Vertrag ablösefrei.
+  - Alle Vereine bekommen Nachwuchs und behalten immer zwei Torhüter.
+  - Karrierestatistik je Spieler.
+  - Neue Seite **Akademie**: Jahrgang übernehmen oder entlassen, Scout-Aufträge nach Region und Position.
+  - Der Scoutbericht aus Reiseereignissen liefert jetzt genaue Berichte zu Talenten der Region.
+- **Ziele, Vorstand, Saisonwechsel (E3):**
+  - Ziele werden jede Saison neu aus der Kaderstärke erzeugt: Ligaplatz, Pokalrunde, U21-Einsätze, Budget und Spieler-Level.
+  - Das Vertrauen des Vorstands reagiert auf Ergebnisse im Verhältnis zur Stärke. Unter 30 % kommt eine Warnung, unter 15 % am Saisonende die Entlassung mit dem Angebot eines Zweitligisten.
+  - Neuer **Saisonabschluss** mit Meistern, Pokalsieger, Auf- und Absteigern, Auszeichnungen (Spieler, Torschütze, Talent, Torwart), Zielbilanz und Karriereenden.
+  - Archiv, Trophäenraum und Ruhmeshalle im Archiv-Tab.
+  - Der Spielplan wird jede Saison neu und mit Seed gemischt; der SeasonService nutzt keinen unseeded Zufall mehr.
+- **Lebendige Welt (E6):**
+  - News zu Derbys, Serien, Kantersiegen, Verletzungen, Gerüchten, Pokal, Auf- und Abstieg und Karriereenden. Gespeichert werden bis zu 150 Einträge, auf dem Dashboard blätterbar.
+  - Das Training zeigt, wo ein Attribut im Spiel wirkt.
+  - Die Aufstellung warnt bei Müdigkeit oder Rückfallgefahr.
+- **Spielstand v6:** Migration v5 → v6 ergänzt zweite Liga, Pokal (mit den Restwochen der Saison), Finanzen, Archiv, Vorstand, Scouting und Akademie. Gelesen werden die Schlüssel v6, v5 und v4.
+- **Nachweis:**
+  - 181 Unit-Tests. Neu ist `career-v2.spec.ts` mit 9 Tests, darunter 5 Saisons mit Pokal, Auf- und Abstieg, Scouting und Speichern/Laden, sowie Entlassung und Vereinswechsel und die Migration.
+  - 22 E2E-Tests gegen den Produktionsbuild. Neu ist `career-v2` (Pokalspiel, Saisonabschluss, Archiv, Finanzen, Akademie); `living-world` ist auf v6 und 24 Vereine umgestellt.
+  - Rundgang bei 1440 und 390 px ohne Konsolenfehler und ohne horizontales Scrollen.
+  - Screenshots: [Pokal](screenshots/cup-bracket-2026-10-02.png), [Saisonabschluss](screenshots/season-review-2026-10-02.png), [Finanzen](screenshots/finances-2026-10-02.png).
+- **Offen:**
+  - Eine eigene interaktive Oberfläche für das Elfmeterschießen fehlt; Ergebnis und Schützen erscheinen im Spielbericht.
+  - Die Wirkung von Talenten im Spielbericht fehlt.
+  - Die Feinabstimmung der Einnahmen kommt in Phase H: Spitzenvereine haben nach 5 Saisons 1–5 Mio.

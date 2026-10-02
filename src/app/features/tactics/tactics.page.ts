@@ -106,6 +106,20 @@ export class TacticsPage {
     return id ? this.gs.squad().find((player) => player.id === id) : undefined;
   }
 
+  /** Medical staff warning: tired players or a recent injury that may flare up again. */
+  protected injuryRisk(player: Player): string {
+    const week = this.gs.currentWeek();
+    if (player.injuryWeeks > 0) return this.text('Verletzt', 'Injured');
+    if ((player.medical?.recurrenceUntilWeek ?? 0) >= week) return this.text('Rückfallgefahr nach Verletzung', 'Risk of relapse after injury');
+    if (player.fitness < 60) return this.text(`Müde (Fitness ${player.fitness})`, `Tired (fitness ${player.fitness})`);
+    return '';
+  }
+
+  protected readonly riskyStarters = computed(() => this.slots()
+    .map((slot) => this.team()?.players.find((player) => player.id === slot.playerId))
+    .filter((player): player is Player => !!player && !!this.injuryRisk(player))
+    .map((player) => player.lastName));
+
   protected slotPlayer(slot: FormationSlot): Player | undefined {
     return this.playerById(slot.playerId);
   }

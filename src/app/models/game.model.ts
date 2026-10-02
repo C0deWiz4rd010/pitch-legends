@@ -5,6 +5,7 @@ import { TransferState } from './transfer.model';
 import { AttributeKey } from './enums';
 import { ManagerVisualIdentity } from './visual.model';
 import { WorldState } from './world.model';
+import { AcademyState, BoardState, CupState, ScoutAssignment, SeasonArchive } from './career.model';
 
 export type Difficulty = 'easy' | 'normal' | 'hard';
 export type Locale = 'de' | 'en';
@@ -97,7 +98,8 @@ export interface TrainingWeekState {
 
 export interface CareerObjective {
   id: string;
-  type: 'league-position' | 'player-growth' | 'wins';
+  type: 'league-position' | 'player-growth' | 'wins' | 'cup-round' | 'youth-appearances' | 'budget';
+  season?: number;
   target: number;
   progress: number;
   rewardCoins: number;
@@ -142,7 +144,7 @@ export function defaultSettings(): GameSettings {
   };
 }
 
-export const SAVE_VERSION = 5;
+export const SAVE_VERSION = 6;
 
 export interface GameState {
   version: number;
@@ -161,4 +163,11 @@ export interface GameState {
   objectives: CareerObjective[];
   transfers: TransferState;
   world: WorldState;
+  /** Divisions the player's club does not currently play in. */
+  otherLeagues: League[];
+  cup: CupState;
+  archive: SeasonArchive[];
+  board: BoardState;
+  scouting: ScoutAssignment[];
+  academy: AcademyState;
 }

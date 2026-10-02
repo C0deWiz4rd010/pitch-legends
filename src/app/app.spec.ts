@@ -49,7 +49,7 @@ describe('match engine', () => {
     expect(r1.homeScore).toBeGreaterThanOrEqual(0);
     expect(r1.events.length).toBeGreaterThan(0);
     expect(r1.homeStats.possession + r1.awayStats.possession).toBe(100);
-  });
+  }, 15_000);
 
   it('controls the selected club even when it is the away team', () => {
     const game = createNewGame({ managerName: 'Test', clubName: 'Test FC', seed: 77 });

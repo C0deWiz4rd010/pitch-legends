@@ -1,0 +1,81 @@
+@if (review(); as r) {
+  <section class="review fade-up">
+    <header class="review-head">
+      <span>{{ text('SAISONABSCHLUSS', 'SEASON REVIEW') }}</span>
+      <h1>{{ text('Saison', 'Season') }} {{ r.season }}</h1>
+      @if (r.clubPromoted) { <p class="banner up">▲ {{ text('AUFSTIEG! Nächste Saison spielt dein Verein in der 1. Liga.', 'PROMOTED! Your club plays in the top flight next season.') }}</p> }
+      @if (r.clubRelegated) { <p class="banner down">▼ {{ text('Abstieg in die 2. Liga.', 'Relegated to the second division.') }}</p> }
+    </header>
+
+    <div class="review-grid">
+      <article class="card champions">
+        <h2>{{ text('MEISTER & POKAL', 'CHAMPIONS & CUP') }}</h2>
+        @for (league of r.leagues; track league.id) {
+          @if (team(league.championId); as champion) {
+            <div class="winner"><app-club-crest [team]="champion" [size]="44" /><span><small>{{ league.name }}</small><b>{{ champion.name }}</b></span><em>🏆</em></div>
+          }
+        }
+        @if (team(r.cupWinnerId); as cupWinner) {
+          <div class="winner"><app-club-crest [team]="cupWinner" [size]="44" /><span><small>{{ gs.game()?.cup?.name }}</small><b>{{ cupWinner.name }}</b></span><em>🥇</em></div>
+        }
+        <h3>{{ text('Auf- und Abstieg', 'Promotion & relegation') }}</h3>
+        <p class="moves">
+          @for (id of r.promotedIds; track id) { <span class="up">▲ {{ team(id)?.shortName }}</span> }
+          @for (id of r.relegatedIds; track id) { <span class="down">▼ {{ team(id)?.shortName }}</span> }
+        </p>
+      </article>
+
+      <article class="card club-season">
+        <h2>{{ text('DEIN VEREIN', 'YOUR CLUB') }}</h2>
+        <div class="facts">
+          <p><small>{{ text('Platz', 'Position') }}</small><b>{{ r.position }}</b></p>
+          <p><small>{{ text('Pokal', 'Cup') }}</small><b>{{ cupResult() }}</b></p>
+          <p><small>{{ text('Vorstand', 'Board') }}</small><b>{{ r.board.confidence }}%</b></p>
+        </div>
+        <div class="confidence" role="meter" [attr.aria-valuenow]="r.board.confidence" aria-valuemin="0" aria-valuemax="100" [attr.aria-label]="text('Vertrauen des Vorstands', 'Board confidence')"><i [style.width.%]="r.board.confidence" [class.low]="r.board.confidence < 30"></i></div>
+        <h3>{{ text('Saisonziele', 'Season objectives') }}</h3>
+        <ul class="objectives">
+          @for (entry of r.objectives; track entry.objective.id) {
+            <li [class.met]="entry.met"><span>{{ entry.met ? '✓' : '✗' }}</span>{{ objective(entry.objective) }}</li>
+          }
+        </ul>
+      </article>
+
+      <article class="card awards">
+        <h2>{{ text('AUSZEICHNUNGEN', 'AWARDS') }}</h2>
+        @for (award of r.awards; track award.key) {
+          <div class="award"><small>{{ awardLabel(award) }}</small><b>{{ award.playerName }}</b><span>{{ team(award.teamId)?.shortName }} · {{ awardValue(award) }}</span></div>
+        }
+        @if (r.retiring.length) {
+          <h3>{{ text('Karriereenden', 'Retirements') }}</h3>
+          @for (entry of r.retiring; track entry.player.id) {
+            <p class="retiring">{{ playerName(entry.player) }} <small>{{ entry.team.shortName }} · {{ entry.player.age }} {{ text('J.', 'y') }}</small></p>
+          }
+        }
+      </article>
+    </div>
+
+    @if (r.board.sacked) {
+      <article class="card sacked" role="alert">
+        <h2>{{ text('DER VORSTAND TRENNT SICH VON DIR', 'THE BOARD HAS DISMISSED YOU') }}</h2>
+        @if (team(offerId()); as offer) {
+          <p>{{ text('Ein neues Angebot liegt vor:', 'A new offer is on the table:') }}</p>
+          <div class="winner"><app-club-crest [team]="offer" [size]="44" /><span><small>{{ text('2. Liga', 'Division 2') }}</small><b>{{ offer.name }}</b></span></div>
+        }
+      </article>
+    }
+
+    <div class="actions">
+      <a routerLink="/league" class="btn btn--ghost">{{ text('TABELLEN ANSEHEN', 'VIEW TABLES') }}</a>
+      <button type="button" class="btn btn--primary" (click)="start()">
+        {{ r.board.sacked ? text('ANGEBOT ANNEHMEN & NEUE SAISON', 'ACCEPT OFFER & START SEASON') : text('NEUE SAISON STARTEN', 'START NEXT SEASON') }}
+      </button>
+    </div>
+  </section>
+} @else {
+  <section class="review empty card">
+    <h1>{{ text('Die Saison läuft noch', 'The season is still running') }}</h1>
+    <p>{{ text('Der Saisonabschluss öffnet nach dem letzten Spieltag.', 'The season review opens after the final matchweek.') }}</p>
+    <a routerLink="/" class="btn btn--primary">{{ text('ZUR ZENTRALE', 'BACK TO HQ') }}</a>
+  </section>
+}

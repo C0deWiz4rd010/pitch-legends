@@ -2,6 +2,7 @@ import { Injectable, inject } from '@angular/core';
 import { RehabPlan } from '../../models/player.model';
 import { setRehabPlan } from '../injury-engine';
 import { GameStateService } from './game-state.service';
+import { record } from '../career/finance';
 
 @Injectable({ providedIn: 'root' })
 export class MedicalService {
@@ -17,6 +18,7 @@ export class MedicalService {
       const result = setRehabPlan(candidate, plan, club.facilities.medicalCenter);
       if (!result.ok || club.coins < result.cost) return;
       club.coins -= result.cost;
+      record(draft, club, 'other', -result.cost);
       Object.assign(player, candidate);
       changed = true;
     });

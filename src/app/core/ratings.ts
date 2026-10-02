@@ -6,7 +6,7 @@ import { getTalent } from '../data/talents';
 import { clamp } from './util';
 
 /** Weightings that turn raw attributes into an overall rating per position group. */
-const OVERALL_WEIGHTS: Record<PositionGroup, Partial<Record<AttributeKey, number>>> = {
+export const OVERALL_WEIGHTS: Record<PositionGroup, Partial<Record<AttributeKey, number>>> = {
   GK: { goalkeeping: 0.68, physical: 0.12, passing: 0.1, pace: 0.1 },
   DEF: { defending: 0.4, physical: 0.22, pace: 0.16, passing: 0.12, stamina: 0.1 },
   MID: { passing: 0.26, dribbling: 0.18, stamina: 0.16, defending: 0.16, physical: 0.12, shooting: 0.12 },

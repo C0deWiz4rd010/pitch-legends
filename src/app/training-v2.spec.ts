@@ -86,12 +86,12 @@ describe('Training camp V2', () => {
     expect(game.teams.find((team) => team.id === game.clubId)!.players.find((candidate) => candidate.id === player.id)!.fitness).toBe(80);
   });
 
-  it('migrates older V4 saves without the new result list to V5', () => {
+  it('migrates older V4 saves without the new result list to the current version', () => {
     const game = createNewGame({ managerName: 'Compat', clubName: 'Compat FC', seed: 1405 });
     game.version = 4;
     delete (game.trainingWeek as unknown as { completedSessions?: unknown }).completedSessions;
     const parsed = TestBed.inject(SaveService).parseImport(JSON.stringify(game));
     expect(parsed.trainingWeek.completedSessions).toEqual([]);
-    expect(parsed.version).toBe(5);
+    expect(parsed.version).toBe(6);
   });
 });

@@ -1,6 +1,7 @@
 import { Injectable, inject } from '@angular/core';
 import { FacilityKey } from '../../models/team.model';
 import { GameStateService } from './game-state.service';
+import { facilityUpgradeCost, record } from '../career/finance';
 
 type Text = { de: string; en: string };
 
@@ -54,7 +55,7 @@ export class FacilitiesService {
 
   /** Cost to upgrade a facility from its current level. */
   upgradeCost(currentLevel: number): number {
-    return currentLevel * 120000;
+    return facilityUpgradeCost(currentLevel);
   }
 
   canUpgrade(key: FacilityKey): { ok: boolean; reason?: FacilityBlock } {
@@ -73,6 +74,7 @@ export class FacilitiesService {
       const club = draft.teams.find((t) => t.id === draft.clubId)!;
       const level = club.facilities[key];
       club.coins -= this.upgradeCost(level);
+      record(draft, club, 'facilities', this.upgradeCost(level));
       club.facilities[key] = level + 1;
     });
     return true;

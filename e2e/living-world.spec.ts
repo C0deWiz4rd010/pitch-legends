@@ -19,11 +19,12 @@ test('seeded league atlas exposes clubs, cities, routes and individual coaches',
   page.on('console', (message) => { if (message.type() === 'error') errors.push(message.text()); });
   await createSeededCareer(page);
 
-  const state = await page.evaluate(() => JSON.parse(localStorage.getItem('pitch-legends:save:v5')!));
-  expect(state.version).toBe(5);
+  const state = await page.evaluate(() => JSON.parse(localStorage.getItem('pitch-legends:save:v6')!));
+  expect(state.version).toBe(6);
   expect(state.world.seed).toBe(441407);
-  expect(state.world.cities).toHaveLength(12);
-  expect(state.managers).toHaveLength(11);
+  // Two divisions of twelve; the map shows the player's division.
+  expect(state.world.cities).toHaveLength(24);
+  expect(state.managers).toHaveLength(23);
 
   await page.goto('/league');
   await page.getByRole('tab', { name: /^(karte|map)$/i }).click();
@@ -41,7 +42,7 @@ test('seeded league atlas exposes clubs, cities, routes and individual coaches',
 test('medical dossier survives save/load and keeps the unified player visuals', async ({ page }) => {
   await createSeededCareer(page);
   const injuredPlayerName = await page.evaluate(() => {
-    const state = JSON.parse(localStorage.getItem('pitch-legends:save:v5')!);
+    const state = JSON.parse(localStorage.getItem('pitch-legends:save:v6')!);
     const club = state.teams.find((team: any) => team.id === state.clubId);
     const player = club.players[0];
     player.injuryWeeks = 3;
@@ -53,7 +54,7 @@ test('medical dossier survives save/load and keeps the unified player visuals', 
       },
       history: [], recurrenceUntilWeek: null,
     };
-    localStorage.setItem('pitch-legends:save:v5', JSON.stringify(state));
+    localStorage.setItem('pitch-legends:save:v6', JSON.stringify(state));
     return `${player.firstName} ${player.lastName}`;
   });
   await page.goto('/squad');

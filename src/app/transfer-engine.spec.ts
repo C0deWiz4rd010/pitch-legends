@@ -119,7 +119,7 @@ describe('Transfer market V2', () => {
     expect(first.teams.every((team) => team.players.length >= 16 && team.coins >= 0)).toBe(true);
   });
 
-  it('uses the arcade economy bands and stores only V5 saves', () => {
+  it('uses the arcade economy bands and stores only current-version saves', () => {
     expect(marketValueFor(50, 26, 50)).toBeGreaterThanOrEqual(20_000);
     expect(marketValueFor(50, 26, 50)).toBeLessThanOrEqual(45_000);
     expect(marketValueFor(80, 26, 80)).toBeGreaterThanOrEqual(500_000);
@@ -134,7 +134,8 @@ describe('Transfer market V2', () => {
     expect(saves.load()).toBeNull();
     expect(localStorage.getItem('pitch-legends:save:v3')).toBeTruthy();
     saves.save(game);
-    expect(JSON.parse(localStorage.getItem('pitch-legends:save:v5')!).version).toBe(5);
+    expect(JSON.parse(localStorage.getItem('pitch-legends:save:v6')!).version).toBe(6);
+    expect(localStorage.getItem('pitch-legends:save:v5')).toBeNull();
     expect(localStorage.getItem('pitch-legends:save:v4')).toBeNull();
   });
 });

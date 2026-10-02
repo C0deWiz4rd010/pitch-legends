@@ -2,7 +2,6 @@ import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/cor
 import { Router } from '@angular/router';
 import { GameStateService } from '../../core/services/game-state.service';
 import { SaveService } from '../../core/services/save.service';
-import { SeasonService } from '../../core/services/season.service';
 import { tacticLabel } from '../../shared/tactic-labels';
 import { GameSettings } from '../../models/game.model';
 import { I18nPipe } from '../../shared/i18n.pipe';
@@ -22,7 +21,6 @@ import { ManagerPortraitComponent } from '../../shared/components/manager-portra
 export class SettingsPage {
   protected readonly gs = inject(GameStateService);
   private readonly saves = inject(SaveService);
-  private readonly season = inject(SeasonService);
   private readonly router = inject(Router);
   protected readonly i18n = inject(I18nService);
   private readonly rpg = inject(RpgService);
@@ -114,10 +112,9 @@ export class SettingsPage {
     return tacticLabel(value, this.i18n.locale());
   }
 
-  protected startNextSeason(): void {
-    this.season.startNextSeason();
-    this.message.set(this.i18n.t('settings.newSeasonStarted'));
-    this.router.navigateByUrl('/');
+  /** The season change lives in the season review, with awards and the board verdict. */
+  protected openSeasonReview(): void {
+    this.router.navigateByUrl('/season-review');
   }
 
   protected newGame(): void {

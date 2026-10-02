@@ -1,0 +1,48 @@
+<section class="finances fade-up">
+  <header class="page-head">
+    <span>{{ club()?.name }}</span>
+    <h1>{{ text('FINANZEN', 'FINANCES') }}</h1>
+  </header>
+
+  <div class="kpis">
+    <p><small>{{ text('Kontostand', 'Balance') }}</small><b>{{ formatCoins(club()?.coins ?? 0) }}</b></p>
+    <p><small>{{ text('Saisonergebnis', 'Season result') }}</small><b [class.neg]="summary().net < 0">{{ signed(summary().net) }}</b></p>
+    <p><small>{{ text('Gehälter / Woche', 'Wages / week') }}</small><b>{{ formatCoins(wageBill()) }}</b></p>
+    <p [class.warn]="wageBill() > wageCap()"><small>{{ text('Tragbare Gehälter', 'Sustainable wages') }}</small><b>{{ formatCoins(wageCap()) }}</b></p>
+    <p><small>{{ text('Unterhalt / Woche', 'Upkeep / week') }}</small><b>{{ formatCoins(upkeep()) }}</b></p>
+  </div>
+  @if (wageBill() > wageCap()) {
+    <p class="hint warn" role="status">{{ text('Die Gehälter liegen über dem, was Einnahmen auf Dauer tragen. Verkaufe Spieler oder steigere die Einnahmen (Stadion, Erfolge).', 'Wages exceed what income sustains long-term. Sell players or grow income (stadium, results).') }}</p>
+  }
+
+  <div class="grid">
+    <article class="card ledger">
+      <h2>{{ text('EINNAHMEN', 'INCOME') }} <small>{{ text('Saison', 'Season') }} {{ gs.season() }}@if (previous(); as prev) { · {{ text('Vorjahr', 'last year') }} }</small></h2>
+      @for (row of rows().income; track row.kind) {
+        <div class="line"><span>{{ row.label }}</span><b class="pos">{{ formatCoins(row.value) }}</b>@if (row.previous !== null) { <small>{{ formatCoins(row.previous) }}</small> }</div>
+      }
+      <h2>{{ text('AUSGABEN', 'EXPENSES') }}</h2>
+      @for (row of rows().expenses; track row.kind) {
+        <div class="line"><span>{{ row.label }}</span><b class="neg">{{ formatCoins(row.value) }}</b>@if (row.previous !== null) { <small>{{ formatCoins(row.previous) }}</small> }</div>
+      }
+      <div class="line"><span>{{ rows().other.label }}</span><b [class.neg]="rows().other.value < 0">{{ signed(rows().other.value) }}</b></div>
+      <div class="line total"><span>{{ text('Ergebnis', 'Net') }}</span><b [class.neg]="summary().net < 0">{{ signed(summary().net) }}</b></div>
+    </article>
+
+    <article class="card balance">
+      <h2>{{ text('KONTOVERLAUF', 'BALANCE HISTORY') }}</h2>
+      @if (chart(); as c) {
+        <svg viewBox="0 0 600 170" role="img" [attr.aria-label]="text('Kontostand je Woche', 'Balance per week')">
+          <polyline [attr.points]="c.points" />
+        </svg>
+        <p class="axis"><span>{{ text('Woche 1', 'Week 1') }}</span><span>max {{ formatCoins(c.max) }}</span><span>{{ formatCoins(c.last) }}</span></p>
+      } @else {
+        <p class="muted">{{ text('Der Verlauf erscheint nach zwei Spielwochen.', 'The history appears after two matchweeks.') }}</p>
+      }
+      <h2>{{ text('LIGAVERGLEICH', 'LEAGUE COMPARISON') }}</h2>
+      @for (entry of comparison(); track entry.team.id) {
+        <div class="club-line" [class.me]="entry.team.id === club()?.id"><app-club-crest [team]="entry.team" [size]="24" /><span>{{ entry.team.shortName }}</span><b>{{ formatCoins(entry.coins) }}</b><small>{{ formatCoins(entry.wages) }}/{{ text('W', 'wk') }}</small></div>
+      }
+    </article>
+  </div>
+</section>

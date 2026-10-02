@@ -96,6 +96,7 @@
             >
               @if (slotPlayer(slot); as player) {
                 <app-player-portrait [player]="player" [team]="team()!" [size]="34" />
+                @if (injuryRisk(player); as risk) { <span class="risk-badge" [title]="risk">⚠</span> }
                 <span class="slot-copy">
                   <b>{{ player.lastName }}</b>
                   <small><i>{{ slot.position }}</i> {{ getRole(slot.roleId).shortName }} · <em [style.color]="ratingColor(slotFit(slot))">{{ slotFit(slot) }}</em></small>
@@ -107,6 +108,9 @@
           }
         </div>
       </div>
+      @if (riskyStarters().length) {
+        <p class="medical-warning" role="status">⚠ {{ text('Medizinische Abteilung: erhöhtes Verletzungsrisiko bei ', 'Medical staff: higher injury risk for ') }}{{ riskyStarters().join(', ') }}</p>
+      }
       <div class="pitch-legend">
         <span><i class="legend-line"></i>{{ text('Abwehrlinie', 'Defensive line') }}</span>
         <span><i class="legend-zone"></i>{{ text('Pressingzone', 'Pressing zone') }}</span>

@@ -392,3 +392,6 @@ canvas { display: block; width: 100%; height: 100%; image-rendering: auto; touch
 .report-actions { grid-column: 1 / -1; display: flex; justify-content: flex-end; gap: 10px; flex-wrap: wrap; }
 .shootout-line { color: var(--accent-3); font-family: var(--font-display); }
 @media (max-width: 620px) { .pause-menu { grid-template-columns: 1fr; } }
+
+.cup-eyebrow { color: var(--accent-3); }
+.ko-note { color: var(--accent-3); font-size: 11px; }

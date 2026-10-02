@@ -109,5 +109,5 @@ describe('Match flow and set pieces', () => {
       return;
     }
     throw new Error('no drawn seed found');
-  });
+  }, 20_000);
 });

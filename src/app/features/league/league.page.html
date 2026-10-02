@@ -2,14 +2,22 @@
   <header class="league-head fade-up">
     @if (world(); as map) {
       <div class="country-flag" [style.--flag-a]="map.country.flag.primary" [style.--flag-b]="map.country.flag.secondary"><i></i></div>
-      <div class="league-title"><span>{{ map.country.name }} · {{ text('SAISON', 'SEASON') }} {{ gs.season() }}</span><h1>{{ map.country.leagueName }}</h1></div>
+      <div class="league-title"><span>{{ map.country.name }} · {{ text('SAISON', 'SEASON') }} {{ gs.season() }}</span><h1>{{ viewLeague()?.name ?? map.country.leagueName }}</h1></div>
     }
-    <nav class="league-tabs" role="tablist" [attr.aria-label]="text('Ligaansichten', 'League views')">
-      <button role="tab" [attr.aria-selected]="tab() === 'overview'" [class.active]="tab() === 'overview'" (click)="tab.set('overview')">{{ text('ÜBERSICHT', 'OVERVIEW') }}</button>
-      <button role="tab" [attr.aria-selected]="tab() === 'fixtures'" [class.active]="tab() === 'fixtures'" (click)="tab.set('fixtures')">{{ text('SPIELTAGE', 'FIXTURES') }}</button>
-      <button role="tab" [attr.aria-selected]="tab() === 'map'" [class.active]="tab() === 'map'" (click)="tab.set('map')">{{ text('KARTE', 'MAP') }}</button>
-      <button role="tab" [attr.aria-selected]="tab() === 'stats'" [class.active]="tab() === 'stats'" (click)="tab.set('stats')">{{ text('STATISTIKEN', 'STATS') }}</button>
-    </nav>
+    <div class="league-controls">
+      @if (gs.leagues().length > 1) {
+        <div class="division-switch" role="group" [attr.aria-label]="text('Liga wählen', 'Choose division')">
+          @for (league of gs.leagues(); track league.id) {
+            <button type="button" [class.active]="viewLeague()?.id === league.id" [attr.aria-pressed]="viewLeague()?.id === league.id" (click)="selectLeague(league.id)">{{ league.tier }}. {{ text('LIGA', 'DIV') }}</button>
+          }
+        </div>
+      }
+      <nav class="league-tabs" role="tablist" [attr.aria-label]="text('Ligaansichten', 'League views')">
+        @for (item of tabs; track item.key) {
+          <button role="tab" [id]="'league-tab-' + item.key" [attr.aria-selected]="tab() === item.key" [attr.tabindex]="tab() === item.key ? 0 : -1" [class.active]="tab() === item.key" (click)="tab.set(item.key)" (keydown)="moveTab($event, item.key)">{{ text(item.de, item.en) }}</button>
+        }
+      </nav>
+    </div>
   </header>
 
   <main class="league-content">
@@ -17,23 +25,26 @@
       @case ('overview') {
         <section class="overview-grid">
           <article class="panel standings-panel">
-            <header><span>{{ text('TITELRENNEN', 'TITLE RACE') }}</span><b>{{ gs.currentWeek() }}/{{ gs.totalWeeks() }}</b></header>
+            <header><span>{{ (viewLeague()?.tier ?? 1) === 1 ? text('TITELRENNEN', 'TITLE RACE') : text('AUFSTIEGSRENNEN', 'PROMOTION RACE') }}</span><b>{{ gs.currentWeek() }}/{{ gs.totalWeeks() }}</b></header>
             <div class="standing-head"><i>#</i><span>{{ text('VEREIN', 'CLUB') }}</span><i>SP</i><i>TD</i><i>PKT</i><i>FORM</i></div>
             <div class="standing-scroll">
-              @for (row of gs.standings(); track row.teamId; let rank = $index) {
+              @for (row of standings(); track row.teamId; let rank = $index) {
                 @if (gs.teamById(row.teamId); as team) {
-                  <button class="standing-row" [class.me]="row.teamId === clubId()" [class.selected]="row.teamId === selectedTeamId()" (click)="selectTeam(row.teamId)">
+                  <button class="standing-row" [class.up]="zone(rank, standings().length) === 'up'" [class.down]="zone(rank, standings().length) === 'down'" [class.me]="row.teamId === clubId()" [class.selected]="row.teamId === selectedTeamId()" (click)="selectTeam(row.teamId)">
                     <i>{{ rank + 1 }}</i><span class="club-cell"><app-club-crest [team]="team" [size]="34" /><b>{{ team.name }}</b></span><i>{{ row.played }}</i><i>{{ row.goalsFor - row.goalsAgainst }}</i><strong>{{ row.points }}</strong>
                     <span class="form">@for (result of formFor(row.teamId); track $index) { <em [class]="result">{{ result }}</em> }</span>
                   </button>
                 }
               }
             </div>
+            @if (gs.leagues().length > 1) {
+              <p class="zone-legend"><i class="up"></i>{{ text('Aufstieg', 'Promotion') }} <i class="down"></i>{{ text('Abstieg', 'Relegation') }}</p>
+            }
           </article>
 
           @if (selectedTeam(); as team) {
             <aside class="panel club-spotlight">
-              <div class="spotlight-hero"><app-club-crest [team]="team" [size]="104" /><div><span>{{ selectedCity()?.regionId }}</span><h2>{{ team.name }}</h2><p>{{ selectedCity()?.name }} · {{ selectedCity()?.stadiumName }}</p></div><app-mini-kit [kit]="team.visuals.kits.home" [size]="82" /></div>
+              <div class="spotlight-hero"><app-club-crest [team]="team" [size]="104" /><div><span>{{ regionName(selectedCity()?.regionId) }}</span><h2>{{ team.name }}</h2><p>{{ selectedCity()?.name }} · {{ selectedCity()?.stadiumName }}</p></div><app-mini-kit [kit]="team.visuals.kits.home" [size]="82" /></div>
               @if (selectedManager(); as manager) {
                 <div class="coach-card"><app-manager-portrait [manager]="manager" [size]="76" /><div><small>{{ text('CHEFTRAINER', 'HEAD COACH') }}</small><strong>{{ manager.firstName }} {{ manager.lastName }}</strong><span>{{ manager.tacticalPhilosophy }} · {{ manager.preferredFormation }}</span></div></div>
                 <div class="coach-stats"><span>TAK <b>{{ manager.attributes.tactics }}</b></span><span>COA <b>{{ manager.attributes.coaching }}</b></span><span>JUG <b>{{ manager.attributes.youthDevelopment }}</b></span></div>
@@ -70,9 +81,9 @@
                 <polygon class="land-shadow" [attr.points]="outlinePoints()" transform="translate(8 10)" />
                 <polygon class="land" [attr.points]="outlinePoints()" />
                 <g clip-path="url(#country-clip)">@for (cell of regionCells(); track cell.region.id) { <path class="region" [attr.d]="cell.path" [attr.fill]="cell.region.color" /> }</g>
-                <g class="routes">@for (route of map.routes; track route.id) { @if (cityById(route.fromCityId); as a) { @if (cityById(route.toCityId); as b) { <line [attr.x1]="a.position.x" [attr.y1]="a.position.y" [attr.x2]="b.position.x" [attr.y2]="b.position.y" /> } } }</g>
+                <g class="routes">@for (route of mapRoutes(); track route.id) { @if (cityById(route.fromCityId); as a) { @if (cityById(route.toCityId); as b) { <line [attr.x1]="a.position.x" [attr.y1]="a.position.y" [attr.x2]="b.position.x" [attr.y2]="b.position.y" /> } } }</g>
                 <g class="rivalries">@for (rivalry of map.rivalries; track rivalry.teamAId + rivalry.teamBId) { @if (cityFor(rivalry.teamAId); as a) { @if (cityFor(rivalry.teamBId); as b) { <line [attr.x1]="a.position.x" [attr.y1]="a.position.y" [attr.x2]="b.position.x" [attr.y2]="b.position.y" /> } } }</g>
-                @for (city of map.cities; track city.id) {
+                @for (city of mapCities(); track city.id) {
                   <g class="city" [class.me]="city.teamId === clubId()" [class.selected]="city.teamId === selectedTeamId()" role="button" tabindex="0" (click)="selectTeam(city.teamId)" (keydown.enter)="selectTeam(city.teamId)" [attr.transform]="'translate(' + city.position.x + ' ' + city.position.y + ')'">
                     <circle r="14" /><rect x="-5" y="-5" width="10" height="10" /><text y="28">{{ teamShort(city.teamId) }}</text>
                   </g>
@@ -83,7 +94,7 @@
           <aside class="panel map-dossier">
             @if (selectedTeam(); as team) {
               <app-club-crest [team]="team" [size]="88" /><h2>{{ team.name }}</h2><span>{{ selectedCity()?.name }} · {{ selectedCity()?.landmark }}</span>
-              <div class="map-facts"><p><small>{{ text('STADION', 'STADIUM') }}</small><b>{{ selectedCity()?.stadiumName }}</b></p><p><small>{{ text('REGION', 'REGION') }}</small><b>{{ selectedCity()?.regionId }}</b></p></div>
+              <div class="map-facts"><p><small>{{ text('STADION', 'STADIUM') }}</small><b>{{ selectedCity()?.stadiumName }}</b></p><p><small>{{ text('REGION', 'REGION') }}</small><b>{{ regionName(selectedCity()?.regionId) }}</b></p></div>
               @if (selectedManager(); as manager) { <div class="mini-coach"><app-manager-portrait [manager]="manager" [size]="54" /><span><small>MANAGER</small><b>{{ manager.firstName }} {{ manager.lastName }}</b></span></div> }
             }
             @if (currentEvent(); as event) {
@@ -97,7 +108,7 @@
 
       @case ('stats') {
         <section class="stats-grid">
-          <article class="panel ranking"><header><span>{{ text('TORJÄGER', 'TOP SCORERS') }}</span><b>G</b></header>@for (entry of gs.topScorers(); track entry.player.id; let rank = $index) { @if (teamForPlayer(entry.player.id); as team) { <div><i>{{ rank + 1 }}</i><app-player-portrait [player]="entry.player" [team]="team" [size]="40" /><span><b>{{ playerName(entry.player) }}</b><small>{{ team.shortName }} · {{ entry.player.position }}</small></span><strong>{{ entry.player.seasonStats.goals }}</strong></div> } }</article>
+          <article class="panel ranking"><header><span>{{ text('TORJÄGER', 'TOP SCORERS') }}</span><b>G</b></header>@for (entry of topScorers(); track entry.player.id; let rank = $index) { <div><i>{{ rank + 1 }}</i><app-player-portrait [player]="entry.player" [team]="entry.team" [size]="40" /><span><b>{{ playerName(entry.player) }}</b><small>{{ entry.team.shortName }} · {{ entry.player.position }}</small></span><strong>{{ entry.player.seasonStats.goals }}</strong></div> }</article>
           <article class="panel ranking"><header><span>{{ text('VORLAGEN', 'ASSISTS') }}</span><b>A</b></header>@for (entry of topAssists(); track entry.player.id; let rank = $index) { <div><i>{{ rank + 1 }}</i><app-player-portrait [player]="entry.player" [team]="entry.team" [size]="40" /><span><b>{{ playerName(entry.player) }}</b><small>{{ entry.team.shortName }} · {{ entry.player.position }}</small></span><strong>{{ entry.player.seasonStats.assists }}</strong></div> }</article>
           @for (board of leaders(); track board.key) {
             <article class="panel ranking"><header><span>{{ text(board.de, board.en) }}</span><b>{{ board.unit }}</b></header>
@@ -105,6 +116,62 @@
               @empty { <p class="muted">{{ text('Noch keine Daten in dieser Saison.', 'No data yet this season.') }}</p> }
             </article>
           }
+        </section>
+      }
+
+      @case ('cup') {
+        <section class="panel cup-board">
+          @if (cup(); as cupState) {
+            <header class="cup-head"><span>{{ cupState.name }}</span>
+              @if (cupState.winnerId) { <b>🏆 {{ teamName(cupState.winnerId) }}</b> } @else if (!cupState.rounds.length) { <b>{{ text('Start in der nächsten Saison', 'Starts next season') }}</b> }
+            </header>
+            <div class="bracket">
+              @for (column of cupRounds(); track column.round.round) {
+                <div class="bracket-round">
+                  <h3>{{ roundLabel(column.round.key) }} <small>{{ text('Woche', 'Week') }} {{ column.round.week }} · CR {{ column.round.prize / 1000 }}K</small></h3>
+                  @for (tie of column.ties; track tie.id) {
+                    <article class="tie" [class.me]="tie.homeTeamId === clubId() || tie.awayTeamId === clubId()">
+                      <span [class.won]="tie.winnerId === tie.homeTeamId">{{ teamShort(tie.homeTeamId) }}</span>
+                      <b>{{ tieScore(tie) }}</b>
+                      <span [class.won]="tie.winnerId === tie.awayTeamId">{{ teamShort(tie.awayTeamId) }}</span>
+                    </article>
+                  } @empty { <p class="muted">{{ text('Auslosung folgt', 'Draw pending') }}</p> }
+                  @if (column.round.round === 2 && cupState.byeTeamIds.length) {
+                    <p class="muted bye">{{ text('Freilos in Runde 1:', 'Bye in round 1:') }} @for (id of cupState.byeTeamIds; track id) { {{ teamShort(id) }} }</p>
+                  }
+                </div>
+              }
+            </div>
+          }
+        </section>
+      }
+
+      @case ('archive') {
+        <section class="archive-grid">
+          <article class="panel trophy-room">
+            <header><span>{{ text('TROPHÄENRAUM', 'TROPHY ROOM') }}</span></header>
+            <div class="trophies">
+              <p><b>{{ trophies().leagues.length }}</b><small>{{ text('Meisterschaften', 'Titles') }}</small></p>
+              <p><b>{{ trophies().cups.length }}</b><small>{{ text('Pokalsiege', 'Cups') }}</small></p>
+              <p><b>{{ trophies().promotions.length }}</b><small>{{ text('Aufstiege', 'Promotions') }}</small></p>
+            </div>
+            <h3>{{ text('RUHMESHALLE', 'HALL OF FAME') }}</h3>
+            @for (entry of hallOfFame(); track entry.team.id) {
+              <div class="fame-row"><app-club-crest [team]="entry.team" [size]="28" /><span>{{ entry.team.name }}</span><b>{{ entry.leagues.length }}× 🏆 · {{ entry.cups.length }}× 🥇</b></div>
+            } @empty { <p class="muted">{{ text('Noch keine abgeschlossene Saison.', 'No completed season yet.') }}</p> }
+          </article>
+          <article class="panel season-archive">
+            <header><span>{{ text('SAISONARCHIV', 'SEASON ARCHIVE') }}</span></header>
+            @for (entry of archive(); track entry.season) {
+              <div class="archive-row">
+                <strong>{{ text('Saison', 'Season') }} {{ entry.season }}</strong>
+                @for (league of entry.leagues; track league.id) { <span>{{ league.tier }}. {{ text('Liga', 'Div') }}: <b>{{ teamName(league.championId) }}</b></span> }
+                <span>{{ text('Pokal', 'Cup') }}: <b>{{ entry.cupWinnerId ? teamName(entry.cupWinnerId) : '—' }}</b></span>
+                <span>{{ text('Dein Verein', 'Your club') }}: <b>{{ entry.club.tier }}. {{ text('Liga', 'Div') }} · {{ text('Platz', 'Pos.') }} {{ entry.club.position }} · {{ entry.club.objectivesCompleted }}/{{ entry.club.objectivesTotal }} {{ text('Ziele', 'goals') }}</b></span>
+                @for (award of entry.awards; track award.key) { <small>{{ award.key === 'player' ? text('Spieler', 'Player') : award.key === 'scorer' ? text('Torschütze', 'Top scorer') : award.key === 'talent' ? text('Talent', 'Talent') : text('Torwart', 'Keeper') }}: {{ award.playerName }}</small> }
+              </div>
+            } @empty { <p class="muted">{{ text('Das Archiv füllt sich nach der ersten Saison.', 'The archive fills after the first season.') }}</p> }
+          </article>
         </section>
       }
     }
