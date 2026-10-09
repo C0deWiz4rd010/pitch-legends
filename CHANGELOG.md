@@ -4,6 +4,13 @@ All notable changes to Pitch Legends are recorded here. Releases follow
 [Semantic Versioning](https://semver.org/) and are generated from Conventional
 Commits by Release Please.
 
+## [1.10.0](https://github.com/C0deWiz4rd010/pitch-legends/compare/pitch-legends-v1.9.0...pitch-legends-v1.10.0) (2026-10-09)
+
+
+### Features
+
+* **platform:** phase G – IndexedDB saves, visible save errors, offline play and rebindable controls ([4714d6a](https://github.com/C0deWiz4rd010/pitch-legends/commit/4714d6a461cad18a0eb987bb370f31a6cc6ad4a4))
+
 ## [1.9.0](https://github.com/C0deWiz4rd010/pitch-legends/compare/pitch-legends-v1.8.0...pitch-legends-v1.9.0) (2026-10-02)
 
 
