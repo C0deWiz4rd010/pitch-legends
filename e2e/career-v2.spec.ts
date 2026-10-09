@@ -1,15 +1,14 @@
 import { expect, Page, test } from '@playwright/test';
+import { readStore, resetStorage, seedStore } from './storage';
 
 const KEY = 'pitch-legends:save:v6';
 
 /** Edits the stored career and reloads, so the app picks the change up like a returning player. */
 async function editSave(page: Page, edit: (state: any) => void): Promise<void> {
   await page.waitForTimeout(400);
-  await page.evaluate(([key, source]) => {
-    const state = JSON.parse(localStorage.getItem(key)!);
-    new Function('state', `(${source})(state)`)(state);
-    localStorage.setItem(key, JSON.stringify(state));
-  }, [KEY, edit.toString()]);
+  const state = await readStore(page, KEY);
+  edit(state);
+  await seedStore(page, KEY, state);
   await page.reload();
 }
 
@@ -19,7 +18,7 @@ test('second-division career: cup tie, season review, promotion table and archiv
   page.on('pageerror', (error) => errors.push(error.message));
   page.on('console', (message) => { if (message.type() === 'error') errors.push(message.text()); });
   await page.goto('/');
-  await page.evaluate(() => localStorage.clear());
+  await resetStorage(page);
   await page.reload();
   await page.getByPlaceholder('Alex Stone').fill('Cup Runner');
   await page.getByPlaceholder('Harbour City').fill('Northstar AFC');
@@ -44,10 +43,10 @@ test('second-division career: cup tie, season review, promotion table and archiv
   await page.getByRole('button', { name: /karriere fortsetzen|continue career/i }).click();
   await expect(page.locator('.match-stage')).toBeVisible();
   // The cup tie keeps the week; the autosave lands shortly after the commit.
-  await expect.poll(() => page.evaluate((key) => {
-    const state = JSON.parse(localStorage.getItem(key)!);
+  await expect.poll(async () => {
+    const state = await readStore(page, KEY);
     return { week: state.league.currentWeek, roundOnePlayed: state.cup.ties.filter((tie: any) => tie.round === 1).every((tie: any) => tie.played), roundTwo: state.cup.ties.some((tie: any) => tie.round === 2) };
-  }, KEY)).toEqual({ week: 3, roundOnePlayed: true, roundTwo: true });
+  }).toEqual({ week: 3, roundOnePlayed: true, roundTwo: true });
 
   await page.goto('/league');
   await expect(page.locator('.division-switch button')).toHaveCount(2);
@@ -67,7 +66,7 @@ test('second-division career: cup tie, season review, promotion table and archiv
   await expect(page.locator('.objectives li')).toHaveCount(5);
   await page.getByRole('button', { name: /neue saison|start next season|angebot annehmen|accept offer/i }).click();
   await expect(page.locator('.match-stage')).toBeVisible();
-  await expect.poll(() => page.evaluate((key) => JSON.parse(localStorage.getItem(key)!).league.season, KEY)).toBe(2);
+  await expect.poll(async () => (await readStore(page, KEY))?.league.season).toBe(2);
   await page.goto('/league');
   await page.getByRole('tab', { name: /archiv|archive/i }).click();
   await expect(page.locator('.archive-row')).toHaveCount(1);

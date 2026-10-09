@@ -1,8 +1,9 @@
 import { expect, Page, test } from '@playwright/test';
+import { resetStorage } from './storage';
 
 async function createCareer(page: Page): Promise<void> {
   await page.goto('/');
-  await page.evaluate(() => localStorage.clear());
+  await resetStorage(page);
   await page.reload();
   await page.getByPlaceholder('Alex Stone').fill('Market Tester');
   await page.getByPlaceholder('Harbour City').fill('Neon Athletic');

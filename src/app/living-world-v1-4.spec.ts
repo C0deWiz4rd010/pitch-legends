@@ -1,3 +1,4 @@
+import { TestBed } from '@angular/core/testing';
 import { createNewGame } from './data/generators';
 import { createInjury, applyInjury, advanceInjury, isPlayerAvailable, setRehabPlan } from './core/injury-engine';
 import { SaveService } from './core/services/save.service';
@@ -36,7 +37,7 @@ describe('Living world V1.4', () => {
     delete (source as Partial<typeof source>).managers;
     const raw = JSON.stringify(source);
 
-    const migrated = new SaveService().parseImport(raw);
+    const migrated = TestBed.inject(SaveService).parseImport(raw);
 
     expect(migrated.version).toBe(6);
     expect(migrated.world.cities).toHaveLength(migrated.teams.length);

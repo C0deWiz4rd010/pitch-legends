@@ -1,5 +1,6 @@
 import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
 import { Router, RouterLink } from '@angular/router';
+import { PersistentStore } from '../../core/storage/persistent-store';
 import { CHALLENGES, ChallengeDefinition, loadChallengeRecords } from '../../core/football/challenges';
 import { createPracticeTeams } from '../../core/football/practice';
 import { ExhibitionService } from '../../core/services/exhibition.service';
@@ -57,7 +58,7 @@ export class ChallengesPage {
   protected readonly gs = inject(GameStateService);
   private readonly i18n = inject(I18nService);
   protected readonly challenges = CHALLENGES;
-  protected readonly records = signal(loadChallengeRecords());
+  protected readonly records = signal(loadChallengeRecords(inject(PersistentStore)));
 
   protected text(de: string, en: string): string { return this.i18n.pick(de, en); }
 

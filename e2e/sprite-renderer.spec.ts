@@ -1,8 +1,9 @@
 import { expect, Page, test } from '@playwright/test';
+import { resetStorage } from './storage';
 
 async function startMatch(page: Page): Promise<void> {
   await page.goto('/');
-  await page.evaluate(() => localStorage.clear());
+  await resetStorage(page);
   await page.reload();
   await page.getByPlaceholder('Alex Stone').fill('Sprite Tester');
   await page.getByPlaceholder('Harbour City').fill('Sprite City');

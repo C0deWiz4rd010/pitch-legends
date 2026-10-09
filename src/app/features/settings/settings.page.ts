@@ -1,5 +1,5 @@
 import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
-import { Router } from '@angular/router';
+import { Router, RouterLink } from '@angular/router';
 import { GameStateService } from '../../core/services/game-state.service';
 import { SaveService } from '../../core/services/save.service';
 import { tacticLabel } from '../../shared/tactic-labels';
@@ -13,7 +13,7 @@ import { ManagerPortraitComponent } from '../../shared/components/manager-portra
 
 @Component({
   selector: 'app-settings',
-  imports: [I18nPipe, ManagerPortraitComponent],
+  imports: [I18nPipe, ManagerPortraitComponent, RouterLink],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './settings.page.html',
   styleUrl: './settings.page.scss',
@@ -78,12 +78,9 @@ export class SettingsPage {
     this.gs.mutate((draft) => (draft.settings.autoSave = !draft.settings.autoSave));
   }
 
-  protected saveNow(): void {
-    const g = this.gs.game();
-    if (g) {
-      this.saves.save(g);
-      this.message.set(this.i18n.t('settings.saved'));
-    }
+  protected async saveNow(): Promise<void> {
+    const result = await this.gs.saveNow();
+    this.message.set(result.ok ? this.i18n.t('settings.saved') : this.i18n.pick('Speichern fehlgeschlagen – bitte exportieren.', 'Saving failed – please export.'));
   }
 
   protected exportSave(): void {

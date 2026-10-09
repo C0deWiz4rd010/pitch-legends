@@ -1,3 +1,4 @@
+import { TestBed } from '@angular/core/testing';
 import { computeOverall } from './core/ratings';
 import { Rng } from './core/util';
 import { createNewGame } from './data/generators';
@@ -156,7 +157,7 @@ describe('career progression', () => {
   });
 
   it('accepts complete V4 saves and rejects version or schema mismatches', () => {
-    const service = new SaveService();
+    const service = TestBed.inject(SaveService);
     const game = createNewGame({ managerName: 'Save', clubName: 'Schema FC', seed: 14 });
     expect(service.parseImport(JSON.stringify(game)).clubId).toBe(game.clubId);
     expect(() => service.parseImport(JSON.stringify({ ...game, version: 1 }))).toThrow();

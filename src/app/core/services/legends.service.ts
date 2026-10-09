@@ -8,6 +8,7 @@ import {
   submitSbc, suggestSbc, surplusDuplicates, weekKey,
 } from '../legends/legends-engine';
 import { autoBuild, squadView } from '../legends/squad';
+import { PersistentStore } from '../storage/persistent-store';
 import { ExhibitionService } from './exhibition.service';
 
 export const LEGENDS_STORAGE_KEY = 'pitch-legends:legends:v1';
@@ -26,6 +27,7 @@ export interface LegendsMatchReport {
 export class LegendsService {
   private readonly exhibitions = inject(ExhibitionService);
   private readonly router = inject(Router);
+  private readonly store = inject(PersistentStore);
   private readonly stateSignal = signal<LegendsState | null>(this.load());
   readonly state = this.stateSignal.asReadonly();
   readonly hasClub = computed(() => !!this.stateSignal());
@@ -35,7 +37,7 @@ export class LegendsService {
 
   private load(): LegendsState | null {
     try {
-      const raw = typeof localStorage !== 'undefined' ? localStorage.getItem(LEGENDS_STORAGE_KEY) : null;
+      const raw = this.store.get(LEGENDS_STORAGE_KEY);
       if (!raw) return null;
       const parsed = JSON.parse(raw) as LegendsState;
       if (parsed?.version !== 1 || !Array.isArray(parsed.cards) || !parsed.squad) return null;
@@ -47,13 +49,8 @@ export class LegendsService {
   }
 
   private persist(state: LegendsState | null): void {
-    try {
-      if (state) localStorage.setItem(LEGENDS_STORAGE_KEY, JSON.stringify(state));
-      else localStorage.removeItem(LEGENDS_STORAGE_KEY);
-      this.storageError.set(false);
-    } catch {
-      this.storageError.set(true);
-    }
+    const write = state ? this.store.set(LEGENDS_STORAGE_KEY, JSON.stringify(state)) : this.store.remove(LEGENDS_STORAGE_KEY);
+    void write.then((result) => this.storageError.set(!result.ok));
   }
 
   private mutate<T>(fn: (draft: LegendsState) => T): T | null {

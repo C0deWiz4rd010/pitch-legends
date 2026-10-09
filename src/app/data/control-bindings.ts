@@ -19,7 +19,8 @@ export interface ControlBinding {
   touch: ControlGlyph[];
 }
 
-const ASSET = '/assets/input-prompts/';
+// Relative to the base href: the game is also served from a sub-path (GitHub Pages).
+const ASSET = 'assets/input-prompts/';
 
 export const CONTROL_BINDINGS: readonly ControlBinding[] = [
   {

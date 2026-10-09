@@ -46,7 +46,7 @@ describe('Foundation performance contracts', () => {
 
   it('writes idle checkpoints once, keeps only the newest and never resurrects a cleared one', () => {
     vi.useFakeTimers();
-    const service = new MatchCheckpointService();
+    const service = TestBed.inject(MatchCheckpointService);
     const match = runningMatch();
     service.saveWhenIdle(match.checkpoint());
     match.step(MATCH_TICK, EMPTY_MATCH_COMMAND);

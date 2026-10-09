@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { storeKeys } from './storage';
 
 test('standalone 3D football renders and accepts movement without creating a career', async ({ page }, info) => {
   test.setTimeout(60_000);
@@ -31,7 +32,7 @@ test('standalone 3D football renders and accepts movement without creating a car
   expect(graphics.drawCalls).toBeGreaterThan(20);
   expect(graphics.drawCalls).toBeLessThan(250);
   await page.screenshot({ path: info.outputPath('three-playground.png'), fullPage: false });
-  const careerKeys = await page.evaluate(() => Object.keys(localStorage).filter(key => /pitch-legends:(save|match-checkpoint)/.test(key)));
+  const careerKeys = (await storeKeys(page)).filter(key => /pitch-legends:(save|match-checkpoint)/.test(key));
   expect(careerKeys).toEqual([]);
   expect(errors).toEqual([]);
 });

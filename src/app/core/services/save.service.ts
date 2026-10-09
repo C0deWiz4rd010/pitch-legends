@@ -1,4 +1,5 @@
-import { Injectable } from '@angular/core';
+import { Injectable, inject } from '@angular/core';
+import { PersistentStore, SaveResult, StoreOperation } from '../storage/persistent-store';
 import { defaultSettings, GameState, SAVE_VERSION } from '../../models/game.model';
 import { ensureGameVisuals } from '../visual-identity';
 import { createManagerVisualIdentity, hash32 } from '../visual-identity';
@@ -8,63 +9,108 @@ import { createSecondDivision } from '../../data/generators';
 import { emptyTeamFinance } from '../../models/career.model';
 import { createCup } from '../career/cup';
 
-const STORAGE_KEY = 'pitch-legends:save:v6';
+export const CAREER_KEY = 'pitch-legends:save:v6';
 const V5_STORAGE_KEY = 'pitch-legends:save:v5';
 const V4_STORAGE_KEY = 'pitch-legends:save:v4';
 const V3_STORAGE_KEY = 'pitch-legends:save:v3';
 const V2_STORAGE_KEY = 'pitch-legends:save:v2';
 const LEGACY_STORAGE_KEY = 'pitch-legends:save:v1';
+/** The career as it was when the previous session started; offered when the current save is damaged. */
+export const LAST_GOOD_BACKUP_KEY = 'pitch-legends:backup:career-last-good';
+/** A damaged save is moved here untouched, so it can still be exported and inspected. */
+export const CORRUPT_BACKUP_KEY = 'pitch-legends:backup:career-corrupt';
+export const migrationBackupKey = (fromVersion: number) => `pitch-legends:backup:career-before-v${SAVE_VERSION}-from-v${fromVersion}`;
+
+export type LoadResult =
+  | { status: 'ok'; state: GameState; migratedFrom: number | null }
+  | { status: 'empty' }
+  | { status: 'corrupt'; reason: 'parse' | 'invalid' | 'migration'; hasBackup: boolean };
+
+/** A file name every operating system accepts, built from the manager name and season. */
+export function exportFileName(managerName: string, season: number): string {
+  const name = managerName.normalize('NFKD').replace(/[\u0300-\u036f]/g, '').replace(/[^A-Za-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40).toLowerCase();
+  return `pitch-legends-${name || 'career'}-s${Math.max(1, Math.floor(season) || 1)}.json`;
+}
 
 @Injectable({ providedIn: 'root' })
 export class SaveService {
-  load(): GameState | null {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY) ?? localStorage.getItem(V5_STORAGE_KEY) ?? localStorage.getItem(V4_STORAGE_KEY);
-      if (!raw) return null;
-      const parsed = JSON.parse(raw) as GameState;
-      if (!this.validateBase(parsed)) return null;
-      const migrated = this.migrateToV6(this.migrateToV5(parsed));
-      migrated.settings = { ...defaultSettings(), ...migrated.settings };
-      migrated.trainingWeek = this.normaliseTrainingWeek(migrated.trainingWeek);
-      const ready = ensureGameVisuals(migrated);
-      if (parsed.version !== SAVE_VERSION) this.save(ready);
-      return ready;
-    } catch {
-      return null;
+  readonly store = inject(PersistentStore);
+
+  /** Reads the career. A damaged save is never dropped: it is kept as a backup and reported. */
+  load(): LoadResult {
+    const key = [CAREER_KEY, V5_STORAGE_KEY, V4_STORAGE_KEY].find((candidate) => this.store.has(candidate));
+    if (!key) return { status: 'empty' };
+    const raw = this.store.get(key)!;
+    const result = this.parseRaw(raw);
+    if (result.status !== 'ok') {
+      if (this.store.get(CORRUPT_BACKUP_KEY) !== raw) void this.store.set(CORRUPT_BACKUP_KEY, raw);
+      return { ...result, hasBackup: this.hasBackup() };
     }
+    if (result.migratedFrom !== null) {
+      // Keep the save exactly as the older version wrote it before anything is converted.
+      void this.store.batch([
+        { key: migrationBackupKey(result.migratedFrom), value: raw },
+        { key: CAREER_KEY, value: JSON.stringify(result.state) },
+        ...(key !== CAREER_KEY ? [{ key, value: null }] : []),
+      ]);
+    } else {
+      void this.store.set(LAST_GOOD_BACKUP_KEY, raw);
+    }
+    return result;
   }
 
-  save(state: GameState): void {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-    } catch {
-      // Storage full or unavailable — fail silently, the game stays playable.
-    }
+  /** Loads the last good backup into the main slot. */
+  restoreBackup(): LoadResult {
+    const raw = this.store.get(LAST_GOOD_BACKUP_KEY) ?? this.latestMigrationBackup();
+    if (!raw) return { status: 'empty' };
+    const result = this.parseRaw(raw);
+    if (result.status !== 'ok') return { ...result, hasBackup: false };
+    void this.store.set(CAREER_KEY, JSON.stringify(result.state));
+    return result;
   }
 
-  clear(): void {
-    localStorage.removeItem(STORAGE_KEY);
-    localStorage.removeItem(V5_STORAGE_KEY);
-    localStorage.removeItem(V4_STORAGE_KEY);
+  hasBackup(): boolean {
+    const raw = this.store.get(LAST_GOOD_BACKUP_KEY) ?? this.latestMigrationBackup();
+    return !!raw && this.parseRaw(raw).status === 'ok';
+  }
+
+  /** The damaged save as it was found, for export. */
+  corruptSave(): string | null {
+    return this.store.get(CORRUPT_BACKUP_KEY);
+  }
+
+  save(state: GameState, extra: StoreOperation[] = []): Promise<SaveResult> {
+    let json: string;
+    try {
+      json = JSON.stringify(state);
+    } catch (error) {
+      return Promise.resolve({ ok: false, reason: 'unknown', message: String(error) });
+    }
+    return this.store.batch([{ key: CAREER_KEY, value: json }, ...extra]);
+  }
+
+  /** Deletes the career and its checkpoint; backups stay until a new career has been saved. */
+  clear(): Promise<SaveResult> {
+    return this.store.remove(CAREER_KEY, V5_STORAGE_KEY, V4_STORAGE_KEY, CORRUPT_BACKUP_KEY);
   }
 
   hasSave(): boolean {
-    return !!localStorage.getItem(STORAGE_KEY) || !!localStorage.getItem(V5_STORAGE_KEY) || !!localStorage.getItem(V4_STORAGE_KEY);
+    return [CAREER_KEY, V5_STORAGE_KEY, V4_STORAGE_KEY].some((key) => this.store.has(key));
   }
 
   hasLegacySave(): boolean {
-    return !!localStorage.getItem(LEGACY_STORAGE_KEY) || !!localStorage.getItem(V2_STORAGE_KEY) || !!localStorage.getItem(V3_STORAGE_KEY);
+    return [LEGACY_STORAGE_KEY, V2_STORAGE_KEY, V3_STORAGE_KEY].some((key) => this.store.has(key));
   }
 
   /** Serialise the current state to a downloadable JSON file. */
   exportToFile(state: GameState): void {
-    const blob = new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `pitch-legends-${state.managerName}-s${state.league.season}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
+    this.download(JSON.stringify(state, null, 2), exportFileName(state.managerName, state.league.season));
+  }
+
+  /** Offers the damaged save as a file, exactly as it was stored. */
+  exportCorrupt(): void {
+    const raw = this.corruptSave();
+    if (raw) this.download(raw, `pitch-legends-damaged-${new Date().toISOString().slice(0, 10)}.json`);
   }
 
   /** Parse an imported JSON string into a GameState (throws on invalid data). */
@@ -73,10 +119,45 @@ export class SaveService {
     if (!this.validateBase(parsed)) {
       throw new Error('Invalid save file.');
     }
-    const game = this.migrateToV6(this.migrateToV5(parsed as GameState));
+    return this.upgrade(parsed as GameState);
+  }
+
+  private parseRaw(raw: string): { status: 'ok'; state: GameState; migratedFrom: number | null } | { status: 'corrupt'; reason: 'parse' | 'invalid' | 'migration' } {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      return { status: 'corrupt', reason: 'parse' };
+    }
+    if (!this.validateBase(parsed)) return { status: 'corrupt', reason: 'invalid' };
+    try {
+      const version = (parsed as GameState).version;
+      return { status: 'ok', state: this.upgrade(parsed as GameState), migratedFrom: version === SAVE_VERSION ? null : version };
+    } catch {
+      return { status: 'corrupt', reason: 'migration' };
+    }
+  }
+
+  private upgrade(parsed: GameState): GameState {
+    const game = this.migrateToV6(this.migrateToV5(parsed));
     game.settings = { ...defaultSettings(), ...game.settings };
     game.trainingWeek = this.normaliseTrainingWeek(game.trainingWeek);
     return ensureGameVisuals(game);
+  }
+
+  private latestMigrationBackup(): string | null {
+    const keys = this.store.keys('pitch-legends:backup:career-before-').sort();
+    return keys.length ? this.store.get(keys[keys.length - 1]) : null;
+  }
+
+  private download(content: string, fileName: string): void {
+    const blob = new Blob([content], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = fileName;
+    a.click();
+    URL.revokeObjectURL(url);
   }
 
   private normaliseTrainingWeek(training: GameState['trainingWeek']): GameState['trainingWeek'] {

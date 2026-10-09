@@ -223,7 +223,7 @@
       </div>
 
       @if (selectedMode() === 'play') {
-        <div class="touch-controls" [attr.aria-label]="i18n.pick('Touch-Steuerung', 'Touch controls')">
+        <div class="touch-controls" [class.left-handed]="controlPrefs.prefs().touch.leftHanded" [style.--touch-scale]="controlPrefs.prefs().touch.scale" [style.--touch-opacity]="controlPrefs.prefs().touch.opacity" [style.--touch-lift.px]="controlPrefs.prefs().touch.lift" [attr.aria-label]="i18n.pick('Touch-Steuerung', 'Touch controls')">
           <div class="touch-stick" role="application" [attr.aria-label]="i18n.pick('Bewegungsstick', 'Movement stick')" (pointerdown)="touchStickStart($event)" (pointermove)="touchStickMove($event)" (pointerup)="touchStickEnd($event)" (pointercancel)="touchStickEnd($event)">
             <i [style.transform]="'translate(' + touchX() * 30 + 'px,' + touchY() * 30 + 'px)'">+</i>
           </div>

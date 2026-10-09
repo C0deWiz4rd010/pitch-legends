@@ -1,3 +1,5 @@
+import { BUTTON_ACTIONS, ButtonAction, MOVE_ACTIONS, buttonFor, buttonLabel, keyLabel, primaryKey } from '../../core/controls/control-prefs';
+import { ControlPrefsService } from '../../core/services/control-prefs.service';
 import { ChangeDetectionStrategy, Component, ElementRef, computed, effect, inject, viewChild } from '@angular/core';
 import { CONTROL_BINDINGS, CONTROL_CHAPTERS, ControlBinding, ControlGlyph, HumanInputDevice } from '../../data/control-bindings';
 import { I18nService } from '../../core/services/i18n.service';
@@ -93,6 +95,7 @@ import { ControlHelpService } from '../../core/services/control-help.service';
 export class ControlHandbookComponent {
   protected readonly help = inject(ControlHelpService);
   protected readonly i18n = inject(I18nService);
+  private readonly controls = inject(ControlPrefsService);
   protected readonly chapters = CONTROL_CHAPTERS;
   protected readonly devices: readonly HumanInputDevice[] = ['keyboard', 'gamepad', 'touch'];
   private readonly dialog = viewChild<ElementRef<HTMLDialogElement>>('handbookDialog');
@@ -111,14 +114,32 @@ export class ControlHandbookComponent {
     });
   }
 
+  /** Shows the player's own bindings where they differ from the defaults. */
   protected glyphs(binding: ControlBinding): readonly ControlGlyph[] {
-    return binding[this.help.device()];
+    const device = this.help.device();
+    const prefs = this.controls.prefs();
+    const action = (binding.action === 'keeper' ? 'through' : binding.action) as ButtonAction;
+    if (device === 'keyboard') {
+      if (binding.action === 'move') {
+        return MOVE_ACTIONS.some((move) => prefs.keyboard[move]) ? MOVE_ACTIONS.map((move) => ({ label: keyLabel(primaryKey(prefs, move)) })) : binding.keyboard;
+      }
+      if (BUTTON_ACTIONS.includes(action) && prefs.keyboard[action]) return [{ label: keyLabel(primaryKey(prefs, action)) }];
+    }
+    if (device === 'gamepad' && BUTTON_ACTIONS.includes(action) && prefs.gamepad[action] !== undefined) return [{ label: buttonLabel(buttonFor(prefs, action)) }];
+    return binding[device];
   }
 
   protected passHeadline(): string {
     const device = this.help.device();
-    if (device === 'keyboard') return this.text('J DRÜCKEN = KURZPASS · J HALTEN = PASSKRAFT', 'TAP J = SHORT PASS · HOLD J = PASS POWER');
-    if (device === 'gamepad') return this.text('A DRÜCKEN/HALTEN = PASSEN', 'TAP/HOLD A = PASS');
+    const prefs = this.controls.prefs();
+    if (device === 'keyboard') {
+      const key = keyLabel(primaryKey(prefs, 'pass'));
+      return this.text(`${key} DRÜCKEN = KURZPASS · ${key} HALTEN = PASSKRAFT`, `TAP ${key} = SHORT PASS · HOLD ${key} = PASS POWER`);
+    }
+    if (device === 'gamepad') {
+      const button = buttonLabel(buttonFor(prefs, 'pass'));
+      return this.text(`${button} DRÜCKEN/HALTEN = PASSEN`, `TAP/HOLD ${button} = PASS`);
+    }
     return this.text('GRÜNE A-FLÄCHE = PASSEN', 'GREEN A BUTTON = PASS');
   }
 

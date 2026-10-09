@@ -1,0 +1,61 @@
+<section class="controls fade-up">
+  @if (gs.hasGame()) { <a routerLink="/settings" class="back">← {{ text('Einstellungen', 'Settings') }}</a> }
+  @else { <a routerLink="/" class="back">← {{ text('Hauptmenü', 'Main menu') }}</a> }
+  <header>
+    <span class="eyebrow">{{ text('GILT FÜR ALLE MODI AUF DIESEM GERÄT', 'APPLIES TO EVERY MODE ON THIS DEVICE') }}</span>
+    <h1>{{ text('STEUERUNG', 'CONTROLS') }}</h1>
+  </header>
+
+  <div class="tabs" role="tablist">
+    <button type="button" role="tab" [attr.aria-selected]="tab() === 'keyboard'" [class.active]="tab() === 'keyboard'" (click)="tab.set('keyboard')">{{ text('TASTATUR', 'KEYBOARD') }}</button>
+    <button type="button" role="tab" [attr.aria-selected]="tab() === 'gamepad'" [class.active]="tab() === 'gamepad'" (click)="tab.set('gamepad')">GAMEPAD</button>
+    <button type="button" role="tab" [attr.aria-selected]="tab() === 'touch'" [class.active]="tab() === 'touch'" (click)="tab.set('touch')">TOUCH</button>
+  </div>
+
+  <p class="message" aria-live="polite">{{ message() || text('Wähle eine Belegung, um sie zu ändern. Bereits belegte Tasten tauschen automatisch.', 'Pick a binding to change it. Keys already in use swap automatically.') }}</p>
+
+  @switch (tab()) {
+    @case ('keyboard') {
+      <div class="list">
+        @for (action of keyboardActions; track action) {
+          <div class="row" [class.capturing]="capturing() === action">
+            <span>{{ label(action) }}</span>
+            <kbd [class.custom]="custom(action)">{{ capturing() === action ? '…' : key(action) }}</kbd>
+            <button type="button" class="btn btn--ghost btn--sm" [attr.aria-label]="text('Ändern: ', 'Change: ') + label(action)" (click)="startKeyCapture(action)">{{ text('ÄNDERN', 'CHANGE') }}</button>
+          </div>
+        }
+      </div>
+      <p class="hint">{{ text('Pfeiltasten bewegen immer. Esc (Pause) und Q (Taktik) sind fest.', 'Arrow keys always move. Esc (pause) and Q (tactics) are fixed.') }}</p>
+      <button type="button" class="btn btn--ghost" (click)="reset('keyboard')">{{ text('TASTATUR ZURÜCKSETZEN', 'RESET KEYBOARD') }}</button>
+    }
+    @case ('gamepad') {
+      <div class="list">
+        @for (action of gamepadActions; track action) {
+          <div class="row" [class.capturing]="capturing() === action">
+            <span>{{ label(action) }}</span>
+            <kbd [class.custom]="controls.prefs().gamepad[action] !== undefined">{{ capturing() === action ? '…' : button(action) }}</kbd>
+            <button type="button" class="btn btn--ghost btn--sm" [attr.aria-label]="text('Ändern: ', 'Change: ') + label(action)" (click)="startPadCapture(action)">{{ text('ÄNDERN', 'CHANGE') }}</button>
+          </div>
+        }
+      </div>
+      <p class="hint">{{ text('Der linke Stick bewegt immer. Trennt sich der Controller im Spiel, pausiert die Partie.', 'The left stick always moves. If the controller disconnects mid-match, the match pauses.') }}</p>
+      <button type="button" class="btn btn--ghost" (click)="reset('gamepad')">{{ text('GAMEPAD ZURÜCKSETZEN', 'RESET GAMEPAD') }}</button>
+    }
+    @case ('touch') {
+      <div class="touch-grid">
+        <div class="sliders">
+          <label><span>{{ text('Größe', 'Size') }} · {{ (touch().scale * 100).toFixed(0) }} %</span><input type="range" min="0.8" max="1.5" step="0.05" [value]="touch().scale" (input)="touchNumber('scale', $event)" /></label>
+          <label><span>{{ text('Deckkraft', 'Opacity') }} · {{ (touch().opacity * 100).toFixed(0) }} %</span><input type="range" min="0.4" max="1" step="0.05" [value]="touch().opacity" (input)="touchNumber('opacity', $event)" /></label>
+          <label><span>{{ text('Abstand vom unteren Rand', 'Distance from bottom edge') }} · {{ touch().lift }} px</span><input type="range" min="0" max="120" step="4" [value]="touch().lift" (input)="touchNumber('lift', $event)" /></label>
+          <label class="toggle"><input type="checkbox" [checked]="touch().leftHanded" (change)="setTouch('leftHanded', !touch().leftHanded)" /><span>{{ text('Linkshänder: Tasten links, Stick rechts', 'Left-handed: buttons left, stick right') }}</span></label>
+        </div>
+        <div class="preview" [class.left-handed]="touch().leftHanded" [style.--touch-scale]="touch().scale" [style.--touch-opacity]="touch().opacity" [style.--touch-lift.px]="touch().lift" role="img" [attr.aria-label]="text('Vorschau der Touch-Steuerung', 'Touch controls preview')">
+          <div class="stick"><i>+</i></div>
+          <div class="buttons">@for (button of previewButtons; track button) { <b [class]="button">{{ button.toUpperCase() }}</b> }</div>
+        </div>
+      </div>
+      <p class="hint">{{ text('Stick und Tasten halten Abstand zu Notch und Home-Leiste. Tricks: Richtung am Stick plus SK. Stellen: LT halten.', 'Stick and buttons keep clear of the notch and home bar. Skill moves: stick direction plus SK. Jockey: hold LT.') }}</p>
+      <button type="button" class="btn btn--ghost" (click)="reset('touch')">{{ text('TOUCH ZURÜCKSETZEN', 'RESET TOUCH') }}</button>
+    }
+  }
+</section>

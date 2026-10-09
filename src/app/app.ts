@@ -8,6 +8,7 @@ import { I18nPipe } from './shared/i18n.pipe';
 import { ClubCrestComponent } from './shared/components/club-crest.component';
 import { MiniKitComponent } from './shared/components/mini-kit.component';
 import { ControlHandbookComponent } from './shared/components/control-handbook.component';
+import { SystemNoticesComponent } from './shared/components/system-notices.component';
 import { ControlHelpService } from './core/services/control-help.service';
 import { APP_VERSION } from './core/version';
 import { I18nService } from './core/services/i18n.service';
@@ -21,7 +22,7 @@ interface NavItem {
 
 @Component({
   selector: 'app-root',
-  imports: [RouterOutlet, RouterLink, RouterLinkActive, StartComponent, I18nPipe, ClubCrestComponent, MiniKitComponent, ControlHandbookComponent],
+  imports: [RouterOutlet, RouterLink, RouterLinkActive, StartComponent, I18nPipe, ClubCrestComponent, MiniKitComponent, ControlHandbookComponent, SystemNoticesComponent],
   templateUrl: './app.html',
   styleUrl: './app.scss',
 })
@@ -57,7 +58,7 @@ export class App {
     effect(() => this.document.body.classList.toggle('reduce-motion', !!this.gs.game()?.settings.reducedMotion));
     inject(GamepadMenuService).start();
     this.router.events.pipe(takeUntilDestroyed()).subscribe(event => {
-      if (event instanceof NavigationEnd) this.standalonePage.set(/^\/(?:play|players|legends|quick|challenges|modes)(?:[/?#]|$)/.test(event.urlAfterRedirects));
+      if (event instanceof NavigationEnd) this.standalonePage.set(/^\/(?:play|players|legends|quick|challenges|modes|controls)(?:[/?#]|$)/.test(event.urlAfterRedirects));
     });
     // Resume an existing career automatically so a page reload persists state.
     if (this.gs.hasStoredSave()) this.gs.loadFromStorage();

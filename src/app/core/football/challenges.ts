@@ -225,13 +225,16 @@ const RECORDS_KEY = 'pitch-legends:challenges:v1';
 
 export type ChallengeRecords = Partial<Record<ChallengeId, { best: number; medal: Medal | null; attempts: number }>>;
 
-export function loadChallengeRecords(): ChallengeRecords {
-  try { return JSON.parse(localStorage.getItem(RECORDS_KEY) ?? '{}') as ChallengeRecords; } catch { return {}; }
+/** Where personal bests live; the app passes its `PersistentStore`. */
+export interface RecordStore { get(key: string): string | null; set(key: string, value: string): unknown }
+
+export function loadChallengeRecords(store: RecordStore): ChallengeRecords {
+  try { return JSON.parse(store.get(RECORDS_KEY) ?? '{}') as ChallengeRecords; } catch { return {}; }
 }
 
 /** Stores a result and returns whether it is a new personal best. */
-export function saveChallengeResult(outcome: ChallengeOutcome): boolean {
-  const records = loadChallengeRecords();
+export function saveChallengeResult(store: RecordStore, outcome: ChallengeOutcome): boolean {
+  const records = loadChallengeRecords(store);
   const definition = CHALLENGES.find((candidate) => candidate.id === outcome.id)!;
   const previous = records[outcome.id];
   const better = !previous || (definition.lowerIsBetter ? outcome.score < previous.best : outcome.score > previous.best);
@@ -240,6 +243,6 @@ export function saveChallengeResult(outcome: ChallengeOutcome): boolean {
     medal: better ? outcome.medal : previous!.medal,
     attempts: (previous?.attempts ?? 0) + 1,
   };
-  try { localStorage.setItem(RECORDS_KEY, JSON.stringify(records)); } catch { /* the result just is not remembered */ }
+  void store.set(RECORDS_KEY, JSON.stringify(records));
   return better;
 }

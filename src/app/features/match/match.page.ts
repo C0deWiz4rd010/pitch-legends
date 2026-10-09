@@ -42,7 +42,8 @@ import { ARCADE_MATCH_TUNING, ArcadeMatch, MATCH_TICK } from '../../core/service
 import { AudioService } from '../../core/services/audio.service';
 import { ControlHelpService } from '../../core/services/control-help.service';
 import { PortraitService } from '../../core/services/portrait.service';
-import { CONTROL_INPUT_MAP, MOVEMENT_KEYS } from '../../data/control-bindings';
+import { BINDABLE_ACTIONS, BUTTON_ACTIONS, ButtonAction, buttonFor, keysFor } from '../../core/controls/control-prefs';
+import { ControlPrefsService } from '../../core/services/control-prefs.service';
 import { ClubCrestComponent } from '../../shared/components/club-crest.component';
 import { MiniKitComponent } from '../../shared/components/mini-kit.component';
 import { ManagerPortraitComponent } from '../../shared/components/manager-portrait.component';
@@ -58,6 +59,7 @@ import { HeatmapComponent } from '../../shared/components/heatmap.component';
 import { tacticLabel } from '../../shared/tactic-labels';
 import { CUP_ROUND_LABELS } from '../../core/career/cup';
 import { ExhibitionService } from '../../core/services/exhibition.service';
+import { PersistentStore } from '../../core/storage/persistent-store';
 import { CHALLENGES, ChallengeController, ChallengeHud, ChallengeOutcome, loadChallengeRecords, saveChallengeResult } from '../../core/football/challenges';
 import type { ThreePitchRenderer } from './three-pitch.renderer';
 
@@ -93,6 +95,8 @@ export class MatchPage implements OnDestroy {
   private readonly season = inject(SeasonService);
   private readonly engine = inject(MatchEngineService);
   private readonly checkpoints = inject(MatchCheckpointService);
+  private readonly store = inject(PersistentStore);
+  protected readonly controlPrefs = inject(ControlPrefsService);
   private readonly router = inject(Router);
   private readonly route = inject(ActivatedRoute);
   protected readonly practice = this.route.snapshot.routeConfig?.path === 'play';
@@ -174,6 +178,7 @@ export class MatchPage implements OnDestroy {
     { action: 'shoot', css: 'b', label: 'B', de: 'Schuss', en: 'Shoot' },
     { action: 'pass', css: 'a', label: 'A', de: 'Pass oder Tackling', en: 'Pass or tackle' },
     { action: 'sprint', css: 'rt', label: 'RT', de: 'Sprint', en: 'Sprint' },
+    { action: 'jockey', css: 'lt', label: 'LT', de: 'Stellen', en: 'Jockey' },
   ];
   protected readonly touchX = signal(0);
   protected readonly touchY = signal(0);
@@ -301,6 +306,8 @@ export class MatchPage implements OnDestroy {
     if (this.controlHelp.visible()) return;
     if((event.target as HTMLElement | null)?.closest('input,textarea,select,[contenteditable="true"]')) return;
     if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].includes(event.code)) event.preventDefault();
+    // Freely bound keys such as / or ' must not open the browser's quick find mid-match.
+    else if (this.phase() === 'match' && !event.ctrlKey && !event.metaKey && BINDABLE_ACTIONS.some((action) => keysFor(this.controlPrefs.prefs(), action).includes(event.code))) event.preventDefault();
     if (event.code === 'Escape' && this.phase() === 'match' && !event.repeat) {
       event.preventDefault();
       this.togglePlay();
@@ -315,7 +322,7 @@ export class MatchPage implements OnDestroy {
   private readonly visibilityChange = () => {
     if (document.hidden && (this.phase() === 'match' || this.phase() === 'halftime')) this.pauseFor(this.i18n.pick('Match automatisch pausiert: Browser-Tab verlassen.', 'Match paused automatically: browser tab left.'));
   };
-  private readonly flushCheckpoint = () => { this.checkpoints.flush(); };
+  private readonly flushCheckpoint = () => { void this.checkpoints.flush(); };
   private readonly blur = () => {
     this.resetInputs();
     if (this.phase() === 'match') this.pauseFor(this.i18n.pick('Match automatisch pausiert: Fokus verloren.', 'Match paused automatically: focus lost.'));
@@ -969,9 +976,9 @@ export class MatchPage implements OnDestroy {
     if (!challenge) return;
     cancelAnimationFrame(this.raf);
     const outcome = challenge.outcome();
-    const newBest = saveChallengeResult(outcome);
+    const newBest = saveChallengeResult(this.store, outcome);
     const definition = challenge.definition;
-    this.challengeResult.set({ outcome, newBest, best: loadChallengeRecords()[outcome.id]?.best ?? outcome.score, de: definition.de, en: definition.en, unitDe: definition.unit.de, unitEn: definition.unit.en });
+    this.challengeResult.set({ outcome, newBest, best: loadChallengeRecords(this.store)[outcome.id]?.best ?? outcome.score, de: definition.de, en: definition.en, unitDe: definition.unit.de, unitEn: definition.unit.en });
     this.challenge = null;
     this.challengeHud.set(null);
     this.phase.set('result');
@@ -998,7 +1005,8 @@ export class MatchPage implements OnDestroy {
     if (this.practice) { this.reset(); this.kickOff(); this.skipIntro(); return; }
     this.committing.set(true);
     const committed = await this.season.commitWeek(result);
-    if (committed) this.checkpoints.clear();
+    // The finished match and the removal of its checkpoint reach the disk in one transaction.
+    if (committed) await this.gs.persistWith(this.checkpoints.takeClearOperations());
     this.reset();
     await this.router.navigateByUrl(this.gs.seasonOver() ? '/season-review' : '/');
   }
@@ -1078,8 +1086,10 @@ export class MatchPage implements OnDestroy {
   private readInput(): MatchCommand {
     const gamepad = typeof navigator !== 'undefined' ? navigator.getGamepads?.()[0] : null;
     const [axisX, axisY] = radialAxes(gamepad?.axes[0] ?? 0, gamepad?.axes[1] ?? 0);
-    const keyboardX = (MOVEMENT_KEYS.right.some((key) => this.keys.has(key)) ? 1 : 0) - (MOVEMENT_KEYS.left.some((key) => this.keys.has(key)) ? 1 : 0);
-    const keyboardY = (MOVEMENT_KEYS.down.some((key) => this.keys.has(key)) ? 1 : 0) - (MOVEMENT_KEYS.up.some((key) => this.keys.has(key)) ? 1 : 0);
+    const prefs = this.controlPrefs.prefs();
+    const held = (direction: 'up' | 'down' | 'left' | 'right') => keysFor(prefs, `move-${direction}`).some((key) => this.keys.has(key)) ? 1 : 0;
+    const keyboardX = held('right') - held('left');
+    const keyboardY = held('down') - held('up');
     const touches = this.touchActions();
     const gamepadActive = !!gamepad && (Math.abs(axisX) + Math.abs(axisY) > 0 || gamepad.buttons.some((button) => button.pressed));
     if (gamepadActive) {
@@ -1089,10 +1099,10 @@ export class MatchPage implements OnDestroy {
     else if (keyboardX || keyboardY || [...this.keys].some((key) => key.startsWith('Key') || key.startsWith('Shift') || key === 'Space')) this.updateInputDevice('keyboard');
     const moveX = clampInput(keyboardX + axisX + this.touchX());
     const moveY = clampInput(keyboardY + axisY + this.touchY());
-    const pressed = (action: keyof typeof CONTROL_INPUT_MAP): boolean => {
-      const binding = CONTROL_INPUT_MAP[action];
-      this.inputBuffer.set(`gamepad-${action}`, action === 'switch' ? 'switchPlayer' : action, !!gamepad?.buttons[binding.gamepadButton]?.pressed, performance.now());
-      return binding.keyboard.some((key) => this.keys.has(key) || this.edgeKeys.has(key)) || !!gamepad?.buttons[binding.gamepadButton]?.pressed || touches[action] || this.touchEdges.has(action as TouchAction);
+    const pressed = (action: ButtonAction): boolean => {
+      const button = buttonFor(prefs, action);
+      this.inputBuffer.set(`gamepad-${action}`, action === 'switch' ? 'switchPlayer' : action, !!gamepad?.buttons[button]?.pressed, performance.now());
+      return keysFor(prefs, action).some((key) => this.keys.has(key) || this.edgeKeys.has(key)) || !!gamepad?.buttons[button]?.pressed || touches[action] || this.touchEdges.has(action as TouchAction);
     };
     const pass = pressed('pass');
     const arcade = this.arcade;
@@ -1126,8 +1136,9 @@ export class MatchPage implements OnDestroy {
   }
 
   private captureKeyboard(code: string, active: boolean): void {
-    for (const [action, binding] of Object.entries(CONTROL_INPUT_MAP)) {
-      if ((binding.keyboard as readonly string[]).includes(code)) this.inputBuffer.set(`key-${code}`, (action === 'switch' ? 'switchPlayer' : action) as BufferedButton, active, performance.now());
+    const prefs = this.controlPrefs.prefs();
+    for (const action of BUTTON_ACTIONS) {
+      if (keysFor(prefs, action).includes(code)) this.inputBuffer.set(`key-${code}`, (action === 'switch' ? 'switchPlayer' : action) as BufferedButton, active, performance.now());
     }
   }
 

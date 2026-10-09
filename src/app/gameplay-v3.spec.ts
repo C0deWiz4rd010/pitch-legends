@@ -1,3 +1,4 @@
+import { TestBed } from '@angular/core/testing';
 import { arcadeJogSpeed, arcadeSprintSpeed, ArcadeMatch, MATCH_TICK } from './core/services/arcade-match';
 import { MATCH_CHECKPOINT_KEY, MatchCheckpointService } from './core/services/match-checkpoint.service';
 import { createNewGame } from './data/generators';
@@ -185,7 +186,7 @@ describe('Gameplay V3 match contracts', () => {
     delete legacy.config.controllerMode;
     localStorage.setItem('pitch-legends:match-checkpoint:v1', JSON.stringify(legacy));
 
-    const service = new MatchCheckpointService();
+    const service = TestBed.inject(MatchCheckpointService);
     const migrated = service.load(legacy.fixtureId);
 
     expect(migrated?.version).toBe(2);

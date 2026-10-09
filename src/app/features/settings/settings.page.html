@@ -62,6 +62,7 @@
         }
       </div>
     </div>
+    <a routerLink="/controls" class="btn btn--ghost btn--block">{{ i18n.pick('STEUERUNG & TASTENBELEGUNG', 'CONTROLS & KEY BINDINGS') }} ›</a>
     <label class="toggle"><input type="checkbox" [checked]="gs.game()?.settings?.autoSave" (change)="toggleAutosave()" /><span>{{ 'settings.autosave' | t }}</span></label>
     <label class="toggle"><input type="checkbox" [checked]="gs.game()?.settings?.soundEnabled" (change)="toggleSound()" /><span>{{ 'settings.sound' | t }}</span></label>
     <label class="toggle"><input type="checkbox" [checked]="gs.game()?.settings?.cameraShake" (change)="toggleCameraShake()" /><span>{{ i18n.pick('Kamerawackeln', 'Camera shake') }}</span></label>

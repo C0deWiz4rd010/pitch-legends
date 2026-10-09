@@ -1,4 +1,4 @@
-<div class="start">
+<div class="start" [style.--stadium-art]="stadiumArt">
   <div class="language" role="group" [attr.aria-label]="i18n.pick('Sprache', 'Language')">
     <button [class.active]="i18n.locale() === 'de'" [attr.aria-pressed]="i18n.locale() === 'de'" (click)="i18n.setLocale('de')">DE</button>
     <button [class.active]="i18n.locale() === 'en'" [attr.aria-pressed]="i18n.locale() === 'en'" (click)="i18n.setLocale('en')">EN</button>
@@ -17,7 +17,18 @@
   </div>
 
   <div class="panel fade-up">
-    @if (hasSave) {
+    @if (gs.loadIssue(); as issue) {
+      <div class="recovery" role="alert">
+        <strong>! {{ i18n.pick('SPIELSTAND BESCHÄDIGT', 'SAVE DAMAGED') }}</strong>
+        <p>{{ i18n.pick('Deine Karriere ließ sich nicht lesen. Sie wurde nicht gelöscht, sondern als Sicherung aufbewahrt.', 'Your career could not be read. It was not deleted but kept as a backup.') }}</p>
+        @if (issue.hasBackup) {
+          <button type="button" class="btn btn--primary btn--block" (click)="restoreBackup()">{{ i18n.pick('LETZTE SICHERUNG LADEN', 'LOAD LAST BACKUP') }}</button>
+        }
+        <button type="button" class="btn btn--block" (click)="exportDamaged()">{{ i18n.pick('BESCHÄDIGTE DATEI EXPORTIEREN', 'EXPORT DAMAGED FILE') }}</button>
+        <button type="button" class="btn btn--ghost btn--block" (click)="discardDamaged()">{{ confirmDiscard() ? i18n.pick('WIRKLICH VERWERFEN?', 'REALLY DISCARD?') : i18n.pick('VERWERFEN UND NEU BEGINNEN', 'DISCARD AND START OVER') }}</button>
+      </div>
+      <div class="divider"><span>{{ 'start.fresh' | t }}</span></div>
+    } @else if (hasSave()) {
       <button class="btn btn--primary btn--block continue" (click)="continueGame()">▶ {{ 'start.continue' | t }}</button>
       <div class="divider"><span>{{ 'start.fresh' | t }}</span></div>
     }

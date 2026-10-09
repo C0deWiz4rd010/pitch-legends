@@ -394,3 +394,37 @@ Grundlage: neuer, element-weiser Verbesserungsplan (Fundament → Gameplay → G
 - **Offen:**
   - Die Taktik-KI nutzt auf dem Kleinfeld teils noch absolute Abstände; das wird durch das Begrenzen auf das Feld abgefangen und in Phase H feiner abgestimmt.
   - Draft-Gegner haben eine feste Stärke je Runde.
+
+## Gesamtverbesserung Phase G – Plattform: Speichern, Offline, Mobile (2026-10-09)
+
+- **Speichern in IndexedDB** (`core/storage/persistent-store.ts`):
+  - Datenbank `pitch-legends` mit getrennten Bereichen für Karriere, Legends Team, Match-Checkpoints, Sicherungen und Einstellungen.
+  - Vor dem ersten Bild wird alles einmal in den Speicher gelesen (`provideAppInitializer`). Lesen bleibt synchron; Schreiben aktualisiert sofort die Kopie im Speicher und erreicht die Festplatte asynchron, ohne einen Frame zu blockieren.
+  - Alte Werte aus localStorage werden beim Start übernommen und erst nach erfolgreichem Schreiben dort gelöscht. Ohne IndexedDB (alte Browser, Unit-Tests) wird direkt localStorage genutzt.
+  - Mehrere Werte lassen sich in einer Transaktion schreiben (`batch`): Ein beendetes Spiel und das Löschen seines Checkpoints landen gemeinsam oder gar nicht auf der Festplatte (`GameStateService.persistWith`). Schlägt ein Teil fehl, wird die ganze Transaktion verworfen; im localStorage-Fallback wird zurückgerollt.
+- **Fehler sind sichtbar** (`SaveResult`, `LoadResult`, `shared/components/system-notices.component.ts`):
+  - „Speicher voll“ und andere Schreibfehler erscheinen als Meldung mit „Erneut“ und „Exportieren“; der Fortschritt der Sitzung bleibt erhalten.
+  - Ein beschädigter Spielstand wird nie still verworfen. Er bleibt liegen, eine Kopie kommt unter `backup:career-corrupt`, und der Startbildschirm bietet „Letzte Sicherung laden“, „Beschädigte Datei exportieren“ und erst nach Bestätigung „Verwerfen“.
+  - Jeder erfolgreiche Start legt die Karriere als „letzte gute Sicherung“ ab; vor jeder Migration wird das Original unter `backup:career-before-v6-from-vN` gesichert.
+  - Exportdateien heißen `pitch-legends-<name>-s<saison>.json`, ohne Sonderzeichen, Pfadteile oder Umlaute.
+- **Offline und Updates** (`@angular/service-worker`, `ngsw-config.json`):
+  - Alle Skripte, Schriften und Grafiken werden vorab zwischengespeichert; das Spiel lädt offline neu, auch Unterseiten.
+  - Ein Update wird als Hinweis „Neue Version – neu laden“ angezeigt, aber nie während eines Spiels.
+  - Offline zeigt ein kleiner Hinweis, dass alles auf dem Gerät gespeichert wird.
+- **Steuerung** (`/controls`, `core/controls/control-prefs.ts`, gilt für alle Modi auf dem Gerät):
+  - Tastatur und Gamepad frei belegbar; eine schon belegte Taste tauscht mit der alten. Esc, Q, Tab und Enter sind reserviert, Pfeiltasten bewegen immer.
+  - Das Steuerungs-Handbuch zeigt die eigene Belegung.
+  - Touch: Größe (80–150 %), Deckkraft, Abstand vom unteren Rand und Linkshänder-Modus, mit Live-Vorschau.
+  - Neue Touch-Taste LT für Stellen; Tricks laufen über Stick-Richtung plus SK. Ein getrennter Controller pausiert das Spiel weiterhin.
+- **Behoben:**
+  - Im Querformat am Handy rutschte bei „Sofort spielen“ das Spielfeld samt Touch-Tasten 65 px unter den Bildschirmrand. Ursache war eine Regel aus Phase D, die die Anzeigetafel wieder in den Fluss setzte.
+  - Auf GitHub Pages fehlten die Tastensymbole im Handbuch und das Stadionbild der Startseite, weil die Pfade bei `/assets` statt unter dem Unterpfad begannen.
+- **Nachweis:**
+  - 215 Unit-Tests; neu ist `platform.spec.ts` (13). Geprüft werden mit `fake-indexeddb`: Import aus localStorage, getrennte Bereiche, Quota-Fehler ohne Teilschreiben, localStorage-Rollback, beschädigter Spielstand mit Sicherung, Migration v5 → v6 mit Identitäten und Originalkopie, Match plus Checkpoint in einem Schreibvorgang, Dateinamen und Tastenbelegung.
+  - 29 E2E-Tests; neu ist `platform.spec.ts`: IndexedDB und Import, beschädigter Spielstand mit Sicherung, simulierter voller Speicher mit Meldung, Tasten neu belegen (die neue Schusstaste nimmt den Elfmeter), großes Linkshänder-Touch-Layout ohne Überlappung, Offline-Neuladen mit Service Worker.
+  - Die E2E-Tests lesen Spielstände über `e2e/storage.ts` aus IndexedDB.
+  - Screenshots: [Touch-Layout](screenshots/controls-touch-2026-10-09.png), [Wiederherstellung](screenshots/save-recovery-2026-10-09.png).
+- **Offen:**
+  - Keine Messung auf echten Handys mit Notch; die Safe-Area-Abstände sind nur im emulierten Browser geprüft.
+  - Mehrere gleichzeitig offene Tabs teilen sich den Speicher; es gewinnt der zuletzt schreibende Tab.
+

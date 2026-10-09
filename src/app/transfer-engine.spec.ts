@@ -1,3 +1,4 @@
+import { TestBed } from '@angular/core/testing';
 import { createNewGame } from './data/generators';
 import { recommendedContract } from './core/transfer-engine';
 import {
@@ -128,10 +129,10 @@ describe('Transfer market V2', () => {
     expect(weeklySalaryFor({ marketValue: value, age: 25, overall: 70 })).toBeCloseTo(value * 0.006, -2);
 
     const game = createNewGame({ managerName: 'V5', clubName: 'V5 FC', seed: 926 });
-    const saves = new SaveService();
+    const saves = TestBed.inject(SaveService);
     localStorage.clear();
     localStorage.setItem('pitch-legends:save:v3', JSON.stringify({ ...game, version: 3 }));
-    expect(saves.load()).toBeNull();
+    expect(saves.load()).toEqual({ status: 'empty' });
     expect(localStorage.getItem('pitch-legends:save:v3')).toBeTruthy();
     saves.save(game);
     expect(JSON.parse(localStorage.getItem('pitch-legends:save:v6')!).version).toBe(6);

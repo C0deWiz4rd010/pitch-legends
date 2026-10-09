@@ -18,6 +18,7 @@ export const routes: Routes = [
   { path: 'finances', loadComponent: () => import('./features/finances/finances.page').then((m) => m.FinancesPage) },
   { path: 'season-review', loadComponent: () => import('./features/season-review/season-review.page').then((m) => m.SeasonReviewPage) },
   { path: 'facilities', loadComponent: () => import('./features/facilities/facilities.page').then((m) => m.FacilitiesPage) },
+  { path: 'controls', loadComponent: () => import('./features/controls/controls.page').then((m) => m.ControlsPage) },
   { path: 'settings', loadComponent: () => import('./features/settings/settings.page').then((m) => m.SettingsPage) },
   { path: '**', redirectTo: '' },
 ];

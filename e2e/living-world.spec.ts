@@ -1,8 +1,9 @@
 import { expect, Page, test } from '@playwright/test';
+import { readStore, resetStorage, seedStore } from './storage';
 
 async function createSeededCareer(page: Page): Promise<void> {
   await page.goto('/');
-  await page.evaluate(() => localStorage.clear());
+  await resetStorage(page);
   await page.reload();
   await page.getByPlaceholder('Alex Stone').fill('Atlas Coach');
   await page.getByPlaceholder('Harbour City').fill('Northstar AFC');
@@ -19,7 +20,8 @@ test('seeded league atlas exposes clubs, cities, routes and individual coaches',
   page.on('console', (message) => { if (message.type() === 'error') errors.push(message.text()); });
   await createSeededCareer(page);
 
-  const state = await page.evaluate(() => JSON.parse(localStorage.getItem('pitch-legends:save:v6')!));
+  await expect.poll(() => readStore(page, 'pitch-legends:save:v6')).not.toBeNull();
+  const state = await readStore(page, 'pitch-legends:save:v6');
   expect(state.version).toBe(6);
   expect(state.world.seed).toBe(441407);
   // Two divisions of twelve; the map shows the player's division.
@@ -41,8 +43,9 @@ test('seeded league atlas exposes clubs, cities, routes and individual coaches',
 
 test('medical dossier survives save/load and keeps the unified player visuals', async ({ page }) => {
   await createSeededCareer(page);
-  const injuredPlayerName = await page.evaluate(() => {
-    const state = JSON.parse(localStorage.getItem('pitch-legends:save:v6')!);
+  await expect.poll(() => readStore(page, 'pitch-legends:save:v6')).not.toBeNull();
+  const state = await readStore(page, 'pitch-legends:save:v6');
+  const injuredPlayerName = await (async () => {
     const club = state.teams.find((team: any) => team.id === state.clubId);
     const player = club.players[0];
     player.injuryWeeks = 3;
@@ -54,9 +57,9 @@ test('medical dossier survives save/load and keeps the unified player visuals', 
       },
       history: [], recurrenceUntilWeek: null,
     };
-    localStorage.setItem('pitch-legends:save:v6', JSON.stringify(state));
+    await seedStore(page, 'pitch-legends:save:v6', state);
     return `${player.firstName} ${player.lastName}`;
-  });
+  })();
   await page.goto('/squad');
   await page.reload();
   await page.locator('.pcard').filter({ hasText: injuredPlayerName }).click();

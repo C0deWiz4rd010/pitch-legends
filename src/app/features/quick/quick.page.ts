@@ -1,5 +1,6 @@
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import { Router, RouterLink } from '@angular/router';
+import { PersistentStore } from '../../core/storage/persistent-store';
 import { ExhibitionService } from '../../core/services/exhibition.service';
 import { GameStateService } from '../../core/services/game-state.service';
 import { I18nService } from '../../core/services/i18n.service';
@@ -19,6 +20,7 @@ const STORAGE_KEY = 'pitch-legends:quick:v1';
 export class QuickPage {
   private readonly exhibitions = inject(ExhibitionService);
   private readonly router = inject(Router);
+  private readonly store = inject(PersistentStore);
   protected readonly gs = inject(GameStateService);
   protected readonly i18n = inject(I18nService);
   protected readonly clubs = quickClubs();
@@ -30,7 +32,7 @@ export class QuickPage {
 
   private load(): QuickMatchSettings {
     try {
-      const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? 'null') as Partial<QuickMatchSettings> | null;
+      const saved = JSON.parse(this.store.get(STORAGE_KEY) ?? 'null') as Partial<QuickMatchSettings> | null;
       return { ...DEFAULT_QUICK_SETTINGS, ...(saved ?? {}) };
     } catch {
       return { ...DEFAULT_QUICK_SETTINGS };
@@ -42,7 +44,7 @@ export class QuickPage {
 
   protected update<K extends keyof QuickMatchSettings>(key: K, value: QuickMatchSettings[K]): void {
     this.settings.update((current) => ({ ...current, [key]: value }));
-    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(this.settings())); } catch { /* the choice just is not remembered */ }
+    void this.store.set(STORAGE_KEY, JSON.stringify(this.settings()));
   }
 
   protected swap(): void {

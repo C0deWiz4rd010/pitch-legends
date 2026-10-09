@@ -5,7 +5,8 @@ import { Player } from '../../models/player.model';
 import { Fixture, StandingRow } from '../../models/league.model';
 import { createNewGame, NewGameOptions } from '../../data/generators';
 import { playerName } from '../ratings';
-import { SaveService } from './save.service';
+import { LoadResult, SaveService } from './save.service';
+import { SaveResult, StoreOperation } from '../storage/persistent-store';
 import { prepareTravelEvent } from '../travel-engine';
 import { computeStandings } from '../standings';
 import { openCupTie } from '../career/cup';
@@ -23,6 +24,8 @@ export class GameStateService {
   }
 
   readonly game = this.state.asReadonly();
+  /** Set when the stored career could not be read; the start screen offers the backup and an export. */
+  readonly loadIssue = signal<Extract<LoadResult, { status: 'corrupt' }> | null>(null);
   readonly hasGame = computed(() => this.state() !== null);
 
   readonly playerTeam = computed<Team | null>(() => {
@@ -98,29 +101,42 @@ export class GameStateService {
     this.discardPendingSave();
     prepareTravelEvent(g);
     this.state.set(g);
-    this.saves.save(g);
+    this.loadIssue.set(null);
+    void this.saves.save(g);
   }
 
   loadFromStorage(): boolean {
-    const g = this.saves.load();
+    const result = this.saves.load();
     this.discardPendingSave();
-    if (g) {
-      prepareTravelEvent(g);
-      this.state.set(g);
-      return true;
-    }
-    return false;
+    this.loadIssue.set(result.status === 'corrupt' ? result : null);
+    if (result.status !== 'ok') return false;
+    prepareTravelEvent(result.state);
+    this.state.set(result.state);
+    return true;
+  }
+
+  /** Replaces a damaged career with the backup from the last session start. */
+  restoreBackup(): boolean {
+    const result = this.saves.restoreBackup();
+    if (result.status !== 'ok') return false;
+    this.discardPendingSave();
+    this.loadIssue.set(null);
+    prepareTravelEvent(result.state);
+    this.state.set(result.state);
+    return true;
   }
 
   importState(g: GameState): void {
     this.discardPendingSave();
     this.state.set(g);
-    this.saves.save(g);
+    this.loadIssue.set(null);
+    void this.saves.save(g);
   }
 
   deleteGame(): void {
     this.discardPendingSave();
-    this.saves.clear();
+    void this.saves.clear();
+    this.loadIssue.set(null);
     this.state.set(null);
   }
 
@@ -164,12 +180,27 @@ export class GameStateService {
   }
 
   /** Persists a pending autosave immediately. */
-  flushSave(): void {
+  flushSave(): Promise<SaveResult> {
+    return this.persistWith([]);
+  }
+
+  /**
+   * Writes the pending career together with other values in one transaction – used to store a finished match
+   * and drop its checkpoint at once, so a crash can never leave both or neither behind.
+   */
+  persistWith(operations: StoreOperation[]): Promise<SaveResult> {
     if (this.saveTimer !== null) clearTimeout(this.saveTimer);
     this.saveTimer = null;
     const state = this.pendingSave;
     this.pendingSave = null;
-    if (state) this.saves.save(state);
+    return state ? this.saves.save(state, operations) : this.saves.store.batch(operations);
+  }
+
+  /** Saves the current career right now, whatever the autosave setting says. */
+  saveNow(): Promise<SaveResult> {
+    this.discardPendingSave();
+    const state = this.state();
+    return state ? this.saves.save(state) : Promise.resolve({ ok: true });
   }
 
   /** Convenience lookup helpers. */

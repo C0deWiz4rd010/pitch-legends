@@ -1,4 +1,5 @@
 import { expect, Page, test } from '@playwright/test';
+import { resetStorage } from './storage';
 
 // Measure the game without trace screenshot/readback instrumentation. Failure
 // screenshots and the attached numerical report remain available.
@@ -6,7 +7,7 @@ test.use({trace:'off'});
 
 async function createCareer(page: Page): Promise<void> {
   await page.goto('/');
-  await page.evaluate(() => localStorage.clear());
+  await resetStorage(page);
   await page.reload();
   await page.getByPlaceholder('Alex Stone').fill('Gameplay Tester');
   await page.getByPlaceholder('Harbour City').fill('Turbo Pixels');

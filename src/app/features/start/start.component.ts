@@ -29,7 +29,7 @@ import { ManagerPortraitComponent } from '../../shared/components/manager-portra
   styleUrl: './start.component.scss',
 })
 export class StartComponent {
-  private readonly gs = inject(GameStateService);
+  protected readonly gs = inject(GameStateService);
   private readonly saves = inject(SaveService);
   private readonly router = inject(Router);
   protected readonly i18n = inject(I18nService);
@@ -64,7 +64,10 @@ export class StartComponent {
     };
   });
 
-  readonly hasSave = this.saves.hasSave();
+  readonly hasSave = signal(this.saves.hasSave());
+  /** Resolved against the base href, so the art also loads when the game is served from a sub-path. */
+  protected readonly stadiumArt = `url(${new URL('assets/pixel/stadium-night.png', document.baseURI).href})`;
+  protected readonly confirmDiscard = signal(false);
   readonly hasLegacySave = this.saves.hasLegacySave();
 
   readonly presets = [
@@ -184,6 +187,23 @@ export class StartComponent {
 
   continueGame(): void {
     if (this.gs.loadFromStorage()) this.router.navigateByUrl('/');
+  }
+
+  protected restoreBackup(): void {
+    if (this.gs.restoreBackup()) this.router.navigateByUrl('/');
+    else this.error.set(this.i18n.pick('Die Sicherung ließ sich ebenfalls nicht lesen.', 'The backup could not be read either.'));
+  }
+
+  protected exportDamaged(): void {
+    this.saves.exportCorrupt();
+  }
+
+  /** Two clicks: the damaged career is only removed when the player confirms. */
+  protected discardDamaged(): void {
+    if (!this.confirmDiscard()) { this.confirmDiscard.set(true); return; }
+    this.gs.deleteGame();
+    this.hasSave.set(false);
+    this.confirmDiscard.set(false);
   }
 
   protected label(value: string): string {

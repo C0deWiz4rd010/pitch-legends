@@ -1,4 +1,5 @@
 import { expect,test } from '@playwright/test';
+import { storeKeys } from './storage';
 
 test('quick play exposes independent audio controls without requiring a career',async({page})=>{
   const errors:string[]=[];page.on('pageerror',error=>errors.push(error.message));
@@ -15,6 +16,6 @@ test('quick play exposes independent audio controls without requiring a career',
   await expect(music).toHaveValue('0.4');
   await panel.getByRole('checkbox').uncheck();
   await expect(panel.getByRole('checkbox')).not.toBeChecked();
-  expect(await page.evaluate(()=>Object.keys(localStorage).filter(key=>/pitch-legends:(save|match-checkpoint)/.test(key)))).toEqual([]);
+  expect((await storeKeys(page)).filter(key=>/pitch-legends:(save|match-checkpoint)/.test(key))).toEqual([]);
   expect(errors).toEqual([]);
 });
