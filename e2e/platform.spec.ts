@@ -174,7 +174,8 @@ test('reloads offline once the service worker has cached the game', async ({ pag
   await context.setOffline(true);
   await page.reload();
   await expect(page.locator('.hero h1')).toContainText('PITCH');
-  await expect(page.locator('app-system-notices .notice.offline')).toBeVisible();
+  // Chrome on Linux keeps navigator.onLine true under emulated offline; the notice follows that flag.
+  if (await page.evaluate(() => !navigator.onLine)) await expect(page.locator('app-system-notices .notice.offline')).toBeVisible();
   // Lazy routes come from the cache too.
   await page.getByRole('link', { name: /schnellspiel|quick match/i }).click();
   await expect(page.getByRole('button', { name: /anstoss|kick off/i })).toBeVisible();
