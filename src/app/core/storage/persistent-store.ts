@@ -78,6 +78,13 @@ export class PersistentStore {
   private db: IDBDatabase | null = null;
   private opening: Promise<void> | null = null;
   private writes: Promise<unknown> = Promise.resolve();
+  /** Values handed to IndexedDB that have not committed yet, with the batch that wrote them last. */
+  private readonly pending = new Map<string, { value: string | null; batch: number }>();
+  private batchCounter = 0;
+
+  constructor() {
+    if (typeof window !== 'undefined') window.addEventListener('pagehide', () => this.persistPendingSync());
+  }
 
   readonly backend = signal<StorageBackend>('localstorage');
   /** The latest failed write; the shell shows it until the player dismisses it or a later write succeeds. */
@@ -135,6 +142,8 @@ export class PersistentStore {
       else this.cache.set(key, value);
     }
     const db = this.db;
+    const batchId = ++this.batchCounter;
+    for (const { key, value } of operations) this.pending.set(key, { value, batch: batchId });
     const write = this.writes.then(async (): Promise<SaveResult> => {
       let transaction: IDBTransaction | null = null;
       let finished: Promise<void> | null = null;
@@ -155,9 +164,27 @@ export class PersistentStore {
         await finished?.catch(() => undefined);
         return { ok: false, reason: failureOf(error), message: String((error as Error)?.message ?? error) };
       }
-    }).then((result) => this.report(operations, result));
+    }).then((result) => {
+      for (const { key } of operations) if (this.pending.get(key)?.batch === batchId) this.pending.delete(key);
+      return this.report(operations, result);
+    });
     this.writes = write;
     return write;
+  }
+
+  /**
+   * Browsers may drop an IndexedDB transaction that is still running when the page goes away (Firefox does).
+   * On leaving, every value not yet committed is copied synchronously to localStorage, which the next start
+   * imports and prefers. Pending deletions are not mirrored; stale checkpoints are discarded on load anyway.
+   */
+  persistPendingSync(): void {
+    if (!this.pending.size) return;
+    const storage = localStorageOrNull();
+    if (!storage) return;
+    for (const [key, { value }] of this.pending) {
+      if (value === null) continue;
+      try { storage.setItem(key, value); } catch { /* nothing more can be done while the page unloads */ }
+    }
   }
 
   /** Resolves once every write issued so far has reached the disk (or failed). */

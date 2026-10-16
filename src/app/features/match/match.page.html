@@ -331,6 +331,7 @@
         <div><span>{{ homeTeam()?.shortName }}</span><strong>{{ report.homeScore }} — {{ report.awayScore }}</strong><span>{{ awayTeam()?.shortName }}</span></div>
         @if (report.shootout; as shootout) {
           <p class="shootout-line">{{ i18n.pick('Elfmeterschießen', 'Penalties') }} {{ countTrue(shootout.home) }}:{{ countTrue(shootout.away) }}</p>
+          <app-shootout-board [shootout]="shootout" [homeName]="homeTeam()?.shortName ?? ''" [awayName]="awayTeam()?.shortName ?? ''" [names]="playerNames()" [instant]="reducedMotion()" />
         }
         <p>MVP · <b>{{ motmName() }}</b> · {{ tacticLabel(report.weather ?? expectedWeather()).toUpperCase() }}</p>
       </article>

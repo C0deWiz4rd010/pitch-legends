@@ -1,4 +1,5 @@
 import { expect, Page, test } from '@playwright/test';
+import { collectErrors } from './console';
 import { readStore, resetStorage, storeKeys } from './storage';
 
 const LEGENDS = 'pitch-legends:legends:v1';
@@ -13,9 +14,7 @@ async function enterMatch(page: Page): Promise<void> {
 
 test('Legends Team, quick five-a-side and a challenge run without touching the career', async ({ page }) => {
   test.setTimeout(150_000);
-  const errors: string[] = [];
-  page.on('pageerror', (error) => errors.push(error.message));
-  page.on('console', (message) => { if (message.type() === 'error') errors.push(message.text()); });
+  const errors = collectErrors(page);
   await page.goto('/');
   await resetStorage(page);
   await page.reload();

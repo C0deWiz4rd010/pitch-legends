@@ -20,7 +20,8 @@ export class GameStateService {
   private saveTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor() {
-    if (typeof window !== 'undefined') window.addEventListener('pagehide', () => this.flushSave());
+    // The flushed career is mirrored synchronously in case the browser drops the running IndexedDB write.
+    if (typeof window !== 'undefined') window.addEventListener('pagehide', () => { void this.flushSave(); this.saves.store.persistPendingSync(); });
   }
 
   readonly game = this.state.asReadonly();

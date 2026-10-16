@@ -1,39 +1,28 @@
 import { clamp } from '../util';
 import { ArcadeActor, FIELD_LENGTH, FIELD_WIDTH } from './match-types';
 
-const CELL_SIZE = 6;
-const COLUMNS = 18;
-const ROWS = 12;
 const MINIMUM_GAP = 1.05;
 
-/** Mass-weighted player separation on a reusable 6 m spatial grid. */
+/**
+ * Mass-weighted player separation. With at most 22 players a direct pair test with an early
+ * axis rejection is cheaper than a spatial grid; each overlapping pair is separated once per tick,
+ * the player with the smaller id first, as before.
+ */
 export class PlayerCollisionGrid {
-  private readonly grid: ArcadeActor[][] = Array.from({ length: COLUMNS * ROWS }, () => []);
-  private readonly used: number[] = [];
-
   resolve(actors: readonly ArcadeActor[]): void {
-    for (const index of this.used) this.grid[index].length = 0;
-    this.used.length = 0;
-    for (const actor of actors) {
-      if (!actor.active) continue;
-      const gx = Math.min(COLUMNS - 1, Math.floor(actor.x / CELL_SIZE));
-      const gy = Math.min(ROWS - 1, Math.floor(actor.y / CELL_SIZE));
-      const index = gy * COLUMNS + gx;
-      if (this.grid[index].length === 0) this.used.push(index);
-      this.grid[index].push(actor);
-    }
-    for (const actor of actors) {
-      if (!actor.active) continue;
-      const gx = Math.floor(actor.x / CELL_SIZE);
-      const gy = Math.floor(actor.y / CELL_SIZE);
-      for (let ox = -1; ox <= 1; ox++) for (let oy = -1; oy <= 1; oy++) {
-        const cx = gx + ox;
-        const cy = gy + oy;
-        if (cx < 0 || cy < 0 || cx >= COLUMNS || cy >= ROWS) continue;
-        for (const other of this.grid[cy * COLUMNS + cx]) {
-          if (other === actor || other.player.id < actor.player.id) continue;
-          separate(actor, other);
-        }
+    const count = actors.length;
+    for (let first = 0; first < count; first++) {
+      const a = actors[first];
+      if (!a.active) continue;
+      for (let second = first + 1; second < count; second++) {
+        const b = actors[second];
+        if (!b.active) continue;
+        const dx = b.x - a.x;
+        if (dx >= MINIMUM_GAP || dx <= -MINIMUM_GAP) continue;
+        const dy = b.y - a.y;
+        if (dy >= MINIMUM_GAP || dy <= -MINIMUM_GAP) continue;
+        if (a.player.id < b.player.id) separate(a, b);
+        else separate(b, a);
       }
     }
   }

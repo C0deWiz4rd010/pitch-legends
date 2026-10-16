@@ -1,11 +1,10 @@
 import { expect, test } from '@playwright/test';
+import { collectErrors } from './console';
 import { storeKeys } from './storage';
 
 test('standalone 3D football renders and accepts movement without creating a career', async ({ page }, info) => {
   test.setTimeout(60_000);
-  const errors: string[] = [];
-  page.on('pageerror', error => errors.push(error.message));
-  page.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });
+  const errors = collectErrors(page);
   await page.goto('/');
   await page.getByRole('link', { name: /sofort spielen|play now/i }).click();
   const pitch = page.locator('canvas[aria-label="Live football pitch"]');

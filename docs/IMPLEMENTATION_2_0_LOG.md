@@ -428,3 +428,36 @@ Grundlage: neuer, element-weiser Verbesserungsplan (Fundament → Gameplay → G
   - Keine Messung auf echten Handys mit Notch; die Safe-Area-Abstände sind nur im emulierten Browser geprüft.
   - Mehrere gleichzeitig offene Tabs teilen sich den Speicher; es gewinnt der zuletzt schreibende Tab.
 
+
+## Gesamtverbesserung Phase H – Balance, QA und Abschluss (2026-10-16)
+
+- **Spielbalance** (`npm run balance:check`, 500 KI-Spiele, alle Werte im Zielbereich):
+
+  | Wert | vorher | jetzt | Ziel |
+  | --- | --- | --- | --- |
+  | Tore pro Spiel | 3,34 | 2,79 | 2,2–3,4 |
+  | Schüsse pro Team | 8,9 | 10,7 | 8–18 |
+  | Passquote | 65,3 % | 65,5 % | 65–88 % |
+  | Unentschieden | 21 % | 26 % | 20–32 % |
+  | Heimsiege | 46 % | 44,6 % | 42–52 % |
+  | Rechenzeit pro Spiel | 762 ms | 440 ms | ≤ 500 ms |
+
+  - Die KI schießt etwas bereitwilliger, die Streuung der Schüsse ist größer: rund 56 % statt 65 % der Schüsse gehen aufs Tor.
+  - Die Passquote bleibt am unteren Rand. Weniger Passstreuung hob sie in Versuchen kaum (65,7–66 %); Fehlpässe entstehen vor allem durch abgefangene Bälle.
+  - Ein kleiner Heimvorteil (Gelassenheit bei Ballannahme, Abschluss, Tackling) war schon vorhanden; die Heimsiegquote liegt im Ziel.
+  - Gleiche Abstände bei der Ballannahme werden weiter in Reihenfolge der Spielerliste entschieden; bei echten Gleitkomma-Abständen kommt das praktisch nicht vor.
+- **Schnellere Simulation** (gleiche Spielstatistik, 38 % weniger Rechenzeit): Wurzel statt `Math.hypot`, Drehung über einen Winkel statt drei, Ballbesitzer zwischengespeichert, direkte Paarprüfung statt Kollisionsraster, keine temporären Objekte in der Bewegung je Spieler und Tick, schnellere Pressing-Reihenfolge.
+- **Kleinfeld 5 gegen 5:** Taktik-KI, Schussdistanz, Schussgasse und Zielpunkte des Ballführers skalieren mit der Feldgröße (auf dem großen Feld exakt unverändert). Im Käfig sinken die Schüsse von 108 auf 54 je Spiel, die Passquote steigt von 61 auf 70 %, Spieler parken nicht mehr an den Torlinien.
+- **Zehn Saisons ohne Spieler** (`career-longrun.spec.ts`, läuft mit den Unit-Tests in ~8 s): prüft Kadergrößen, Spielerzahl, Wertungen, Alter, Vereinsgeld und Transfers.
+  - Behoben: Ein Kader konnte auf 27 Spieler wachsen, durch zurückkehrende Leihspieler und den nachgerückten zweiten Torwart. KI-Vereine geben dafür ihren schwächsten Feldspieler frei; beim eigenen Verein wird stattdessen die Leihe um eine Saison verlängert, ohne jemanden ungefragt zu entlassen.
+  - Inflation gebremst: Zuschauereinnahmen gesenkt, KI-Vereine bauen bis zu zweimal je Saison aus. Das mittlere Vereinsvermögen pendelt sich bei 0,6–0,8 Mio. ein (vorher Anstieg auf 2,3 Mio. nach 10 Saisons).
+- **Datensicherheit:** Firefox bricht beim Verlassen der Seite laufende IndexedDB-Schreibvorgänge ab; ein gerade gestarteter Spielstand ging nach sofortigem Neuladen verloren. Noch nicht bestätigte Werte werden jetzt beim Verlassen synchron nach localStorage kopiert und beim nächsten Start übernommen.
+- **Elfmeterschießen** im Spielbericht Schuss für Schuss, abwechselnd aufgedeckt, mit Schützennamen und Sieger; bei reduzierter Bewegung sofort vollständig.
+- **Firefox und WebKit:** 24 der 29 E2E-Tests (Markierung `@cross`) laufen dort als Funktionsprüfung, lokal grün und in CI als eigener, beratender Job parallel zur Qualitätsprüfung. Nicht dabei: Frame-Messung (nur Chromium), Legends-Rundgang (WebKit langsamer als das Zeitlimit), mobiles Mausrad (WebKit kennt es nicht), Offline-Neuladen (Service Worker in WebKit unter Playwright), 3D-Spielwiese (WebKit rendert hier ohne GPU mit etwa 1 Bild/s). Gemeinsamer Konsolen-Filter `e2e/console.ts` blendet nur bekannte Engine-Meldungen aus.
+- **Doku:** README auf aktuellem Stand (Modi, Speichern, Offline, Steuerung, Tests, Balance).
+- **Nachweis:** 224 Unit-Tests, neu `balance-qa.spec.ts` (7; der Kleinfeld-Test schlägt mit der alten KI fehl) und `career-longrun.spec.ts`; 29 E2E-Tests in Chrome; Firefox/WebKit wie oben.
+- **Offen:**
+  - Keine Messung auf echten Handys oder einem echten Safari.
+  - Der reichste KI-Verein wächst langsam weiter (rund 8-mal das mittlere Vermögen nach 10 Saisons), weil sich ein voll ausgebautes Stadion auszahlt.
+  - Abseits ist mit 0,06 je Spiel sehr selten, weil die KI-Stürmer nie hinter die letzte Linie laufen.
+  - Elfmeterschießen ist nur im Bericht zu sehen, nicht selbst zu schießen; die Wirkung von Talenten fehlt weiter im Spielbericht.

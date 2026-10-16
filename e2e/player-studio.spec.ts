@@ -1,9 +1,9 @@
 import { expect, test } from '@playwright/test';
+import { collectErrors } from './console';
 
-test('procedural studio shares portraits and changes identity, kits and animation', async ({ page }, info) => {
+test('procedural studio shares portraits and changes identity, kits and animation', { tag: '@cross' }, async ({ page }, info) => {
   test.setTimeout(90_000);
-  const errors: string[] = [];
-  page.on('pageerror', error => errors.push(error.message));
+  const errors = collectErrors(page);
   await page.goto('/');
   await page.getByRole('link', {name:/spieler entdecken|meet the players/i}).click();
   await expect(page.getByRole('heading',{name:/jeder spieler/i})).toBeVisible();

@@ -1,3 +1,4 @@
+import { ShootoutBoardComponent } from '../../shared/components/shootout-board.component';
 import {
   ChangeDetectionStrategy,
   Component,
@@ -85,7 +86,7 @@ const EMPTY_MATCH_VIEW: MatchViewState = {
 @Component({
   selector: 'app-match',
   host: { '[class.practice-mode]': 'practice', '[class.live-match]': "phase() === 'match'" },
-  imports: [RouterLink, DecimalPipe, ClubCrestComponent, MiniKitComponent, ManagerPortraitComponent, SubstitutionPanelComponent, ConfirmDialogComponent, HeatmapComponent],
+  imports: [RouterLink, DecimalPipe, ClubCrestComponent, MiniKitComponent, ManagerPortraitComponent, SubstitutionPanelComponent, ConfirmDialogComponent, HeatmapComponent, ShootoutBoardComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './match.page.html',
   styleUrls: ['./match.page.scss', './live-match.scss'],
@@ -496,6 +497,14 @@ export class MatchPage implements OnDestroy {
     const id = this.heatmapPlayerId() || this.playerRatings()[0]?.player.id;
     return (id && report.heatmaps?.[id]) || [];
   }
+
+  /** Names of everyone who could take a penalty, for the shoot-out board. */
+  protected readonly playerNames = computed<Record<string, string>>(() => {
+    const names: Record<string, string> = {};
+    for (const team of [this.homeTeam(), this.awayTeam()]) for (const player of team?.players ?? []) names[player.id] = playerName(player);
+    return names;
+  });
+  protected readonly reducedMotion = computed(() => !!this.gs.game()?.settings.reducedMotion || (typeof matchMedia !== 'undefined' && matchMedia('(prefers-reduced-motion: reduce)').matches));
 
   protected countTrue(values: boolean[]): number {
     return values.filter(Boolean).length;

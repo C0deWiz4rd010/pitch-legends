@@ -1,4 +1,5 @@
 import { expect, Page, test } from '@playwright/test';
+import { collectErrors } from './console';
 import { resetStorage } from './storage';
 
 async function createCareer(page: Page): Promise<void> {
@@ -16,7 +17,7 @@ async function createCareer(page: Page): Promise<void> {
   await expect(page.locator('.match-stage')).toBeVisible();
 }
 
-test('command centre stays responsive and keeps the primary match action visible', async ({ page }) => {
+test('command centre stays responsive and keeps the primary match action visible', { tag: '@cross' }, async ({ page }) => {
   await createCareer(page);
   for (const viewport of [{ width: 1440, height: 900 }, { width: 1024, height: 768 }, { width: 390, height: 844 }]) {
     await page.setViewportSize(viewport);
@@ -25,7 +26,7 @@ test('command centre stays responsive and keeps the primary match action visible
   }
 });
 
-test('mobile career objectives clamp progress without horizontal overflow', async ({ page }) => {
+test('mobile career objectives clamp progress without horizontal overflow', { tag: '@cross' }, async ({ page }) => {
   await createCareer(page);
   await page.setViewportSize({ width: 390, height: 844 });
   const objectives = page.locator('.objectives');
@@ -43,7 +44,7 @@ test('mobile career objectives clamp progress without horizontal overflow', asyn
   expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)).toBe(false);
 });
 
-test('PWA manifest exposes branded regular and maskable install icons', async ({ page, request }) => {
+test('PWA manifest exposes branded regular and maskable install icons', { tag: '@cross' }, async ({ page, request }) => {
   await page.goto('/');
   await expect(page.locator('link[rel="manifest"]')).toHaveAttribute('href', 'manifest.webmanifest');
   const manifestResponse = await request.get('/manifest.webmanifest');
@@ -65,7 +66,7 @@ test('PWA manifest exposes branded regular and maskable install icons', async ({
   }
 });
 
-test('handbook exposes the real pass binding and keeps focus inside its native dialog', async ({ page }) => {
+test('handbook exposes the real pass binding and keeps focus inside its native dialog', { tag: '@cross' }, async ({ page }) => {
   await createCareer(page);
   await page.getByRole('button', { name: /steuerung/i }).first().click();
   const dialog = page.locator('dialog[open]');
@@ -76,10 +77,8 @@ test('handbook exposes the real pass binding and keeps focus inside its native d
   await expect(dialog).toBeHidden();
 });
 
-test('player identity loads offline and live AUTO remains reversible', async ({ page }) => {
-  const errors: string[] = [];
-  page.on('pageerror', (error) => errors.push(error.message));
-  page.on('console', (message) => { if (message.type() === 'error') errors.push(message.text()); });
+test('player identity loads offline and live AUTO remains reversible', { tag: '@cross' }, async ({ page }) => {
+  const errors = collectErrors(page);
   await createCareer(page);
   await page.goto('/squad');
   await page.locator('.pcard').first().click();

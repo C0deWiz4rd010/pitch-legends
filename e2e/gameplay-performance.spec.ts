@@ -1,4 +1,5 @@
 import { expect, Page, test } from '@playwright/test';
+import { collectErrors } from './console';
 import { resetStorage } from './storage';
 
 // Measure the game without trace screenshot/readback instrumentation. Failure
@@ -18,9 +19,7 @@ async function createCareer(page: Page): Promise<void> {
 
 test('real match accepts the full keyboard flow and keeps smooth frame pacing', async ({ page }, info) => {
   test.setTimeout(60_000);
-  const errors: string[] = [];
-  page.on('pageerror', (error) => errors.push(error.message));
-  page.on('console', (message) => { if (message.type() === 'error') errors.push(message.text()); });
+  const errors = collectErrors(page);
   await createCareer(page);
   await page.goto('/match');
   await page.getByRole('button', { name: /anpfiff/i }).click();

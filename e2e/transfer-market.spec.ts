@@ -1,4 +1,5 @@
 import { expect, Page, test } from '@playwright/test';
+import { collectErrors } from './console';
 import { resetStorage } from './storage';
 
 async function createCareer(page: Page): Promise<void> {
@@ -12,10 +13,8 @@ async function createCareer(page: Page): Promise<void> {
   await expect(page.locator('.match-stage')).toBeVisible();
 }
 
-test('transfer hub supports search, shortlist and a complete free-agent signing', async ({ page }) => {
-  const errors: string[] = [];
-  page.on('pageerror', (error) => errors.push(error.message));
-  page.on('console', (message) => { if (message.type() === 'error') errors.push(message.text()); });
+test('transfer hub supports search, shortlist and a complete free-agent signing', { tag: '@cross' }, async ({ page }) => {
+  const errors = collectErrors(page);
   await createCareer(page);
   await page.goto('/transfer');
   await expect(page.locator('.market-shell')).toBeVisible();
@@ -36,7 +35,7 @@ test('transfer hub supports search, shortlist and a complete free-agent signing'
   expect(errors).toEqual([]);
 });
 
-test('transfer hub stays usable without horizontal page overflow', async ({ page }) => {
+test('transfer hub stays usable without horizontal page overflow', { tag: '@cross' }, async ({ page }) => {
   await createCareer(page);
   await page.goto('/transfer');
   for (const viewport of [{ width: 1440, height: 900 }, { width: 1024, height: 768 }, { width: 390, height: 844 }]) {

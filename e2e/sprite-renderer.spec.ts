@@ -1,4 +1,5 @@
 import { expect, Page, test } from '@playwright/test';
+import { collectErrors } from './console';
 import { resetStorage } from './storage';
 
 async function startMatch(page: Page): Promise<void> {
@@ -18,10 +19,8 @@ async function startMatch(page: Page): Promise<void> {
   await expect(page.locator('canvas[aria-label="Live football pitch"]')).toBeVisible();
 }
 
-test('career football uses the shared 3D renderer and all 22 active players', async ({ page }, testInfo) => {
-  const errors: string[] = [];
-  page.on('pageerror', (error) => errors.push(error.message));
-  page.on('console', (message) => { if (message.type() === 'error') errors.push(message.text()); });
+test('career football uses the shared 3D renderer and all 22 active players', { tag: '@cross' }, async ({ page }, testInfo) => {
+  const errors = collectErrors(page);
   await startMatch(page);
   await page.waitForTimeout(1200);
   const canvas = page.locator('canvas[aria-label="Live football pitch"]');

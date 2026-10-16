@@ -5,7 +5,7 @@ import { GameState } from '../../models/game.model';
 import { Player, emptySeasonStats } from '../../models/player.model';
 import { Team } from '../../models/team.model';
 import { OVERALL_WEIGHTS, computeOverall, marketValueFor, playerName, weeklySalaryFor } from '../ratings';
-import { MIN_SQUAD_SIZE } from '../transfer-engine';
+import { MAX_SQUAD_SIZE, MIN_SQUAD_SIZE } from '../transfer-engine';
 import { Rng, clamp } from '../util';
 import { createPlayerVisualIdentity, hash32 } from '../visual-identity';
 
@@ -127,7 +127,14 @@ export function rollOverSquads(game: GameState): { retired: Player[]; left: Play
     if (!own) aiYouthIntake(game, team, rng);
     // Every squad keeps two goalkeepers (one at the player's club, who may sign more).
     const keepers = team.players.filter((player) => player.positionGroup === 'GK').length;
-    for (let index = keepers; index < (own ? 1 : 2); index++) team.players.push(prospectFor(game, team, rng, 90 + index, 'GK'));
+    for (let index = keepers; index < (own ? 1 : 2); index++) {
+      // A full AI squad lets its weakest outfield player go to make room for the second keeper.
+      if (!own && team.players.length >= MAX_SQUAD_SIZE) {
+        const weakest = team.players.filter((player) => player.positionGroup !== 'GK').sort((a, b) => a.overall - b.overall || a.id.localeCompare(b.id))[0];
+        if (weakest) { team.players = team.players.filter((player) => player !== weakest); releaseToMarket(game, weakest); }
+      }
+      team.players.push(prospectFor(game, team, rng, 90 + index, 'GK'));
+    }
     while (team.players.length < MIN_SQUAD_SIZE) team.players.push(prospectFor(game, team, rng, team.players.length));
     autoFillLineup(team);
   }

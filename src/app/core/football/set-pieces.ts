@@ -2,7 +2,7 @@ import type { RuleState } from '../../models/match.model';
 import type { Team } from '../../models/team.model';
 import { clamp } from '../util';
 import { BALL_RADIUS } from './ball-physics';
-import { ArcadeActor, ArcadeBall, FIELD_LENGTH, FIELD_WIDTH, PITCH, distance } from './match-types';
+import { ArcadeActor, ArcadeBall, FIELD_LENGTH, FIELD_WIDTH, PITCH, distance, len2 } from './match-types';
 
 /** Nominated specialist first, then the keeper for goal kicks, then the nearest outfield player. */
 export function chooseRestartTaker(rule: RuleState, team: Team, candidates: readonly ArcadeActor[], ball: ArcadeBall): ArcadeActor | undefined {
@@ -36,7 +36,7 @@ export function arrangeRestart(taker: ArcadeActor, rule: RuleState, ball: Arcade
     .sort((a, b) => distance(a, ball) - distance(b, ball)).slice(0, wall) : [];
   if (wallPlayers.length) {
     // The wall stands 9.15 m from the ball on the line to the goal centre, shoulder to shoulder.
-    const dx = goalX - ball.x, dy = FIELD_WIDTH / 2 - ball.y, length = Math.hypot(dx, dy) || 1;
+    const dx = goalX - ball.x, dy = FIELD_WIDTH / 2 - ball.y, length = len2(dx, dy) || 1;
     const ux = dx / length, uy = dy / length;
     wallPlayers.forEach((actor, index) => {
       const offset = (index - (wallPlayers.length - 1) / 2) * 0.62 + 0.35;
@@ -65,7 +65,7 @@ export function arrangeRestart(taker: ArcadeActor, rule: RuleState, ball: Arcade
     }
     if (actor.side !== taker.side && distance(actor, ball) < separation) {
       const dx = actor.x - ball.x || -direction, dy = actor.y - ball.y;
-      const length = Math.hypot(dx, dy) || 1;
+      const length = len2(dx, dy) || 1;
       actor.x = clamp(ball.x + dx / length * separation, .4, FIELD_LENGTH - .4);
       actor.y = clamp(ball.y + dy / length * separation, .4, FIELD_WIDTH - .4);
     }

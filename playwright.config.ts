@@ -2,6 +2,7 @@ import { defineConfig, devices } from '@playwright/test';
 
 const executablePath = process.env['PLAYWRIGHT_CHROMIUM_EXECUTABLE'];
 const production = process.env['PLAYWRIGHT_PRODUCTION'] === '1';
+const crossBrowser = process.env['PLAYWRIGHT_CROSS_BROWSER'] === '1';
 
 export default defineConfig({
   testDir: './e2e',
@@ -15,9 +16,15 @@ export default defineConfig({
     baseURL: 'http://127.0.0.1:4200',
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
-    launchOptions: { executablePath, ...(process.env['PLAYWRIGHT_SOFTWARE_GL'] ? {args:['--use-gl=angle','--use-angle=swiftshader','--enable-unsafe-swiftshader']} : {}) },
   },
-  projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
+  projects: [
+    { name: 'chromium', use: { ...devices['Desktop Chrome'], launchOptions: { executablePath, ...(process.env['PLAYWRIGHT_SOFTWARE_GL'] ? {args:['--use-gl=angle','--use-angle=swiftshader','--enable-unsafe-swiftshader']} : {}) } } },
+    // Functional check in the other engines: only tests tagged @cross, which avoid Chromium-only measurements.
+    ...(crossBrowser ? [
+      { name: 'firefox', grep: /@cross/, timeout: 90_000, expect: { timeout: 15_000 }, use: { ...devices['Desktop Firefox'] } },
+      { name: 'webkit', grep: /@cross/, timeout: 90_000, expect: { timeout: 15_000 }, use: { ...devices['Desktop Safari'] } },
+    ] : []),
+  ],
   webServer: {
     command: production ? 'node tools/serve-production.mjs' : 'npm start -- --host 127.0.0.1 --port 4200',
     url: 'http://127.0.0.1:4200',

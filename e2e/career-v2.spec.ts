@@ -1,4 +1,5 @@
 import { expect, Page, test } from '@playwright/test';
+import { collectErrors } from './console';
 import { readStore, resetStorage, seedStore } from './storage';
 
 const KEY = 'pitch-legends:save:v6';
@@ -12,11 +13,9 @@ async function editSave(page: Page, edit: (state: any) => void): Promise<void> {
   await page.reload();
 }
 
-test('second-division career: cup tie, season review, promotion table and archive', async ({ page }) => {
+test('second-division career: cup tie, season review, promotion table and archive', { tag: '@cross' }, async ({ page }) => {
   test.setTimeout(120_000);
-  const errors: string[] = [];
-  page.on('pageerror', (error) => errors.push(error.message));
-  page.on('console', (message) => { if (message.type() === 'error') errors.push(message.text()); });
+  const errors = collectErrors(page);
   await page.goto('/');
   await resetStorage(page);
   await page.reload();

@@ -1,5 +1,5 @@
 import type { ArcadeMatch, ScenarioSetup } from '../services/arcade-match';
-import { FIELD_LENGTH, FIELD_WIDTH, MATCH_TICK } from './match-types';
+import { FIELD_LENGTH, FIELD_WIDTH, MATCH_TICK, len2 } from './match-types';
 
 export type ChallengeId = 'slalom' | 'passing' | 'finishing' | 'freekick' | 'penalty';
 export type Medal = 'gold' | 'silver' | 'bronze';
@@ -151,7 +151,7 @@ export class ChallengeController {
     if (owner && owner.side === 'away') return true;
     if (!live) return true;
     // A free ball that has stopped.
-    return !match.ball.ownerId && Math.hypot(match.ball.vx, match.ball.vy) < 0.4 && sinceKick > 2;
+    return !match.ball.ownerId && len2(match.ball.vx, match.ball.vy) < 0.4 && sinceKick > 2;
   }
 
   private endAttempt(scored: boolean): void {

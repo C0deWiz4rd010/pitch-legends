@@ -1,3 +1,4 @@
+import { len2 } from './match-types';
 export const BALL_RADIUS = 0.11;
 const FRAME_RADIUS = 0.06;
 
@@ -31,7 +32,7 @@ export function integrateBall(ball: SpinningBall, h: number, wet: boolean): void
   ball.y += ball.vy * h;
   ball.z += ball.vz * h;
   ball.vz -= p.gravity * h;
-  const speed = Math.hypot(ball.vx, ball.vy);
+  const speed = len2(ball.vx, ball.vy);
   if (ball.z > BALL_RADIUS) {
     // Side spin bends the ball towards the left of its travel direction (positive) or the right.
     const lateral = ball.spin * p.magnus * h;
@@ -80,7 +81,7 @@ export function collideGoalFrame(ball: MovingBall, goalX: number, goalCentre: nu
     if (ball.z > height + reach) continue;
     const dx = ball.x - goalX;
     const dy = ball.y - postY;
-    const length = Math.hypot(dx, dy);
+    const length = len2(dx, dy);
     if (length >= reach) continue;
     const nx = length > 0.00001 ? dx / length : -Math.sign(ball.vx || 1);
     const ny = length > 0.00001 ? dy / length : 0;
@@ -95,7 +96,7 @@ export function collideGoalFrame(ball: MovingBall, goalX: number, goalCentre: nu
   if (Math.abs(ball.y - goalCentre) < width / 2 + FRAME_RADIUS) {
     const dx = ball.x - goalX;
     const dz = ball.z - height;
-    const length = Math.hypot(dx, dz);
+    const length = len2(dx, dz);
     if (length < reach) {
       const nx = length > 0.00001 ? dx / length : -Math.sign(ball.vx || 1);
       const nz = length > 0.00001 ? dz / length : 0;

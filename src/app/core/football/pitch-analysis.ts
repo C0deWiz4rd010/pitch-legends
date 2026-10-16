@@ -1,5 +1,5 @@
 import { clamp } from '../util';
-import { ArcadeActor, FIELD_LENGTH, distance } from './match-types';
+import { ArcadeActor, FIELD_LENGTH, distance, len2 } from './match-types';
 
 /** Distance to the nearest active opponent; 99 when nobody is on the pitch. */
 export function closestOpponentDistance(actor: ArcadeActor, actors: readonly ArcadeActor[]): number {
@@ -31,7 +31,7 @@ export function passLanePressure(from: ArcadeActor, to: { x: number; y: number }
     const t = clamp(((opponent.x - from.x) * dx + (opponent.y - from.y) * dy) / length2, 0, 1);
     const px = from.x + dx * t;
     const py = from.y + dy * t;
-    if (Math.hypot(opponent.x - px, opponent.y - py) < 2.2) pressure++;
+    if (len2(opponent.x - px, opponent.y - py) < 2.2) pressure++;
   }
   return pressure;
 }

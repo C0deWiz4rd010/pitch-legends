@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 
-test('live handbook pauses play, releases held movement and closes without toggling pause', async ({ page }) => {
+test('live handbook pauses play, releases held movement and closes without toggling pause', { tag: '@cross' }, async ({ page }) => {
   await page.goto('/play');
   const pitch = page.locator('canvas[aria-label="Live football pitch"]');
   await expect(pitch).toHaveAttribute('data-renderer', 'three-webgl2', { timeout: 30_000 });

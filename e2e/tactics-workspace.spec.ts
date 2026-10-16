@@ -14,7 +14,7 @@ async function createCareer(page: Page): Promise<void> {
   await expect(page.locator('.tactic-pitch')).toBeVisible();
 }
 
-test('tactics workspace stays inside the app viewport and keeps its controls reachable', async ({ page }) => {
+test('tactics workspace stays inside the app viewport and keeps its controls reachable', { tag: '@cross' }, async ({ page }) => {
   await createCareer(page);
   for (const viewport of [
     { width: 1440, height: 900 },
@@ -33,7 +33,7 @@ test('tactics workspace stays inside the app viewport and keeps its controls rea
   }
 });
 
-test('presets, lineup swap and keyboard shape editing are interactive', async ({ page }) => {
+test('presets, lineup swap and keyboard shape editing are interactive', { tag: '@cross' }, async ({ page }) => {
   await createCareer(page);
   await page.setViewportSize({ width: 1440, height: 900 });
   const gamePlan = page.locator('.inspector-tabs button').filter({ hasText: /spielidee|game plan/i });
@@ -58,7 +58,7 @@ test('presets, lineup swap and keyboard shape editing are interactive', async ({
   await expect.poll(() => slots.nth(3).evaluate((element: HTMLElement) => element.style.left)).not.toBe(before);
 });
 
-test('mobile field and inspector use exclusive full-height views', async ({ page }) => {
+test('mobile field and inspector use exclusive full-height views', { tag: '@cross' }, async ({ page }) => {
   await createCareer(page);
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(page.locator('.pitch-panel')).toBeVisible();

@@ -1,8 +1,9 @@
 import { expect,test } from '@playwright/test';
+import { collectErrors } from './console';
 import { storeKeys } from './storage';
 
-test('quick play exposes independent audio controls without requiring a career',async({page})=>{
-  const errors:string[]=[];page.on('pageerror',error=>errors.push(error.message));
+test('quick play exposes independent audio controls without requiring a career', { tag: '@cross' },async({page})=>{
+  const errors = collectErrors(page);
   await page.goto('/play');
   await expect(page.locator('.graphics-loading')).toHaveCount(0,{timeout:30_000});
   await page.getByRole('button',{name:'AUDIO',exact:true}).click();

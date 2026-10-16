@@ -1,4 +1,5 @@
 import { expect, Page, test } from '@playwright/test';
+import { collectErrors } from './console';
 import { readStore, resetStorage, seedStore } from './storage';
 
 async function createSeededCareer(page: Page): Promise<void> {
@@ -14,10 +15,8 @@ async function createSeededCareer(page: Page): Promise<void> {
   await expect(page.locator('.match-stage')).toBeVisible();
 }
 
-test('seeded league atlas exposes clubs, cities, routes and individual coaches', async ({ page }) => {
-  const errors: string[] = [];
-  page.on('pageerror', (error) => errors.push(error.message));
-  page.on('console', (message) => { if (message.type() === 'error') errors.push(message.text()); });
+test('seeded league atlas exposes clubs, cities, routes and individual coaches', { tag: '@cross' }, async ({ page }) => {
+  const errors = collectErrors(page);
   await createSeededCareer(page);
 
   await expect.poll(() => readStore(page, 'pitch-legends:save:v6')).not.toBeNull();
@@ -41,7 +40,7 @@ test('seeded league atlas exposes clubs, cities, routes and individual coaches',
   expect(errors).toEqual([]);
 });
 
-test('medical dossier survives save/load and keeps the unified player visuals', async ({ page }) => {
+test('medical dossier survives save/load and keeps the unified player visuals', { tag: '@cross' }, async ({ page }) => {
   await createSeededCareer(page);
   await expect.poll(() => readStore(page, 'pitch-legends:save:v6')).not.toBeNull();
   const state = await readStore(page, 'pitch-legends:save:v6');

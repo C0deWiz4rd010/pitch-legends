@@ -478,6 +478,11 @@ export function returnSeasonLoans(game: GameState): void {
       loan.active = false;
       continue;
     }
+    if (parent.players.length >= MAX_SQUAD_SIZE) {
+      // The manager's own squad is never trimmed behind their back: the loan simply runs one more season.
+      if (parent.id === game.clubId) { loan.endSeason = game.league.season; continue; }
+      releaseWeakestOutfielder(game, parent);
+    }
     borrower.players = borrower.players.filter((candidate) => candidate.id !== player.id);
     player.kitNumber = nextKitNumber(parent, player.kitNumber);
     parent.players.push(player);
@@ -486,6 +491,17 @@ export function returnSeasonLoans(game: GameState): void {
     autoFillLineup(parent);
     pushRecord(game, player, borrower.id, parent.id, 'loan-return', 0);
   }
+}
+
+/** A full AI squad makes room by letting its weakest outfield player go to the free-agent pool. */
+function releaseWeakestOutfielder(game: GameState, team: Team): void {
+  const weakest = team.players.filter((candidate) => candidate.positionGroup !== 'GK').sort((a, b) => a.overall - b.overall || a.id.localeCompare(b.id))[0];
+  if (!weakest) return;
+  team.players = team.players.filter((candidate) => candidate.id !== weakest.id);
+  weakest.contractWeeks = 0;
+  weakest.salary = weeklySalaryFor(weakest);
+  if (!game.transfers.freeAgents.some((candidate) => candidate.id === weakest.id)) game.transfers.freeAgents.push(weakest);
+  autoFillLineup(team);
 }
 
 function canReleasePlayer(team: Team, playerId: string): boolean {

@@ -1,4 +1,5 @@
 import { expect, Page, test } from '@playwright/test';
+import { collectErrors } from './console';
 import { readStore, resetStorage, seedStore } from './storage';
 
 const CAREER = 'pitch-legends:save:v6';
@@ -16,7 +17,7 @@ async function createCareer(page: Page, name = 'Platform Tester'): Promise<void>
   await expect.poll(() => readStore(page, CAREER).then((state) => state?.managerName)).toBe(name);
 }
 
-test('saves live in IndexedDB and older localStorage saves are moved over', async ({ page }) => {
+test('saves live in IndexedDB and older localStorage saves are moved over', { tag: '@cross' }, async ({ page }) => {
   await createCareer(page);
   expect(await page.evaluate(() => Object.keys(localStorage).filter((key) => key.startsWith('pitch-legends:')))).toEqual([]);
   // A save written by an older version reappears after the next load, and leaves localStorage.
@@ -29,9 +30,8 @@ test('saves live in IndexedDB and older localStorage saves are moved over', asyn
   await expect.poll(() => page.evaluate(() => localStorage.getItem('pitch-legends:save:v6'))).toBeNull();
 });
 
-test('a damaged career is kept, reported and can be replaced by the last backup', async ({ page }) => {
-  const errors: string[] = [];
-  page.on('pageerror', (error) => errors.push(error.message));
+test('a damaged career is kept, reported and can be replaced by the last backup', { tag: '@cross' }, async ({ page }) => {
+  const errors = collectErrors(page);
   await createCareer(page, 'Backup Owner');
   // The next start records the career as the last good backup.
   await page.reload();
@@ -59,7 +59,7 @@ test('a damaged career is kept, reported and can be replaced by the last backup'
   expect(errors).toEqual([]);
 });
 
-test('a full disk shows a visible message with export and retry', async ({ page }) => {
+test('a full disk shows a visible message with export and retry', { tag: '@cross' }, async ({ page }) => {
   await page.addInitScript(() => {
     const put = IDBObjectStore.prototype.put;
     IDBObjectStore.prototype.put = function (this: IDBObjectStore, value: unknown, key?: IDBValidKey) {
@@ -81,7 +81,7 @@ test('a full disk shows a visible message with export and retry', async ({ page 
   await expect(notice).toHaveCount(0);
 });
 
-test('keys can be rebound and the new shot key takes the penalty', async ({ page }) => {
+test('keys can be rebound and the new shot key takes the penalty', { tag: '@cross' }, async ({ page }) => {
   await page.goto('/');
   await resetStorage(page);
   await page.goto('/controls');
@@ -121,7 +121,7 @@ test('keys can be rebound and the new shot key takes the penalty', async ({ page
 test.describe('touch layout', () => {
   test.use({ viewport: { width: 844, height: 390 }, screen: { width: 844, height: 390 }, hasTouch: true, isMobile: true });
 
-  test('a larger left-handed layout with jockey stays on screen without overlaps', async ({ page }) => {
+  test('a larger left-handed layout with jockey stays on screen without overlaps', { tag: '@cross' }, async ({ page }) => {
     await page.goto('/');
     await resetStorage(page);
     await seedStore(page, 'pitch-legends:controls:v1', { version: 1, keyboard: {}, gamepad: {}, touch: { scale: 1.3, opacity: 0.7, lift: 24, leftHanded: true } });

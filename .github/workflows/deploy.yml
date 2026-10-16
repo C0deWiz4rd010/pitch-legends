@@ -80,6 +80,48 @@ jobs:
           path: test-results/
           retention-days: 14
 
+  # Functional check of the @cross tests in Firefox and WebKit. Advisory: engine-specific hiccups are
+  # reported in the run but never hold back a deployment that passed the Chromium quality gate.
+  cross-browser:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright Firefox and WebKit
+        run: npx playwright install --with-deps firefox webkit
+
+      - name: Build production for browser QA
+        run: |
+          node tools/write-build-info.mjs
+          npm run build -- --configuration production
+
+      - name: Browser tests in Firefox and WebKit
+        env:
+          PLAYWRIGHT_PRODUCTION: '1'
+          PLAYWRIGHT_CROSS_BROWSER: '1'
+        run: npx playwright test --project firefox --project webkit
+
+      - name: Preserve browser diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cross-browser-diagnostics-${{ github.run_id }}
+          path: test-results/
+          retention-days: 14
+
   build:
     needs: quality
     runs-on: ubuntu-latest

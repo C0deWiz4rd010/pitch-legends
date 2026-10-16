@@ -38,10 +38,13 @@ export function ensureFinance(team: Team, season: number): void {
   team.finance.balance = [];
 }
 
-/** Home gate: grows with stadium level and reputation. */
+/**
+ * Home gate: grows with stadium level and reputation. Tuned with the ten-season run
+ * (`career-longrun.spec.ts`) so a typical club roughly breaks even and money keeps its meaning.
+ */
 export function gateIncome(team: Team, tier: 1 | 2): number {
   const crowd = clamp(team.reputation / 65, 0.7, 1.25);
-  return (40000 + team.facilities.stadium * 22000) * crowd * TIER_FACTOR[tier];
+  return (32000 + team.facilities.stadium * 18000) * crowd * TIER_FACTOR[tier];
 }
 
 export function matchPrize(goalsFor: number, goalsAgainst: number, tier: 1 | 2): number {
@@ -64,19 +67,24 @@ export function facilityUpgradeCost(currentLevel: number): number {
 }
 
 /**
- * AI clubs reinvest surplus money: once a season the weakest facility is upgraded when the club
- * holds three times its cost plus a wage reserve. Returns the upgraded facility, if any.
+ * AI clubs reinvest surplus money: each season they upgrade their weakest facilities, one after the other,
+ * while they hold three times the cost plus a wage reserve (at most two upgrades a season).
+ * Returns the upgraded facilities.
  */
-export function aiInvest(game: GameState, team: Team, wageBill: number): (typeof FACILITY_KEYS)[number] | null {
-  if (team.id === game.clubId) return null;
-  const key = [...FACILITY_KEYS].sort((a, b) => team.facilities[a] - team.facilities[b])[0];
-  const level = team.facilities[key];
-  if (level >= 5) return null;
-  const cost = facilityUpgradeCost(level);
-  if (team.coins < cost * 3 + wageBill * 8) return null;
-  book(game, team, 'facilities', cost);
-  team.facilities[key] = level + 1;
-  return key;
+export function aiInvest(game: GameState, team: Team, wageBill: number): (typeof FACILITY_KEYS)[number][] {
+  const upgraded: (typeof FACILITY_KEYS)[number][] = [];
+  if (team.id === game.clubId) return upgraded;
+  for (let round = 0; round < 2; round++) {
+    const key = [...FACILITY_KEYS].sort((a, b) => team.facilities[a] - team.facilities[b])[0];
+    const level = team.facilities[key];
+    if (level >= 5) break;
+    const cost = facilityUpgradeCost(level);
+    if (team.coins < cost * 3 + wageBill * 8) break;
+    book(game, team, 'facilities', cost);
+    team.facilities[key] = level + 1;
+    upgraded.push(key);
+  }
+  return upgraded;
 }
 
 /** Grounds, staff and buildings cost money every week. */

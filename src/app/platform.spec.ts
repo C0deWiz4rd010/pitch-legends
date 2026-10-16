@@ -90,6 +90,19 @@ describe('Platform: IndexedDB saves, failures and recovery', () => {
     expect(store.issue()).toBeNull();
   });
 
+  it('copies writes still in flight to localStorage when the page goes away', async () => {
+    const factory = new IDBFactory();
+    const store = await openStore(factory);
+    const write = store.set(CAREER_KEY, 'career-in-flight');
+    store.persistPendingSync();
+    expect(localStorage.getItem(CAREER_KEY)).toBe('career-in-flight');
+    await write;
+    localStorage.clear();
+    // Once committed, nothing is pending any more.
+    store.persistPendingSync();
+    expect(localStorage.getItem(CAREER_KEY)).toBeNull();
+  });
+
   it('rolls a localStorage batch back when the quota is hit', async () => {
     const store = await openStore(null);
     expect(store.backend()).toBe('localstorage');

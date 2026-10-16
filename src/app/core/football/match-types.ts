@@ -97,8 +97,19 @@ export interface ActiveShot {
   checkedKeeper: boolean;
 }
 
+/** Vector length. `Math.hypot` guards against overflow the match never needs and is several times slower. */
+export function len2(x: number, y: number): number {
+  return Math.sqrt(x * x + y * y);
+}
+
+export function len3(x: number, y: number, z: number): number {
+  return Math.sqrt(x * x + y * y + z * z);
+}
+
 export function distance(a: { x: number; y: number }, b: { x: number; y: number }): number {
-  return Math.hypot(a.x - b.x, a.y - b.y);
+  const dx = a.x - b.x;
+  const dy = a.y - b.y;
+  return Math.sqrt(dx * dx + dy * dy);
 }
 
 export function oppositeSide(side: Side): Side {

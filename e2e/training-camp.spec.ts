@@ -13,7 +13,7 @@ async function openTraining(page: Page): Promise<void> {
   await expect(page.locator('.training-workspace')).toBeVisible();
 }
 
-test('weekly plan can be drafted and executed as one operation', async ({ page }) => {
+test('weekly plan can be drafted and executed as one operation', { tag: '@cross' }, async ({ page }) => {
   await openTraining(page);
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.locator('.program-action button').click();
@@ -26,7 +26,7 @@ test('weekly plan can be drafted and executed as one operation', async ({ page }
   await expect(page.locator('.session-card.completed')).toHaveCount(1);
 });
 
-test('training panels stay viewport-bound and switch cleanly on mobile', async ({ page }) => {
+test('training panels stay viewport-bound and switch cleanly on mobile', { tag: '@cross' }, async ({ page }) => {
   await openTraining(page);
   for (const viewport of [{ width: 1440, height: 900 }, { width: 1024, height: 768 }, { width: 844, height: 390 }, { width: 390, height: 844 }]) {
     await page.setViewportSize(viewport);
