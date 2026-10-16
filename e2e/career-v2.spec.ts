@@ -11,6 +11,8 @@ async function editSave(page: Page, edit: (state: any) => void): Promise<void> {
   edit(state);
   await seedStore(page, KEY, state);
   await page.reload();
+  // Leaving a page while its lazy modules still load makes WebKit log a failed import; let the reload finish.
+  await page.waitForLoadState('networkidle');
 }
 
 test('second-division career: cup tie, season review, promotion table and archive', { tag: '@cross' }, async ({ page }) => {

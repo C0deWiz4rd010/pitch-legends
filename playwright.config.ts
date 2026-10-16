@@ -21,7 +21,8 @@ export default defineConfig({
     { name: 'chromium', use: { ...devices['Desktop Chrome'], launchOptions: { executablePath, ...(process.env['PLAYWRIGHT_SOFTWARE_GL'] ? {args:['--use-gl=angle','--use-angle=swiftshader','--enable-unsafe-swiftshader']} : {}) } } },
     // Functional check in the other engines: only tests tagged @cross, which avoid Chromium-only measurements.
     ...(crossBrowser ? [
-      { name: 'firefox', grep: /@cross/, timeout: 90_000, expect: { timeout: 15_000 }, use: { ...devices['Desktop Firefox'] } },
+      // Headless Firefox on Linux CI has no GPU; software WebGL keeps the 3D pitch testable.
+      { name: 'firefox', grep: /@cross/, timeout: 90_000, expect: { timeout: 15_000 }, use: { ...devices['Desktop Firefox'], launchOptions: { firefoxUserPrefs: { 'webgl.force-enabled': true, 'webgl.disabled': false } } } },
       { name: 'webkit', grep: /@cross/, timeout: 90_000, expect: { timeout: 15_000 }, use: { ...devices['Desktop Safari'] } },
     ] : []),
   ],
