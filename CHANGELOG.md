@@ -4,6 +4,13 @@ All notable changes to Pitch Legends are recorded here. Releases follow
 [Semantic Versioning](https://semver.org/) and are generated from Conventional
 Commits by Release Please.
 
+## [1.11.0](https://github.com/C0deWiz4rd010/pitch-legends/compare/pitch-legends-v1.10.0...pitch-legends-v1.11.0) (2026-10-16)
+
+
+### Features
+
+* **balance:** phase H – match balance, faster simulation, ten-season QA and cross-browser checks ([7c708cc](https://github.com/C0deWiz4rd010/pitch-legends/commit/7c708ccda9c8a96b06d4dbd3dcf407a9710d0f91))
+
 ## [1.10.0](https://github.com/C0deWiz4rd010/pitch-legends/compare/pitch-legends-v1.9.0...pitch-legends-v1.10.0) (2026-10-09)
 
 
