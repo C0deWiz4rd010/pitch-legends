@@ -108,11 +108,19 @@ jobs:
           node tools/write-build-info.mjs
           npm run build -- --configuration production
 
-      - name: Browser tests in Firefox and WebKit
+      - name: Browser tests in WebKit
         env:
           PLAYWRIGHT_PRODUCTION: '1'
           PLAYWRIGHT_CROSS_BROWSER: '1'
-        run: npx playwright test --project firefox --project webkit
+        run: npx playwright test --project webkit
+
+      # Headless Firefox on Linux gets no WebGL context at all; a virtual display gives it Mesa's software GL.
+      - name: Browser tests in Firefox
+        if: always()
+        env:
+          PLAYWRIGHT_PRODUCTION: '1'
+          PLAYWRIGHT_CROSS_BROWSER: '1'
+        run: xvfb-run -a npx playwright test --project firefox --headed
 
       - name: Preserve browser diagnostics
         if: always()
