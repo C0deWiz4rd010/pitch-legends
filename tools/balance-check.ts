@@ -4,6 +4,8 @@ import { MatchConfig } from '../src/app/models/match.model';
 import { Team } from '../src/app/models/team.model';
 
 const count = Math.max(1, Number(process.argv[2]) || 500);
+// node tmp/balance-check.mjs 500 --effects off  ->  plain attributes, to compare with the effect pipeline
+const effects = !process.argv.includes('--effects=off') && !(process.argv.includes('--effects') && process.argv[process.argv.indexOf('--effects') + 1] === 'off');
 const source = createNewGame({ managerName: 'Balance', clubName: 'Balance FC', seed: 20_260_809 });
 const home = structuredClone(source.teams[0]);
 const away = cloneAsOpponent(home);
@@ -26,7 +28,7 @@ for (let index = 0; index < count; index++) {
   const config: MatchConfig = {
     mode: 'instant', controllerMode: 'auto', seed: 90_000 + index, fixtureId: `balance-${index}`,
     controlledTeamId: home.id, halfMinutes: 3, difficulty: 'normal', assist: 'balanced',
-    playerLockId: null, weather: 'clear', inputDevice: 'ai',
+    playerLockId: null, weather: 'clear', effects, inputDevice: 'ai',
     camera: { zoom: 1, lookAhead: 0.18, shake: false, reducedMotion: true },
   };
   const result = new ArcadeMatch(home, away, config).result();
@@ -46,6 +48,7 @@ for (let index = 0; index < count; index++) {
 
 const report = {
   seeds: count,
+  effects,
   averageGoals: round(goals / count),
   averageShotDistance: round(shotDistance / Math.max(1, recordedShots)),
   averageOnTarget: round(onTarget / count),

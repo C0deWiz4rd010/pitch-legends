@@ -1,0 +1,188 @@
+import { ATTRIBUTE_KEYS, AttributeKey } from '../../models/enums';
+import { Player } from '../../models/player.model';
+import { getTalent } from '../../data/talents';
+import { getTrait } from '../../data/traits';
+import { computeOverall, positionFamiliarity } from '../ratings';
+import { clamp } from '../util';
+import { condMatches } from './conditions';
+import { EffectHook, EffectSpec, ModifierSource, StatModifier, capFor } from './effects';
+
+export interface StatContext {
+  /** Formation slot the player fills; out-of-position players lose some sharpness. */
+  slotPosition?: string;
+}
+
+/** One line of the "why is my shot 78?" breakdown. */
+export interface StatPart {
+  source: ModifierSource;
+  label: string;
+  value: number;
+  /** `mul` parts are factors (1.03), `add` parts are points. */
+  op: 'base' | 'add' | 'mul';
+  active: boolean;
+}
+
+/**
+ * Everything the match needs to know about the numbers of one player. Plain data (no functions)
+ * so it can sit on an actor without upsetting structured clones.
+ */
+export interface StatBlock {
+  playerId: string;
+  /** Attributes + talents, scaled by form, morale and familiarity. */
+  base: Record<AttributeKey, number>;
+  /** Situational modifiers grouped by hook; absent hooks have none. */
+  mods: Partial<Record<EffectHook, StatModifier[]>>;
+  state: { morale: number; form: number; familiarity: number };
+  /** False for players without a situational modifier: lets the engine skip all lookups. */
+  hasMods: boolean;
+  /** The attributes that have a situational modifier; only these change with the flags. */
+  modAttrs: AttributeKey[];
+  /** True when a derived engine hook (not an attribute) is modified, so hook() has work to do. */
+  hasHookMods: boolean;
+}
+
+const IS_ATTRIBUTE = new Set<string>(ATTRIBUTE_KEYS);
+
+/** Hooks the live match never asks about; they live in the block for the squad and training code. */
+const OFF_PITCH_HOOKS = new Set<string>(['xpGain', 'injuryRisk', 'growthChance']);
+
+/** Fresh attribute record with one fixed shape, so every attribute view the engine reads is monomorphic. */
+export function newAttributes(source?: Record<AttributeKey, number>): Record<AttributeKey, number> {
+  return {
+    pace: source?.pace ?? 0, shooting: source?.shooting ?? 0, passing: source?.passing ?? 0, dribbling: source?.dribbling ?? 0,
+    defending: source?.defending ?? 0, physical: source?.physical ?? 0, stamina: source?.stamina ?? 0, goalkeeping: source?.goalkeeping ?? 0,
+  };
+}
+
+/** Morale 65 is neutral; form is -5..+5. Both stay within a few percent so talent still matters most. */
+export function stateMultipliers(player: Player, slotPosition?: string): StatBlock['state'] {
+  const morale = 1 + clamp((player.morale - 65) / 35, -1, 1) * 0.04;
+  const form = 1 + clamp(player.form, -5, 5) * 0.008;
+  const familiarity = slotPosition ? 0.5 + 0.5 * positionFamiliarity(player, slotPosition) : 1;
+  return { morale, form, familiarity };
+}
+
+/** Unconditional attribute bonuses are baked into the base; only situational ones stay as modifiers. */
+function isFlatBonus(effect: EffectSpec): boolean {
+  return !effect.when && effect.op === 'add' && IS_ATTRIBUTE.has(effect.hook);
+}
+
+export function buildStatBlock(player: Player, context: StatContext = {}): StatBlock {
+  const state = stateMultipliers(player, context.slotPosition);
+  const scale = state.morale * state.form * state.familiarity;
+  const raw = { ...player.attributes };
+  for (const id of player.traitIds ?? []) {
+    for (const effect of getTrait(id)?.effects ?? []) {
+      if (isFlatBonus(effect)) raw[effect.hook as AttributeKey] += effect.value;
+    }
+  }
+  for (const [id, rank] of Object.entries(player.talentRanks ?? {})) {
+    const talent = getTalent(id);
+    if (!talent || rank <= 0) continue;
+    for (const key of Object.keys(talent.modifiers) as AttributeKey[]) raw[key] += talent.modifiers[key]! * rank;
+  }
+  const base = newAttributes();
+  for (const key of ATTRIBUTE_KEYS) base[key] = clamp(raw[key] * scale, 1, 99);
+
+  const mods: StatBlock['mods'] = {};
+  for (const id of player.traitIds ?? []) {
+    const trait = getTrait(id);
+    if (!trait?.effects) continue;
+    for (const effect of trait.effects) if (!isFlatBonus(effect)) (mods[effect.hook] ??= []).push({ ...effect, source: { kind: 'trait', id } });
+  }
+  return {
+    playerId: player.id, base, mods, state,
+    hasMods: Object.keys(mods).length > 0,
+    modAttrs: ATTRIBUTE_KEYS.filter((key) => !!mods[key]),
+    hasHookMods: Object.keys(mods).some((hook) => !IS_ATTRIBUTE.has(hook) && !OFF_PITCH_HOOKS.has(hook)),
+  };
+}
+
+/** A block that plays the plain attributes: used when effects are switched off for comparisons. */
+export function rawStatBlock(player: Player): StatBlock {
+  return {
+    playerId: player.id,
+    base: newAttributes(player.attributes),
+    mods: {},
+    state: { morale: 1, form: 1, familiarity: 1 },
+    hasMods: false,
+    modAttrs: [],
+    hasHookMods: false,
+  };
+}
+
+function resolve(block: StatBlock, hook: EffectHook, start: number, flags: number): number {
+  if (!block.hasMods) return start;
+  const list = block.mods[hook];
+  if (!list) return start;
+  let add = 0;
+  let mul = 1;
+  for (const mod of list) {
+    if (!condMatches(flags, mod.when)) continue;
+    if (mod.op === 'add') add += mod.value;
+    else mul *= mod.value;
+  }
+  const cap = capFor(hook, IS_ATTRIBUTE.has(hook));
+  return (start + clamp(add, cap.add[0], cap.add[1])) * clamp(mul, cap.mul[0], cap.mul[1]);
+}
+
+/** An attribute as it plays right now: base value plus every modifier whose condition holds. */
+export function resolveAttribute(block: StatBlock, key: AttributeKey, flags: number): number {
+  if (!block.hasMods) return block.base[key];
+  return clamp(resolve(block, key, block.base[key], flags), 1, 99);
+}
+
+/**
+ * Re-resolves the attributes that have situational modifiers into `into`, a buffer that starts as a
+ * copy of the base. The other attributes never change with the flags.
+ */
+export function refreshAttributes(block: StatBlock, flags: number, into: Record<AttributeKey, number>): Record<AttributeKey, number> {
+  for (const key of block.modAttrs) into[key] = resolveAttribute(block, key, flags);
+  return into;
+}
+
+/** A derived engine value (an error rate, a chance) after modifiers. */
+export function resolveHook(block: StatBlock, hook: EffectHook, base: number, flags: number): number {
+  return resolve(block, hook, base, flags);
+}
+
+/** Itemised contributions to an attribute, for the player sheet. */
+export function explainStat(player: Player, key: AttributeKey, flags = 0, context: StatContext = {}): StatPart[] {
+  const block = buildStatBlock(player, context);
+  const parts: StatPart[] = [{ source: { kind: 'state', id: 'attribute' }, label: key, value: player.attributes[key], op: 'base', active: true }];
+  for (const [id, rank] of Object.entries(player.talentRanks ?? {})) {
+    const talent = getTalent(id);
+    const value = (talent?.modifiers[key] ?? 0) * rank;
+    if (talent && rank > 0 && value) parts.push({ source: { kind: 'talent', id }, label: talent.name, value, op: 'add', active: true });
+  }
+  const { morale, form, familiarity } = block.state;
+  parts.push({ source: { kind: 'state', id: 'morale' }, label: 'morale', value: morale, op: 'mul', active: morale !== 1 });
+  parts.push({ source: { kind: 'form', id: 'form' }, label: 'form', value: form, op: 'mul', active: form !== 1 });
+  parts.push({ source: { kind: 'state', id: 'familiarity' }, label: 'familiarity', value: familiarity, op: 'mul', active: familiarity !== 1 });
+  for (const id of player.traitIds ?? []) {
+    const trait = getTrait(id);
+    for (const effect of trait?.effects ?? []) {
+      if (effect.hook !== key) continue;
+      parts.push({ source: { kind: 'trait', id }, label: trait!.name, value: effect.value, op: effect.op, active: condMatches(flags, effect.when) });
+    }
+  }
+  return parts;
+}
+
+/** Share of a situational bonus counted when a single number has to stand in for a whole match. */
+const SITUATIONAL_WEIGHT = 0.4;
+
+/**
+ * Overall rating of a player with form, morale, position and traits folded in, used where the
+ * 60 Hz match is not played (quick simulation). Situational bonuses count partially.
+ */
+export function staticOverall(player: Player, slotPosition?: string): number {
+  const block = buildStatBlock(player, { slotPosition });
+  const attributes = { ...block.base };
+  for (const key of ATTRIBUTE_KEYS) {
+    for (const mod of block.mods[key] ?? []) {
+      if (mod.op === 'add') attributes[key] = clamp(attributes[key] + mod.value * (mod.when ? SITUATIONAL_WEIGHT : 1), 1, 99);
+    }
+  }
+  return computeOverall(attributes, player.positionGroup);
+}

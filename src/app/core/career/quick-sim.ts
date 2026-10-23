@@ -4,6 +4,7 @@ import { Team } from '../../models/team.model';
 import { shootoutConversionChance } from '../football/penalty';
 import { createInjury, isPlayerAvailable } from '../injury-engine';
 import { playerName } from '../ratings';
+import { staticOverall } from '../rpg/stat-block';
 import { Rng, clamp } from '../util';
 import { hash32 } from '../visual-identity';
 
@@ -29,7 +30,8 @@ function availableStarters(team: Team): Player[] {
 export function teamStrength(team: Team): number {
   const starters = availableStarters(team);
   if (!starters.length) return 40;
-  const average = starters.reduce((sum, player) => sum + player.overall, 0) / starters.length;
+  const slotOf = (player: Player) => team.formation.slots.find((slot) => slot.playerId === player.id)?.position;
+  const average = starters.reduce((sum, player) => sum + staticOverall(player, slotOf(player)), 0) / starters.length;
   // Missing starters weaken the side noticeably.
   return average - (11 - starters.length) * 3;
 }

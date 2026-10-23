@@ -1,4 +1,6 @@
 import type { Player } from '../../models/player.model';
+import type { AttributeKey } from '../../models/enums';
+import type { StatBlock } from '../rpg/stat-block';
 import type { PlayerActionState, PlayerRuntimeSnapshot, Side } from '../../models/match.model';
 
 /** Pitch dimensions in metres. Everything on the pitch is derived from these values. */
@@ -72,6 +74,16 @@ export interface ArcadeActor {
   intentX: number;
   intentY: number;
   animationDistance: number;
+  /** Formation slot this player fills (drives positional familiarity). */
+  slotPosition?: string;
+  /** Effect-pipeline numbers; rebuilt whenever a different player takes the actor. */
+  stats?: StatBlock;
+  /** Cond flags for the current tick. */
+  flags?: number;
+  /** The eight attributes as they play this tick (the block's base object when nothing is situational). */
+  attrs?: Record<AttributeKey, number>;
+  /** Writable storage behind `attrs` for players with situational modifiers. */
+  attrBuffer?: Record<AttributeKey, number>;
 }
 
 export interface ArcadeBall {

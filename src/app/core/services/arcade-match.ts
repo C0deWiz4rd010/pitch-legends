@@ -42,6 +42,10 @@ import { actorSnapshot, applyActorSnapshot, ballSnapshot, fnv1aHex, writeBallSna
 import { keeperDiveTarget, keeperPositionIntent } from '../football/keeper-ai';
 import { arrangeRestart, chooseRestartTaker } from '../football/set-pieces';
 import { shootoutConversionChance } from '../football/penalty';
+import { AttributeKey } from '../../models/enums';
+import { Cond } from '../rpg/conditions';
+import { DerivedHook } from '../rpg/effects';
+import { StatBlock, buildStatBlock, newAttributes, rawStatBlock, refreshAttributes, resolveAttribute, resolveHook } from '../rpg/stat-block';
 import { shotAngleQuality, shotXg } from '../football/xg';
 
 export { FIELD_LENGTH, FIELD_WIDTH, GOAL_HEIGHT, GOAL_WIDTH, MATCH_TICK, PITCH, applyPitch } from '../football/match-types';
@@ -178,6 +182,10 @@ export class ArcadeMatch {
   private readonly replayBuffer = new ReplayRing();
   private frozenReplay: MatchSnapshot[] = [];
   private lastSubAt = -100;
+  /** Cond flags that apply to every player right now (dead-ball kicks, penalties). */
+  private ambientFlags = 0;
+  private lastOwnerSide: Side | null = null;
+  private readonly possessionGainedTick: Record<Side, number> = { home: -100000, away: -100000 };
   private readonly collisions = new PlayerCollisionGrid();
 
   constructor(
@@ -331,8 +339,21 @@ export class ArcadeMatch {
           .filter((actor) => actor.active && actor.side === this.controlledSide && actor.player.id !== this.selectedPlayerId && actor.player.positionGroup !== 'GK')
           .sort((a, b) => distance(a, this.ball) - distance(b, this.ball))[0]
       : undefined;
+    let sideFlags: [number, number] | undefined;
     for (const actor of this.actors) {
       if (!actor.active) continue;
+      // Players without any modifier never read their flags, so most of the squad costs nothing here.
+      // Every change of `actor.player` goes through initAttrs, so the block is always current here.
+      const block = actor.stats!;
+      if (block.hasMods) {
+        sideFlags ??= this.sideFlagsThisTick(ownerBeforeMovement);
+        const flags = this.actorFlags(actor, sideFlags[actor.side === 'home' ? 0 : 1], ownerBeforeMovement);
+        // Flags change rarely (a box edge, a counter window), so the values are re-resolved only then.
+        if (flags !== actor.flags || actor.attrs === undefined || actor.attrs !== actor.attrBuffer) {
+          actor.flags = flags;
+          actor.attrs = refreshAttributes(block, flags, actor.attrBuffer ??= newAttributes(block.base));
+        }
+      } else if (actor.attrs !== block.base) actor.attrs = block.base;
       actor.skillCooldown = Math.max(0, actor.skillCooldown - safeDt);
       actor.tackleCooldown = Math.max(0, actor.tackleCooldown - safeDt);
       // Rushing out is only possible for a ball close to the own goal, never across the pitch.
@@ -405,7 +426,7 @@ export class ArcadeMatch {
     }
     if (!this.halftimeRecoveryApplied) {
       for (const actor of this.actors) {
-        const recovery = 2 + actor.player.attributes.stamina / 35;
+        const recovery = 2 + this.stat(actor,'stamina') / 35;
         actor.stamina = clamp(actor.stamina + recovery, 0, 100);
       }
       this.halftimeRecoveryApplied = true;
@@ -533,6 +554,7 @@ export class ArcadeMatch {
     if (!isHalftime) this.addStoppage(0.5);
     const outgoing = actor.player;
     actor.player = incoming;
+    this.initAttrs(actor);
     actor.stamina = incoming.fitness;
     actor.card = 'none';
     this.setAction(actor, 'subbed-on');
@@ -694,6 +716,7 @@ export class ArcadeMatch {
       const player = players.find((candidate) => candidate.id === saved.id);
       if (!actor || !player) return false;
       actor.player = player;
+      this.initAttrs(actor);
       this.applyActorSnapshot(actor, saved);
     }
     Object.assign(this.ball, checkpoint.ball);
@@ -785,7 +808,13 @@ export class ArcadeMatch {
         intentX: x,
         intentY: y,
         animationDistance: 0,
+        slotPosition: slot.position,
+        stats: undefined,
+        flags: 0,
+        attrs: undefined,
+        attrBuffer: undefined,
       });
+      this.initAttrs(this.actors[this.actors.length - 1]);
       this.ratings[player.id] = 6.5;
       this.contributions[player.id] = emptyContribution();
       this.heatmaps[player.id] = [];
@@ -892,8 +921,10 @@ export class ArcadeMatch {
     const targetVx = nx * targetSpeed;
     const targetVy = ny * targetSpeed;
     const fitnessPenalty = actor.stamina < 40 ? 0.78 + actor.stamina * 0.0055 : 1;
-    const acceleration = ARCADE_MATCH_TUNING.acceleration * (0.88 + actor.player.attributes.pace * 0.0012 + actor.player.attributes.dribbling * 0.0005) * fitnessPenalty;
-    const braking = ARCADE_MATCH_TUNING.braking * (0.9 + actor.player.attributes.dribbling * 0.0015);
+    const attrs = actor.attrs!;
+    const accelerationBase = ARCADE_MATCH_TUNING.acceleration * (0.88 + attrs.pace * 0.0012 + attrs.dribbling * 0.0005) * fitnessPenalty;
+    const acceleration = actor.stats!.hasHookMods ? this.hook(actor, 'acceleration', accelerationBase) : accelerationBase;
+    const braking = ARCADE_MATCH_TUNING.braking * (0.9 + attrs.dribbling * 0.0015);
     const counterSteering = actor.vx * targetVx + actor.vy * targetVy < 0;
     const rate = targetSpeed === 0 || counterSteering ? braking : acceleration;
     // Inline form of accelerateTowards: no temporary object for every player and tick.
@@ -907,7 +938,7 @@ export class ArcadeMatch {
     if (magnitude > 0.08) {
       // Momentum: the faster a player runs, the wider the turn.
       const speedRatio = clamp(len2(actor.vx, actor.vy) / ARCADE_MATCH_TUNING.sprintMax, 0, 1);
-      const turnRate = (11 + actor.player.attributes.dribbling / 24) * (1 - speedRatio * 0.4) * dt / (sprint ? 1.18 : 1);
+      const turnRate = (11 + attrs.dribbling / 24) * (1 - speedRatio * 0.4) * dt / (sprint ? 1.18 : 1);
       turnFacing(actor, nx, ny, turnRate);
     }
     actor.x = clamp(actor.x + actor.vx * dt, 0.8, FIELD_LENGTH - 0.8);
@@ -915,7 +946,8 @@ export class ArcadeMatch {
     actor.animationDistance += len2(actor.x - previousX, actor.y - previousY);
     const footballMinutes = dt * 90 / this.totalSeconds;
     const pressureCost = this.teamOf(actor.side).tactics.pressing === 'gegenpress' ? 0.16 : 0;
-    const drain = (magnitude > 0.1 ? 0.2 : 0.06) + (sprint ? 0.56 : 0) + (ownsBall ? 0.05 : 0) + pressureCost;
+    const drainBase = (magnitude > 0.1 ? 0.2 : 0.06) + (sprint ? 0.56 : 0) + (ownsBall ? 0.05 : 0) + pressureCost;
+    const drain = actor.stats!.hasHookMods ? this.hook(actor, 'staminaDrain', drainBase) : drainBase;
     actor.stamina = clamp(actor.stamina - footballMinutes * drain, 0, 100);
   }
 
@@ -931,7 +963,7 @@ export class ArcadeMatch {
       const age=(this.tick-actor.actionStartedTick)/60;
       if(actor.action==='keeper-dive' && actor.actionTarget && age<.34) {
         // The dive really covers ground: a fast lateral push towards the target, faster for better keepers.
-        const diveSpeed=5.2+actor.player.attributes.goalkeeping/38;
+        const diveSpeed=5.2+this.stat(actor,'goalkeeping')/38;
         const dy=actor.actionTarget.y-actor.y;
         const step=clamp(dy,-diveSpeed*dt,diveSpeed*dt);
         actor.y=clamp(actor.y+step,.8,FIELD_WIDTH-.8);
@@ -1001,7 +1033,7 @@ export class ArcadeMatch {
         const farCorner = keeper && keeper.y > FIELD_WIDTH/2 ? -.78 : .78;
         const level = this.aiLevel(actor.side);
         const accuracy = level === 'easy' ? .45 : level === 'hard' ? .10 : .25;
-        this.shoot(actor, this.rng.float(.50,.93), direction, clamp(farCorner+this.rng.float(-accuracy,accuracy),-1,1), goalDistance > 18 && actor.player.attributes.shooting > 72, goalDistance < 14);
+        this.shoot(actor, this.rng.float(.50,.93), direction, clamp(farCorner+this.rng.float(-accuracy,accuracy),-1,1), goalDistance > 18 && this.stat(actor,'shooting') > 72, goalDistance < 14);
       } else if (this.tryAiSkill(actor, pressureDistance)) {
         // Took the defender on.
       } else if (pressured || this.rng.bool(patience+(captain?.03:0)) || (shotValue >= shotThreshold && goalDistance < shotRange)) {
@@ -1115,7 +1147,7 @@ export class ArcadeMatch {
     const targetY = clamp(runner.y + runner.vy * flight * 0.8, 1, FIELD_WIDTH - 1);
     const dx = targetX - actor.x, dy = targetY - actor.y, length = len2(dx, dy) || 1;
     const pressure = clamp((5 - this.closestOpponent(actor)) / 5, 0, 1);
-    const error = this.rng.normal(0, (100 - actor.player.attributes.passing) / 100 * 0.07 + pressure * 0.04);
+    const error = this.rng.normal(0, this.hook(actor, 'passError', (100 - this.stat(actor,'passing')) / 100 * 0.07 + pressure * 0.04));
     const cos = Math.cos(error), sin = Math.sin(error);
     const px = dx / length * cos - dy / length * sin, py = dx / length * sin + dy / length * cos;
     const time = length / speed;
@@ -1187,7 +1219,7 @@ export class ArcadeMatch {
     const manualFactor = humanPass
       ? this.config.assist === 'manual' ? 1.2 : this.config.assist === 'assisted' ? 0.55 : 0.82
       : this.aiLevel(actor.side) === 'easy' ? 0.54 : this.aiLevel(actor.side) === 'hard' ? 0.24 : 0.30;
-    const error = (100 - actor.player.attributes.passing) / 100 * 0.075 + pressure * 0.045 + weakFoot * 0.018 + fatigue * 0.04;
+    const error = this.hook(actor, 'passError', (100 - this.stat(actor,'passing')) / 100 * 0.075 + pressure * 0.045 + weakFoot * 0.018 + fatigue * 0.04);
     const angleError = this.rng.gaussian(0, error * manualFactor * this.composure(actor.side));
     const cos = Math.cos(angleError);
     const sin = Math.sin(angleError);
@@ -1196,7 +1228,7 @@ export class ArcadeMatch {
     const lofted = lob && through;
     const speed = target && !lob
       ? clamp(8 + length * 0.48 + power * 4.5 + (through ? 2.8 : 0), 12, 25)
-      : (lofted ? 16 : lob ? 14 : through ? 14.5 : 11.8) + power * (lob ? 12 : 13.5) + actor.player.attributes.passing * 0.025;
+      : (lofted ? 16 : lob ? 14 : through ? 14.5 : 11.8) + power * (lob ? 12 : 13.5) + this.stat(actor,'passing') * 0.025;
     this.registerPass(actor, target, teammates);
     const vz = lofted ? clamp(length / speed * 4.905 * 0.8 + 0.3, 2.5, 6) : lob ? clamp(length / speed * 4.905 + 0.5, 3, 9) : 0.15;
     this.releaseBall(actor, px * speed, py * speed, vz, lob ? this.rng.float(-2, 2) : 0, lob ? -2 : 0);
@@ -1219,7 +1251,7 @@ export class ArcadeMatch {
     // Striking a bouncing or dropping ball (volley) and hitting it with full force are both harder to place.
     const volley = this.ball.z > 0.35;
     const techniqueFactor = (driven ? 1.3 : 1) * (volley ? 1.2 : 1);
-    const baseError = ((100 - actor.player.attributes.shooting) / 100 * 2.15 + pressure * 1.35 + (1 - balance) * 0.9 + weakFoot + fatigue + Math.max(0, distanceToGoal - 20) * 0.15) * techniqueFactor;
+    const baseError = this.hook(actor, 'shotError', ((100 - this.stat(actor,'shooting')) / 100 * 2.15 + pressure * 1.35 + (1 - balance) * 0.9 + weakFoot + fatigue + Math.max(0, distanceToGoal - 20) * 0.15) * techniqueFactor);
     const assistFactor = this.config.assist === 'assisted' ? 0.72 : this.config.assist === 'manual' ? 1.18 : 0.92;
     const manual = this.isHumanControlled(actor) && this.config.assist === 'manual';
     const manualX = Math.abs(aimX) > 0.04 ? aimX : direction * 0.04;
@@ -1234,15 +1266,15 @@ export class ArcadeMatch {
     const dx = goalX - actor.x;
     const dy = launchY - actor.y;
     const length = len2(dx, dy) || 1;
-    const speed = 19 + power * 14 + actor.player.attributes.shooting * 0.035 + (driven ? 6 : 0) + (volley ? 2 : 0);
-    const xG = shotXg(distanceToGoal, actor.y - goalCentre, actor.player.attributes.shooting, pressure, false, FIELD_WIDTH);
+    const speed = 19 + power * 14 + this.stat(actor,'shooting') * 0.035 + (driven ? 6 : 0) + (volley ? 2 : 0);
+    const xG = shotXg(distanceToGoal, actor.y - goalCentre, this.stat(actor,'shooting'), pressure, false, FIELD_WIDTH);
     const stats = this.stats(actor.side);
     stats.shots++;
     stats.xG = round(stats.xG + xG, 2);
     const flightTime = length / speed;
     const baseVz = chip ? clamp(flightTime * 4.905 + 1.6, 4, 8) : low ? 0.7 : driven ? clamp(flightTime * 4.905 * 0.6 + 0.3, 0.8, 4) : finesse ? clamp(flightTime * 4.905 + 0.8, 1.8, 6.5) : clamp(flightTime * 4.905 + (power - 0.5), 1.2, 7);
     // Height error at the goal line: power and poor technique lift shots over the bar.
-    const heightSpread = chip ? 0 : low ? 0.2 : (0.55 + power * 0.75 + (100 - actor.player.attributes.shooting) / 100 * 0.9 + pressure * 0.4) * techniqueFactor * (finesse ? 0.8 : 1);
+    const heightSpread = chip ? 0 : low ? 0.2 : (0.55 + power * 0.75 + (100 - this.stat(actor,'shooting')) / 100 * 0.9 + pressure * 0.4) * techniqueFactor * (finesse ? 0.8 : 1);
     const heightError = heightSpread ? this.rng.normal(power * 0.35, heightSpread) : 0;
     const vz = baseVz + heightError / Math.max(0.2, flightTime);
     const heightAtGoal = this.ball.z + vz * flightTime - 4.905 * flightTime * flightTime;
@@ -1284,7 +1316,7 @@ export class ArcadeMatch {
       this.ball.vx = actor.vx + skillX * 1.3;
       this.ball.vy = actor.vy + skillY * 1.3;
     } else if (move === 'knock-on') {
-      const burst = 5.5 + actor.player.attributes.pace / 40;
+      const burst = 5.5 + this.stat(actor,'pace') / 40;
       this.ball.vx = actor.vx + actor.facingX * burst;
       this.ball.vy = actor.vy + actor.facingY * burst;
     } else {
@@ -1293,7 +1325,7 @@ export class ArcadeMatch {
     this.ball.controlledTouch = 0;
     this.setAction(actor, move);
     if (opponentGap > 3.6) return;
-    const quality = actor.player.attributes.dribbling / 100 * (actor.stamina > 20 ? 1 : 0.7);
+    const quality = this.stat(actor,'dribbling') / 100 * (actor.stamina > 20 ? 1 : 0.7);
     for (const opponent of this.actors) {
       if (!opponent.active || opponent.side === actor.side || opponent.player.positionGroup === 'GK' || distance(opponent, actor) > 3.6) continue;
       opponent.tackleCooldown = Math.max(opponent.tackleCooldown, 0.2 + quality * 0.35);
@@ -1308,7 +1340,7 @@ export class ArcadeMatch {
     const goalX = direction > 0 ? FIELD_LENGTH : 0;
     const goalDistance = Math.abs(goalX - actor.x);
     const pressure = clamp((5 - this.closestOpponent(actor)) / 5, 0, 1);
-    const xG = shotXg(goalDistance, actor.y - FIELD_WIDTH / 2, actor.player.attributes.shooting, pressure, false, FIELD_WIDTH);
+    const xG = shotXg(goalDistance, actor.y - FIELD_WIDTH / 2, this.stat(actor,'shooting'), pressure, false, FIELD_WIDTH);
     const goal = { x: goalX, y: FIELD_WIDTH / 2 };
     let blockers = 0;
     for (const other of this.actors) {
@@ -1335,7 +1367,7 @@ export class ArcadeMatch {
 
   /** Good dribblers take a defender on when one closes down from the front. */
   private tryAiSkill(actor: ArcadeActor, pressureDistance: number): boolean {
-    if (actor.skillCooldown > 0 || actor.player.attributes.dribbling < 68 || pressureDistance < 1.2 || pressureDistance > 3.4) return false;
+    if (actor.skillCooldown > 0 || this.stat(actor,'dribbling') < 68 || pressureDistance < 1.2 || pressureDistance > 3.4) return false;
     const opponent = this.actors.filter(other => other.active && other.side !== actor.side && other.player.positionGroup !== 'GK')
       .sort((a, b) => distance(a, actor) - distance(b, actor))[0];
     if (!opponent || (opponent.x - actor.x) * actor.facingX + (opponent.y - actor.y) * actor.facingY <= 0) return false;
@@ -1379,7 +1411,7 @@ export class ArcadeMatch {
       if (distance(defender, owner) > 1.25) continue;
       const pressing = this.teamOf(defender.side).tactics.pressing;
       const press = pressing === 'gegenpress' ? 1.45 : pressing === 'high' ? 1.2 : 1;
-      if (this.rng.bool(dt * (0.22 + defender.player.attributes.defending / 115) * press)) {
+      if (this.rng.bool(dt * this.hook(defender, 'pressTackle', 0.22 + this.stat(defender,'defending') / 115) * press)) {
         const slideChance = pressing === 'gegenpress' ? 0.08 : pressing === 'high' ? 0.04 : pressing === 'medium' ? 0.01 : 0.004;
         this.attemptTackle(defender, this.rng.bool(slideChance));
       }
@@ -1399,9 +1431,9 @@ export class ArcadeMatch {
     const speed = len2(actor.vx - owner.vx, actor.vy - owner.vy);
     // A carrier who is not sprinting, with the defender behind, shields the ball.
     const behind = (-relativeX * owner.facingX - relativeY * owner.facingY) / Math.max(0.1, len2(relativeX, relativeY)) < -0.2;
-    const shielding = behind && len2(owner.vx, owner.vy) < this.maxSpeed(owner, false) * 0.95 ? 0.12 * owner.player.attributes.physical / 80 : 0;
+    const shielding = behind && len2(owner.vx, owner.vy) < this.maxSpeed(owner, false) * 0.95 ? 0.12 * this.stat(owner,'physical') / 80 : 0;
     const jockeyBonus = (actor.action === 'jockey' ? 0.06 : 0) + (actor.side === 'home' ? ARCADE_MATCH_TUNING.homeComposure * 0.3 : 0);
-    const winChance = clamp(0.28 + actor.player.attributes.defending / 170 - owner.player.attributes.dribbling / 260 + approach * 0.12 + (sliding ? 0.08 : 0) - shielding + jockeyBonus, 0.12, 0.82);
+    const winChance = clamp(this.hook(actor, 'tackleWin', 0.28 + this.stat(actor,'defending') / 170 - this.stat(owner,'dribbling') / 260 + approach * 0.12 + (sliding ? 0.08 : 0) - shielding + jockeyBonus), 0.12, 0.82);
     const ballReach = distance(actor, this.ball) <= (sliding ? 1.9 : 1.15) && this.ball.z < .65;
     if (ballReach && this.rng.bool(winChance)) {
       if (!this.legalRestartTouch(actor)) return;
@@ -1536,7 +1568,7 @@ export class ArcadeMatch {
     const shot = this.activeShot;
     if (shot?.checkedKeeper) return;
     if (shot) shot.checkedKeeper = true;
-    const reaction = keeper.player.attributes.goalkeeping / 100;
+    const reaction = this.hook(keeper, 'keeperReaction', this.stat(keeper,'goalkeeping') / 100);
     const speed = len2(this.ball.vx, this.ball.vy);
     const reachDistance = distance(keeper, this.ball);
     const blockChance = clamp(0.84 + reaction * 0.24 - speed * 0.0015 - reachDistance * 0.025, 0.45, 0.98);
@@ -1606,7 +1638,7 @@ export class ArcadeMatch {
   }
 
   private keeperReach(keeper: ArcadeActor): number {
-    const base = 1.3 + keeper.player.attributes.goalkeeping * 0.006;
+    const base = 1.3 + this.stat(keeper,'goalkeeping') * 0.006;
     if (keeper.action !== 'keeper-dive' || !actionIsPlaying('keeper-dive', keeper.actionStartedTick, this.tick)) return base;
     const age = (this.tick - keeper.actionStartedTick) / 60;
     return base + 0.75 * clamp(age / 0.22, 0, 1) * (age < 0.6 ? 1 : 0.4);
@@ -1679,7 +1711,7 @@ export class ArcadeMatch {
       return;
     }
     const aerialPenalty = this.ball.z > 0.75 ? 10 + speed * 0.5 : 0;
-    const firstTouch = candidate.player.attributes.dribbling + candidate.stamina * 0.25 - speed * 1.4 - aerialPenalty;
+    const firstTouch = this.stat(candidate,'dribbling') + candidate.stamina * 0.25 - speed * 1.4 - aerialPenalty;
     const weatherPenalty = this.config.weather === 'rain' ? 8 : this.config.weather === 'storm' ? 11 : 0;
     const humanReceiver = this.config.controllerMode === 'human' && candidate.side === this.controlledSide;
     const intendedAiReceiverBonus = !humanReceiver && candidate.player.id === this.intendedReceiverId
@@ -1713,7 +1745,7 @@ export class ArcadeMatch {
       this.intendedReceiverId = null;
       this.activeShot = null;
       if (!this.isHumanControlled(candidate)) {
-        const settle = 0.08 + (100 - candidate.player.attributes.dribbling) * 0.0012;
+        const settle = 0.08 + (100 - this.stat(candidate,'dribbling')) * 0.0012;
         candidate.decisionCooldown = Math.max(candidate.decisionCooldown, settle);
       }
       if (candidate.side === this.controlledSide && this.config.controllerMode==='human') candidate.decisionCooldown=Math.max(candidate.decisionCooldown,.30);
@@ -1755,11 +1787,11 @@ export class ArcadeMatch {
     }
     const aimedY = FIELD_WIDTH / 2 + (queued?.aimY ?? this.rng.float(-0.6, 0.6)) * 2.6;
     // Heading accuracy depends on strength, finishing and distance; wide headers really miss.
-    const headingError = (100 - (actor.player.attributes.physical + actor.player.attributes.shooting) / 2) / 100 * 1.8 + goalDistance * 0.06;
+    const headingError = (100 - (this.stat(actor,'physical') + this.stat(actor,'shooting')) / 2) / 100 * 1.8 + goalDistance * 0.06;
     const targetY = aimedY + this.rng.normal(0, headingError);
-    const headerXg = shotXg(goalDistance, actor.y - FIELD_WIDTH / 2, actor.player.attributes.shooting, clamp((3 - this.closestOpponent(actor)) / 3, 0, 1), true, FIELD_WIDTH);
+    const headerXg = shotXg(goalDistance, actor.y - FIELD_WIDTH / 2, this.stat(actor,'shooting'), clamp((3 - this.closestOpponent(actor)) / 3, 0, 1), true, FIELD_WIDTH);
     const length = len2(goalX - actor.x, targetY - actor.y);
-    const speed = 11 + actor.player.attributes.physical * 0.07;
+    const speed = 11 + this.stat(actor,'physical') * 0.07;
     this.releaseBall(actor, (goalX - actor.x) / length * speed, (targetY - actor.y) / length * speed, -1.4, 0);
     if (actor.contact) actor.contact.kind = 'head';
     this.setAction(actor, 'header');
@@ -1779,7 +1811,7 @@ export class ArcadeMatch {
       return;
     }
     const direction = this.attackDirection(actor.side);
-    const strength = actor.player.attributes.physical;
+    const strength = this.stat(actor,'physical');
     const teammates = this.actors.filter(candidate => candidate.active && candidate.side === actor.side && candidate.player.id !== actor.player.id);
     if (attackingGoalDistance > 70) {
       const wide = actor.y < FIELD_WIDTH / 2 ? -1 : 1;
@@ -1917,12 +1949,14 @@ export class ArcadeMatch {
     this.ball.controlledTouch = 0;
     this.rule = this.newRule('playing',null,this.ball.x,this.ball.y);
     this.phase = this.halftimeReached ? 'secondHalf' : 'firstHalf';
+    this.ambientFlags = phase === 'penalty' ? Cond.penalty | Cond.setPiece : phase === 'kickoff' ? 0 : Cond.setPiece;
+    this.applyKickFlags(taker, this.ambientFlags);
     const aimX = command && len2(command.aimX,command.aimY)>.1 ? command.aimX : phase==='kickoff'?-direction:direction;
     const aimY = command?.aimY ?? 0;
     const goalDistance = Math.abs((direction > 0 ? FIELD_LENGTH : 0) - this.ball.x);
     // Unattended direct free kicks within range are struck at goal with curl, over or round the wall.
     const aiDirectFreeKick = !command && phase === 'freeKick' && !indirect && goalDistance < 28 && Math.abs(this.ball.y - FIELD_WIDTH / 2) < 16
-      && taker.player.attributes.shooting >= 62 && this.rng.bool(0.7);
+      && this.stat(taker,'shooting') >= 62 && this.rng.bool(0.7);
     if (phase === 'penalty' || aiDirectFreeKick || command?.kind === 'shoot' && phase !== 'throwIn' && !indirect) {
       this.penaltyNerves = phase === 'penalty' ? this.penaltyComposure(taker) : 1;
       this.shoot(taker,command?.power ?? (aiDirectFreeKick ? .78 : .72),direction,command?.aimY ?? this.rng.float(-.8,.8),command?.finesse ?? aiDirectFreeKick,command?.low ?? false);
@@ -1942,6 +1976,8 @@ export class ArcadeMatch {
         this.setAction(taker,'keeper-throw');
       }
     }
+    this.ambientFlags = 0;
+    this.applyKickFlags(taker, 0);
     if (['corner','goalKick','throwIn'].includes(phase)) {
       this.football.offsideCandidates = [];
       this.pendingOffsideTargetId = null;
@@ -1989,8 +2025,7 @@ export class ArcadeMatch {
 
   /** Error multiplier from the spot: shooting quality and the "Ice in the Veins" trait calm the nerves. */
   private penaltyComposure(taker: ArcadeActor): number {
-    const iceVeins = taker.player.traitIds?.includes('iceveins') ? 8 : 0;
-    return clamp(1.25 - (taker.player.attributes.shooting + iceVeins) / 200, 0.7, 1.1);
+    return clamp(1.25 - this.statWith(taker, 'shooting', Cond.penalty) / 200, 0.7, 1.1);
   }
 
   /** The keeper commits to a side (or stays central) as the penalty is struck. */
@@ -2070,7 +2105,7 @@ export class ArcadeMatch {
     const order = (side: Side) => this.actors
       .filter(actor => actor.active && actor.side === side)
       .sort((a, b) => (a.player.positionGroup === 'GK' ? 1 : 0) - (b.player.positionGroup === 'GK' ? 1 : 0)
-        || (b.player.attributes.shooting + (b.player.traitIds?.includes('iceveins') ? 8 : 0)) - (a.player.attributes.shooting + (a.player.traitIds?.includes('iceveins') ? 8 : 0)));
+        || this.statWith(b, 'shooting', Cond.penalty) - this.statWith(a, 'shooting', Cond.penalty));
     const takers = { home: order('home'), away: order('away') };
     const keeper = (side: Side) => this.actors.find(actor => actor.active && actor.side === side && actor.player.positionGroup === 'GK');
     const shootout: PenaltyShootout = { home: [], away: [], takers: { home: [], away: [] }, winner: 'home' };
@@ -2082,8 +2117,7 @@ export class ArcadeMatch {
         const taker = list[round % Math.max(1, list.length)];
         if (!taker) continue;
         const opponentKeeper = keeper(this.opposite(side));
-        const ice = taker.player.traitIds?.includes('iceveins') ? 0.05 : 0;
-        const chance = shootoutConversionChance(taker.player.attributes.shooting, opponentKeeper?.player.attributes.goalkeeping ?? 60, ice);
+        const chance = shootoutConversionChance(this.statWith(taker, 'shooting', Cond.penalty), opponentKeeper ? this.stat(opponentKeeper, 'goalkeeping') : 60);
         const scored = this.rng.bool(chance);
         shootout[side].push(scored);
         shootout.takers[side].push(taker.player.id);
@@ -2185,6 +2219,10 @@ export class ArcadeMatch {
 
   private updatePossessionStats(dt: number): void {
     const owner = this.owner();
+    if (owner) {
+      if (this.lastOwnerSide && this.lastOwnerSide !== owner.side) this.possessionGainedTick[owner.side] = this.tick;
+      this.lastOwnerSide = owner.side;
+    }
     if (owner?.side === 'home') this.possessionHomeSeconds += dt;
     else if (owner?.side === 'away') this.possessionAwaySeconds += dt;
     const total = this.possessionHomeSeconds + this.possessionAwaySeconds || 1;
@@ -2289,7 +2327,7 @@ export class ArcadeMatch {
   }
 
   private maxSpeed(actor: ArcadeActor, sprint: boolean): number {
-    const base = arcadeSprintSpeed(actor.player.attributes.pace);
+    const base = arcadeSprintSpeed(actor.attrs!.pace);
     const fitness = actor.stamina < 40 ? 0.82 + actor.stamina * 0.0045 : 1;
     const ownsBall = this.ball.ownerId === actor.player.id;
     const ball = ownsBall ? sprint ? ARCADE_MATCH_TUNING.ballSprintRatio : ARCADE_MATCH_TUNING.ballJogRatio : 1;
@@ -2331,6 +2369,84 @@ export class ArcadeMatch {
 
   private sideAttackingDirection(direction: 1 | -1): Side {
     return this.attackDirection('home') === direction ? 'home' : 'away';
+  }
+
+  private get effectsEnabled(): boolean {
+    return this.config.effects !== false;
+  }
+
+  /** An attribute as it plays in this very moment: traits, talents, form, morale and position included. */
+  private stat(actor: ArcadeActor, key: AttributeKey): number {
+    // The tick refresh keeps `attrs` current, so reading a value is a plain lookup.
+    return actor.attrs![key];
+  }
+
+  /** An attribute under extra situation flags (a penalty, a dead ball) on top of the actor's own. */
+  private statWith(actor: ArcadeActor, key: AttributeKey, extraFlags: number): number {
+    return resolveAttribute(this.statsOf(actor), key, (actor.flags ?? 0) | this.ambientFlags | extraFlags);
+  }
+
+  /** Builds the stat view of an actor whose player just changed (kick-off, substitution, restore). */
+  private initAttrs(actor: ArcadeActor): void {
+    actor.stats = undefined;
+    actor.attrBuffer = undefined;
+    const block = this.statsOf(actor);
+    actor.attrs = block.hasMods ? refreshAttributes(block, actor.flags ?? 0, actor.attrBuffer = newAttributes(block.base)) : block.base;
+  }
+
+  /** Re-resolves the actor's view for the flags of the moment, plus `extra` for the duration of a dead-ball kick. */
+  private applyKickFlags(actor: ArcadeActor, extra: number): void {
+    const block = this.statsOf(actor);
+    if (block.hasMods) actor.attrs = refreshAttributes(block, (actor.flags ?? 0) | extra, actor.attrBuffer ??= newAttributes(block.base));
+  }
+
+  /** A derived engine value (error rate, chance, rate) after modifiers; a no-op until something targets the hook. */
+  private hook(actor: ArcadeActor, hook: DerivedHook, base: number, extraFlags = 0): number {
+    if (!actor.stats!.hasHookMods) return base;
+    return resolveHook(this.statsOf(actor), hook, base, (actor.flags ?? 0) | this.ambientFlags | extraFlags);
+  }
+
+  private statsOf(actor: ArcadeActor): StatBlock {
+    let block = actor.stats;
+    if (!block || block.playerId !== actor.player.id) {
+      block = actor.stats = this.effectsEnabled
+        ? buildStatBlock(actor.player, { slotPosition: actor.slotPosition })
+        : rawStatBlock(actor.player);
+    }
+    return block;
+  }
+
+  /** Flags that are the same for every player of a side this tick: score, clock, weather, possession. */
+  private sideFlagsThisTick(owner: ArcadeActor | undefined): [number, number] {
+    let shared = 0;
+    if (this.footballMinute >= 75) shared |= Cond.late;
+    if (this.inExtraTime) shared |= Cond.extraTime;
+    if (this.config.weather === 'rain') shared |= Cond.rain;
+    else if (this.config.weather === 'storm') shared |= Cond.storm | Cond.rain;
+    const result: [number, number] = [shared | Cond.home, shared | Cond.away];
+    for (let index = 0; index < 2; index++) {
+      const side: Side = index === 0 ? 'home' : 'away';
+      const own = index === 0 ? this.homeScore : this.awayScore;
+      const other = index === 0 ? this.awayScore : this.homeScore;
+      let flags = own < other ? Cond.losing : own > other ? Cond.winning : Cond.level;
+      if (owner && owner.side !== side) flags |= Cond.outOfPossession;
+      if (owner?.side === side && this.tick - this.possessionGainedTick[side] <= 240) flags |= Cond.counter;
+      result[index] |= flags;
+    }
+    return result;
+  }
+
+  private actorFlags(actor: ArcadeActor, shared: number, owner: ArcadeActor | undefined): number {
+    let flags = shared;
+    const fromOwnGoal = this.attackDirection(actor.side) > 0 ? actor.x : FIELD_LENGTH - actor.x;
+    const centred = Math.abs(actor.y - FIELD_WIDTH / 2) <= PITCH.penaltyHalfWidth;
+    if (centred && fromOwnGoal <= PITCH.penaltyDepth) flags |= Cond.inOwnBox;
+    if (centred && FIELD_LENGTH - fromOwnGoal <= PITCH.penaltyDepth) flags |= Cond.inOppBox;
+    if (fromOwnGoal > FIELD_LENGTH / 2) flags |= Cond.inOppHalf;
+    if (actor.stamina < 35) flags |= Cond.lowStamina;
+    if (owner === actor && this.closestOpponent(actor) < 3) flags |= Cond.underPressure;
+    if (this.activeShot && this.activeShot.side !== actor.side && actor.player.positionGroup === 'GK') flags |= Cond.facingShot;
+    return flags;
   }
 
   private closestOpponent(actor: ArcadeActor): number {

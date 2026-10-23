@@ -474,3 +474,17 @@ Erster Schritt des Phasenplans „Legends Reborn“ (Fundament → RPG → 2.0).
 
 Offen / bewusst verschoben: Lautstärke liegt im Spielstand (`settings`), Umzug in Prefs gehört zu Save v7 (Phase 8). Die Pitch‑Variablen sind bereits per `applyPitch` gekapselt und durch Tests abgesichert.
 
+## Phase 1 – Effekt‑Pipeline (Legends Reborn, 23.10.2026)
+
+Traits, Talente, Form, Moral und Positionsvertrautheit wirken jetzt im 60‑Hz‑Match. Vorher las `arcade-match.ts` ausschließlich die Rohattribute; nur `iceveins` hatte einen Sonderfall.
+
+- Neues Modul `core/rpg/`: `conditions.ts` (Situations‑Bitflags: Strafraum, Schlussphase, Konter, Standard, Elfmeter, Druck, Wetter …), `effects.ts` (Hooks, Modifier, `EFFECT_CAPS`), `stat-block.ts` (`buildStatBlock`, `resolveAttribute`, `resolveHook`, `explainStat`, `staticOverall`).
+- Jeder Trait in `data/traits.ts` hat `effects` mit genau der Bedingung aus seiner Beschreibung (Clinical: +6 Schuss im gegnerischen Strafraum, Speedster: +7 Tempo im Konter, Maestro: +7 Dribbling unter Druck …). `modifiers` bleibt für Ratings und Taktikseite.
+- Engine: pro Spieler ein `StatBlock`, pro Tick eine aufgelöste Attributsicht (`actor.attrs`); Flags werden nur für Spieler mit situativen Modifiern berechnet und die Werte nur bei Flag‑Wechsel neu aufgelöst. Alle 38 direkten Attributzugriffe laufen über `stat()`; Hooks `shotError`, `passError`, `tackleWin`, `pressTackle`, `keeperReaction`, `acceleration`, `staminaDrain` sind verdrahtet (noch ohne Modifier, Platz für Signaturen/Quirks). Standards und Elfmeter setzen ihre Flags für die Dauer des Schusses.
+- Quick‑Sim: `teamStrength` nutzt `staticOverall` (Form, Moral, Position, Traits; situative Boni zu 40 %).
+- `MatchConfig.effects = false` und `balance:check --effects=off` schalten die Pipeline für Vergleiche ab.
+- Performance: Der erste Entwurf kostete +100 % Matchzeit; Ursachen waren unterschiedliche Hidden Classes der Actors, Flag‑Berechnung für alle Spieler und Hook‑Auflösung ohne Modifier. Jetzt +2…5 % (100 Matches: 467–484 ms vorher, 492–494 ms nachher auf diesem Rechner).
+- Balance (500 Matches, Effekte an): 2,74 Tore, 65,6 % Pässe, 25,4 % Remis, 43,4 % Heimsiege, 0,05 Abseits. Tests: 239 (11 neu in `rpg-effects.spec.ts`).
+
+Offen: Die Hooks selbst haben noch keine Quellen außer Traits; Signaturen (Phase 4), Quirks (Phase 5) und Trainings‑Buffs (Phase 2) hängen sich hier ein. `collisions.ts` liest die Körpermasse weiterhin roh (bewusst, nicht situativ).
+

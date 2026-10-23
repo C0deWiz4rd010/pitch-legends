@@ -1,5 +1,6 @@
 import { AttributeKey, Foot, Position, PositionGroup } from './enums';
 import { PlayerVisualIdentity } from './visual.model';
+import type { EffectSpec } from '../core/rpg/effects';
 
 /** A trait/perk that modifies a player's match behaviour. */
 export interface Trait {
@@ -10,6 +11,8 @@ export interface Trait {
   category: AttributeKey | 'mental';
   /** Flat modifiers applied to effective match rating in relevant phases. */
   modifiers: Partial<Record<AttributeKey, number>>;
+  /** What the live match applies, each under the condition the description promises. */
+  effects?: EffectSpec[];
   /** Level at which the trait becomes available to unlock. */
   unlockLevel: number;
 }
