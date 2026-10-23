@@ -8,6 +8,14 @@ export interface HeadlessMatchRequest {
   away: Team;
   week: number;
   config: MatchConfig;
+  /** Manager Tactics perk rank of the club the player manages (0 when none). */
+  managerTacticsRank?: number;
+}
+
+/** The managed club and its Tactics perk, so headless runs apply the perk to the right side. */
+export interface HeadlessManagerPerk {
+  teamId: string;
+  tacticsRank: number;
 }
 
 @Injectable({ providedIn: 'root' })
@@ -17,8 +25,8 @@ export class MatchEngineService {
   }
 
   /** Fast full simulation used for league fixtures. It is the same core as PLAY. */
-  simulate(home: Team, away: Team, week: number, seed?: number, fixtureId?: string, knockout = false): MatchResult {
-    const match = this.createSession(home, away, this.headlessConfig(home, away, week, seed, fixtureId, knockout));
+  simulate(home: Team, away: Team, week: number, seed?: number, fixtureId?: string, knockout = false, perk?: HeadlessManagerPerk): MatchResult {
+    const match = this.createSession(home, away, this.headlessConfig(home, away, week, seed, fixtureId, knockout, perk), perk?.tacticsRank ?? 0);
     match.simulateToEnd();
     const result = match.result();
     result.week = week;
@@ -26,12 +34,13 @@ export class MatchEngineService {
   }
 
   /** Worker-first simulation for the visible instant-SIM action. */
-  simulateAsync(home: Team, away: Team, week: number, seed?: number, fixtureId?: string, knockout = false, smallSided = false): Promise<MatchResult> {
+  simulateAsync(home: Team, away: Team, week: number, seed?: number, fixtureId?: string, knockout = false, smallSided = false, perk?: HeadlessManagerPerk): Promise<MatchResult> {
     const request: HeadlessMatchRequest = {
       home: structuredClone(home),
       away: structuredClone(away),
       week,
-      config: { ...this.headlessConfig(home, away, week, seed, fixtureId, knockout), smallSided },
+      config: { ...this.headlessConfig(home, away, week, seed, fixtureId, knockout, perk), smallSided },
+      managerTacticsRank: perk?.tacticsRank ?? 0,
     };
     if (typeof Worker === 'undefined') return this.simulateCooperatively(request);
     return new Promise((resolve) => {
@@ -61,7 +70,7 @@ export class MatchEngineService {
   }
 
   private simulateCooperatively(request: HeadlessMatchRequest): Promise<MatchResult> {
-    const match = this.createSession(request.home, request.away, request.config);
+    const match = this.createSession(request.home, request.away, request.config, request.managerTacticsRank ?? 0);
     return new Promise((resolve) => {
       const run = () => {
         for (let count = 0; count < 720 && !match.finished; count++) {
@@ -81,14 +90,14 @@ export class MatchEngineService {
     });
   }
 
-  private headlessConfig(home: Team, away: Team, week: number, seed?: number, fixtureId?: string, knockout = false): MatchConfig {
+  private headlessConfig(home: Team, away: Team, week: number, seed?: number, fixtureId?: string, knockout = false, perk?: HeadlessManagerPerk): MatchConfig {
     return {
       knockout,
       mode: 'instant',
       controllerMode: 'auto',
       seed: seed ?? this.stableSeed(`${home.id}|${away.id}|${week}`),
       fixtureId,
-      controlledTeamId: home.id,
+      controlledTeamId: perk && (perk.teamId === home.id || perk.teamId === away.id) ? perk.teamId : home.id,
       halfMinutes: 3,
       difficulty: 'normal',
       assist: 'balanced',

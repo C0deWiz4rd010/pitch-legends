@@ -39,7 +39,8 @@ export class SeasonService {
     if (!g || !team || !fixture) return null;
     const home = g.teams.find((t) => t.id === fixture.homeTeamId)!;
     const away = g.teams.find((t) => t.id === fixture.awayTeamId)!;
-    return this.engine.simulate(home, away, fixture.week, undefined, fixture.id, fixture.competition === 'cup');
+    const tacticsRank = g.manager.perks.tactics ?? 0;
+    return this.engine.simulate(home, away, fixture.week, undefined, fixture.id, fixture.competition === 'cup', tacticsRank > 0 ? { teamId: g.clubId, tacticsRank } : undefined);
   }
 
   /** Commit the watched player result, simulate the rest of the week, then advance. Cup ties do not advance the week. */

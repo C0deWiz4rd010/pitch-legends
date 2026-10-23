@@ -39,7 +39,7 @@ import { Mentality, PressingIntensity, Width } from '../../models/enums';
 import { ratingColor } from '../../shared/rating-color';
 import { playerName } from '../../core/ratings';
 import { I18nService } from '../../core/services/i18n.service';
-import { ARCADE_MATCH_TUNING, ArcadeMatch, MATCH_TICK } from '../../core/services/arcade-match';
+import { ARCADE_MATCH_TUNING, ArcadeMatch, FIELD_LENGTH, MATCH_TICK } from '../../core/services/arcade-match';
 import { AudioService } from '../../core/services/audio.service';
 import { ControlHelpService } from '../../core/services/control-help.service';
 import { PortraitService } from '../../core/services/portrait.service';
@@ -539,7 +539,7 @@ export class MatchPage implements OnDestroy {
     if (!this.practice) this.travel.resolveSafeForFixture(fixture.id);
     if (this.selectedMode() === 'instant') {
       this.phase.set('simulating');
-      void this.engine.simulateAsync(home, away, fixture.week, this.exhibition?.seed ?? this.stableSeed(fixture.id), fixture.id, this.knockout(), !!this.exhibition?.smallSided).then((result) => {
+      void this.engine.simulateAsync(home, away, fixture.week, this.exhibition?.seed ?? this.stableSeed(fixture.id), fixture.id, this.knockout(), !!this.exhibition?.smallSided, this.managerPerk(this.controlledTeam()?.id ?? home.id)).then((result) => {
         this.result.set(result);
         this.revealed.set([...result.events]);
         this.phase.set('result');
@@ -764,9 +764,14 @@ export class MatchPage implements OnDestroy {
     this.raf = requestAnimationFrame((time) => this.loop(time));
   }
 
+  private managerPerk(teamId: string): { teamId: string; tacticsRank: number } | undefined {
+    const tacticsRank = this.gs.manager()?.perks.tactics ?? 0;
+    return tacticsRank > 0 && !this.practice ? { teamId, tacticsRank } : undefined;
+  }
+
   private syncMatch(timestamp: number, forceView = false): void {
     if (!this.arcade) return;
-    const goalDistance=Math.min(this.arcade.ball.x,105-this.arcade.ball.x);
+    const goalDistance=Math.min(this.arcade.ball.x,FIELD_LENGTH-this.arcade.ball.x);
     const crowd=this.arcade.phase==='goalReplay'?1:.1+Math.max(0,30-goalDistance)/50;
     if(Math.abs(crowd-this.lastCrowdIntensity)>.02) { this.audio.setCrowdIntensity(crowd); this.lastCrowdIntensity=crowd; }
     this.audio.setChant(this.arcade.homeScore > this.arcade.awayScore && this.arcade.phase !== 'goalReplay');
@@ -822,7 +827,7 @@ export class MatchPage implements OnDestroy {
       awayScore: this.arcade.awayScore,
       phase: this.arcade.phase,
       rulePhase: this.arcade.rule.phase,
-      momentumHome: Math.round(this.arcade.ball.x / 105 * 100),
+      momentumHome: Math.round(this.arcade.ball.x / FIELD_LENGTH * 100),
       controlledPlayerId: this.arcade.selectedPlayerId,
       controlledFitness: selected?.stamina ?? 100,
       controllerMode: this.arcade.controllerMode,

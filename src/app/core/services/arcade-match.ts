@@ -41,6 +41,7 @@ import { PlayerCollisionGrid } from '../football/collisions';
 import { actorSnapshot, applyActorSnapshot, ballSnapshot, fnv1aHex, writeBallSnapshot, writePlayers } from '../football/match-snapshot';
 import { keeperDiveTarget, keeperPositionIntent } from '../football/keeper-ai';
 import { arrangeRestart, chooseRestartTaker } from '../football/set-pieces';
+import { shootoutConversionChance } from '../football/penalty';
 import { shotAngleQuality, shotXg } from '../football/xg';
 
 export { FIELD_LENGTH, FIELD_WIDTH, GOAL_HEIGHT, GOAL_WIDTH, MATCH_TICK, PITCH, applyPitch } from '../football/match-types';
@@ -1023,8 +1024,8 @@ export class ArcadeMatch {
 
     if (!owner && actor.player.id === this.intendedReceiverId) {
       const horizon = clamp(distance(actor,this.ball)/this.maxSpeed(actor,false),0,.35);
-      actor.intentX = clamp(this.ball.x + this.ball.vx*horizon,1,104);
-      actor.intentY = clamp(this.ball.y + this.ball.vy*horizon,1,67);
+      actor.intentX = clamp(this.ball.x + this.ball.vx*horizon,1,FIELD_LENGTH-1);
+      actor.intentY = clamp(this.ball.y + this.ball.vy*horizon,1,FIELD_WIDTH-1);
       this.setAction(actor,'receive');
       return;
     }
@@ -1209,7 +1210,7 @@ export class ArcadeMatch {
     const goalCentre = FIELD_WIDTH / 2;
     const inputZone = clamp(aimY, -1, 1) * (GOAL_WIDTH * 0.43);
     const distanceToGoal = len2(goalX - actor.x, goalCentre - actor.y);
-    const angleQuality = shotAngleQuality(actor.y - goalCentre);
+    const angleQuality = shotAngleQuality(actor.y - goalCentre, FIELD_WIDTH);
     const pressure = clamp((5 - this.closestOpponent(actor)) / 5, 0, 1);
     const balance = clamp(1 - len2(actor.vx, actor.vy) / 18, 0.35, 1);
     const shotLateral = direction * (goalCentre - actor.y);
@@ -1234,7 +1235,7 @@ export class ArcadeMatch {
     const dy = launchY - actor.y;
     const length = len2(dx, dy) || 1;
     const speed = 19 + power * 14 + actor.player.attributes.shooting * 0.035 + (driven ? 6 : 0) + (volley ? 2 : 0);
-    const xG = shotXg(distanceToGoal, actor.y - goalCentre, actor.player.attributes.shooting, pressure);
+    const xG = shotXg(distanceToGoal, actor.y - goalCentre, actor.player.attributes.shooting, pressure, false, FIELD_WIDTH);
     const stats = this.stats(actor.side);
     stats.shots++;
     stats.xG = round(stats.xG + xG, 2);
@@ -1307,7 +1308,7 @@ export class ArcadeMatch {
     const goalX = direction > 0 ? FIELD_LENGTH : 0;
     const goalDistance = Math.abs(goalX - actor.x);
     const pressure = clamp((5 - this.closestOpponent(actor)) / 5, 0, 1);
-    const xG = shotXg(goalDistance, actor.y - FIELD_WIDTH / 2, actor.player.attributes.shooting, pressure);
+    const xG = shotXg(goalDistance, actor.y - FIELD_WIDTH / 2, actor.player.attributes.shooting, pressure, false, FIELD_WIDTH);
     const goal = { x: goalX, y: FIELD_WIDTH / 2 };
     let blockers = 0;
     for (const other of this.actors) {
@@ -1756,7 +1757,7 @@ export class ArcadeMatch {
     // Heading accuracy depends on strength, finishing and distance; wide headers really miss.
     const headingError = (100 - (actor.player.attributes.physical + actor.player.attributes.shooting) / 2) / 100 * 1.8 + goalDistance * 0.06;
     const targetY = aimedY + this.rng.normal(0, headingError);
-    const headerXg = shotXg(goalDistance, actor.y - FIELD_WIDTH / 2, actor.player.attributes.shooting, clamp((3 - this.closestOpponent(actor)) / 3, 0, 1), true);
+    const headerXg = shotXg(goalDistance, actor.y - FIELD_WIDTH / 2, actor.player.attributes.shooting, clamp((3 - this.closestOpponent(actor)) / 3, 0, 1), true, FIELD_WIDTH);
     const length = len2(goalX - actor.x, targetY - actor.y);
     const speed = 11 + actor.player.attributes.physical * 0.07;
     this.releaseBall(actor, (goalX - actor.x) / length * speed, (targetY - actor.y) / length * speed, -1.4, 0);
@@ -2082,7 +2083,7 @@ export class ArcadeMatch {
         if (!taker) continue;
         const opponentKeeper = keeper(this.opposite(side));
         const ice = taker.player.traitIds?.includes('iceveins') ? 0.05 : 0;
-        const chance = clamp(0.76 + (taker.player.attributes.shooting - 70) / 200 + ice - ((opponentKeeper?.player.attributes.goalkeeping ?? 60) - 70) / 250, 0.55, 0.92);
+        const chance = shootoutConversionChance(taker.player.attributes.shooting, opponentKeeper?.player.attributes.goalkeeping ?? 60, ice);
         const scored = this.rng.bool(chance);
         shootout[side].push(scored);
         shootout.takers[side].push(taker.player.id);

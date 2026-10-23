@@ -28,9 +28,16 @@ export interface WorldBlueprint {
   clubIdentities: ClubIdentity[];
 }
 
+const fakerByLocale: Faker[] = [];
+
+/** One Faker per locale; every call reseeds it, so results stay a pure function of the seed. */
+function fakerForLocale(index: number): Faker {
+  return (fakerByLocale[index] ??= new Faker({ locale: [PERSON_LOCALES[index], en, base] }));
+}
+
 export function generatePersonName(seed: number, key: string | number): GeneratedPersonName {
   const index = hash32(`${seed}|locale|${key}`) % PERSON_LOCALES.length;
-  const faker = new Faker({ locale: [PERSON_LOCALES[index], en, base] });
+  const faker = fakerForLocale(index);
   faker.seed(hash32(`${seed}|person|${key}`));
   return {
     firstName: faker.person.firstName(),

@@ -461,3 +461,16 @@ Grundlage: neuer, element-weiser Verbesserungsplan (Fundament → Gameplay → G
   - Der reichste KI-Verein wächst langsam weiter (rund 8-mal das mittlere Vermögen nach 10 Saisons), weil sich ein voll ausgebautes Stadion auszahlt.
   - Abseits ist mit 0,06 je Spiel sehr selten, weil die KI-Stürmer nie hinter die letzte Linie laufen.
   - Elfmeterschießen ist nur im Bericht zu sehen, nicht selbst zu schießen; die Wirkung von Talenten fehlt weiter im Spielbericht.
+
+## Phase 0 – Fundament (Legends Reborn, 23.10.2026)
+
+Erster Schritt des Phasenplans „Legends Reborn“ (Fundament → RPG → 2.0).
+
+- 5v5: Empfänger‑Clamp, Crowd‑Intensität, Momentum und der xG‑Winkelabfall nutzen jetzt die Platzmaße des laufenden Matches statt 105×68.
+- Taktik‑Perk des Managers wirkt auch in Worker‑ und kooperativen Simulationen (`HeadlessManagerPerk`, `managerTacticsRank` im Worker‑Request); der verwaltete Verein ist dort die kontrollierte Seite.
+- Elfmeterformel zentral in `core/football/penalty.ts`; Starter‑Filter in `quick-sim.ts` zusammengeführt.
+- Tote Namenslisten (`FIRST_NAMES`/`LAST_NAMES`/`NATIONALITIES` in `data/names.ts`) entfernt; Faker pro Locale gecacht.
+- Tests: 228 (4 neu, `foundation-phase0.spec.ts`). `balance:check` unverändert (2,79 Tore, 65,5 % Pässe, 26 % Remis).
+
+Offen / bewusst verschoben: Lautstärke liegt im Spielstand (`settings`), Umzug in Prefs gehört zu Save v7 (Phase 8). Die Pitch‑Variablen sind bereits per `applyPitch` gekapselt und durch Tests abgesichert.
+

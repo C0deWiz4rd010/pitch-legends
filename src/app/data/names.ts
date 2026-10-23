@@ -1,28 +1,5 @@
 /** Name pools and club identity data for procedural generation. */
 
-export const FIRST_NAMES: string[] = [
-  'Leo', 'Marco', 'Kai', 'Diego', 'Luka', 'Mateo', 'Noah', 'Elias', 'Finn', 'Jude',
-  'Bruno', 'Youssef', 'Andrés', 'Karim', 'Sergio', 'Viktor', 'Nikola', 'Emre', 'Mohamed', 'Rafael',
-  'Thiago', 'Pedri', 'Gavi', 'Phil', 'Bukayo', 'Declan', 'Ollie', 'Jamal', 'Florian', 'Joshua',
-  'Rúben', 'João', 'Vinícius', 'Rodri', 'Pau', 'Alessandro', 'Federico', 'Nicolò', 'Dusan', 'Wout',
-  'Cody', 'Xavi', 'Gabriel', 'Martin', 'Christian', 'Dominik', 'Ilkay', 'Toni', 'Antoine', 'Kylian',
-];
-
-export const LAST_NAMES: string[] = [
-  'Silva', 'Costa', 'Fernández', 'Rossi', 'Müller', 'Schmidt', 'Kovač', 'Popović', 'Nowak', 'Andersen',
-  'Bergström', 'Novák', 'Horváth', 'Yılmaz', 'Hassan', 'Okafor', 'Mensah', 'Diallo', 'Traoré', 'Mbappé',
-  'Bellingham', 'Foden', 'Saka', 'Rice', 'Watkins', 'Musiala', 'Kimmich', 'Wirtz', 'Havertz', 'Kroos',
-  'Dias', 'Félix', 'Júnior', 'Hernández', 'Torres', 'Pedri', 'Barella', 'Chiesa', 'Vlahović', 'Weghorst',
-  'Gakpo', 'Simons', 'Martinelli', 'Ødegaard', 'Pulisic', 'Szoboszlai', 'Gündoğan', 'Griezmann', 'Osimhen', 'Lautaro',
-];
-
-export const NATIONALITIES: string[] = [
-  'England', 'Spain', 'Germany', 'France', 'Italy', 'Portugal', 'Brazil', 'Argentina',
-  'Netherlands', 'Croatia', 'Belgium', 'Serbia', 'Turkey', 'Nigeria', 'Egypt', 'Senegal',
-  'Sweden', 'Denmark', 'Poland', 'Norway',
-];
-
-/** Club identities used to populate the league (name, short, kit colors). */
 export interface ClubIdentity {
   name: string;
   short: string;

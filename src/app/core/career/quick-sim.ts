@@ -1,6 +1,7 @@
 import { MatchEvent, MatchResult, PenaltyShootout, emptyContribution, emptyTeamMatchStats } from '../../models/match.model';
 import { Player } from '../../models/player.model';
 import { Team } from '../../models/team.model';
+import { shootoutConversionChance } from '../football/penalty';
 import { createInjury, isPlayerAvailable } from '../injury-engine';
 import { playerName } from '../ratings';
 import { Rng, clamp } from '../util';
@@ -18,10 +19,15 @@ export interface QuickSimOptions {
   knockout?: boolean;
 }
 
-export function teamStrength(team: Team): number {
-  const starters = team.formation.slots
+/** The available players in the starting formation slots. */
+function availableStarters(team: Team): Player[] {
+  return team.formation.slots
     .map((slot) => team.players.find((player) => player.id === slot.playerId))
     .filter((player): player is Player => !!player && isPlayerAvailable(player));
+}
+
+export function teamStrength(team: Team): number {
+  const starters = availableStarters(team);
   if (!starters.length) return 40;
   const average = starters.reduce((sum, player) => sum + player.overall, 0) / starters.length;
   // Missing starters weaken the side noticeably.
@@ -35,10 +41,7 @@ export function quickSimulate(home: Team, away: Team, options: QuickSimOptions):
   const awayLambda = clamp(1.12 * Math.exp(-diff / 15), 0.2, 3.8);
   const events: MatchEvent[] = [];
   const contributions: MatchResult['contributions'] = {};
-  const starters = (team: Team) => team.formation.slots
-    .map((slot) => team.players.find((player) => player.id === slot.playerId))
-    .filter((player): player is Player => !!player && isPlayerAvailable(player));
-  const lineups = { home: starters(home), away: starters(away) };
+  const lineups = { home: availableStarters(home), away: availableStarters(away) };
   for (const player of [...lineups.home, ...lineups.away]) contributions[player.id] = emptyContribution();
 
   const score = { home: poisson(rng, homeLambda), away: poisson(rng, awayLambda) };
@@ -176,7 +179,7 @@ function simulateShootout(rng: Rng, home: Player[], away: Player[]): PenaltyShoo
       const list = takers[side];
       const taker = list[round % Math.max(1, list.length)];
       if (!taker) continue;
-      const chance = clamp(0.76 + (taker.attributes.shooting - 70) / 200 - (keeper(side === 'home' ? away : home) - 70) / 250, 0.55, 0.92);
+      const chance = shootoutConversionChance(taker.attributes.shooting, keeper(side === 'home' ? away : home));
       const scored = rng.bool(chance);
       shootout[side].push(scored);
       shootout.takers[side].push(taker.id);
