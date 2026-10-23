@@ -4,6 +4,18 @@ All notable changes to Pitch Legends are recorded here. Releases follow
 [Semantic Versioning](https://semver.org/) and are generated from Conventional
 Commits by Release Please.
 
+## [1.12.0](https://github.com/C0deWiz4rd010/pitch-legends/compare/pitch-legends-v1.11.0...pitch-legends-v1.12.0) (2026-10-23)
+
+
+### Features
+
+* **rpg:** effect pipeline - traits, talents, form and morale now act in the live match ([76d1df5](https://github.com/C0deWiz4rd010/pitch-legends/commit/76d1df582dc7a80112c94f586d1d724fa4e1039a))
+
+
+### Bug Fixes
+
+* phase 0 foundation - pitch-aware 5v5 sizes, worker tactics perk, shared penalty formula ([cee03ad](https://github.com/C0deWiz4rd010/pitch-legends/commit/cee03adcf88075ce652f02869a657bd7c448cbbf))
+
 ## [1.11.0](https://github.com/C0deWiz4rd010/pitch-legends/compare/pitch-legends-v1.10.0...pitch-legends-v1.11.0) (2026-10-16)
 
 
