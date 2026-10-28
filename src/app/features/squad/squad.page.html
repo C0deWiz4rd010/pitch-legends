@@ -39,6 +39,11 @@
     }
   </div>
   <div class="sort">
+    <select [attr.aria-label]="i18n.pick('Seltenheitsfilter', 'Rarity filter')" [value]="rarityFilter()" (change)="rarityFilter.set($any($event.target).value)">
+      @for (option of rarityFilters; track option.key) { <option [value]="option.key">{{ i18n.pick(option.de, option.en) }}</option> }
+    </select>
+  </div>
+  <div class="sort">
     <select [attr.aria-label]="i18n.pick('Sortierung', 'Sort order')" [value]="sort()" (change)="sort.set($any($event.target).value)">
       @for (option of sorts; track option.key) {
         <option [value]="option.key">{{ i18n.pick('Sortieren: ', 'Sort: ') }}{{ i18n.pick(option.de, option.en) }}</option>
@@ -88,6 +93,8 @@
         <div class="who-top">
           <strong>{{ p.firstName }} {{ p.lastName }}</strong>
           <app-rarity-gem [player]="p" />
+          @if (signatureCount(p)) { <span class="badge sig" [title]="i18n.pick('Signaturen', 'Signatures')">✦ {{ signatureCount(p) }}</span> }
+          <span class="load-dot" [attr.data-zone]="zone(p)" [attr.title]="i18n.pick('Trainingsbelastung', 'Training load')"></span>
           <span class="pos-chip">{{ p.position }}</span>
           @if (p.skillPoints > 0) { <span class="badge sp" [title]="i18n.pick('Skillpunkte verfügbar', 'Skill points to spend')">SP {{ p.skillPoints }}</span> }
           @if (p.injuryWeeks > 0) { <span class="badge inj" [title]="i18n.pick('Verletzt', 'Injured')">{{ i18n.pick('VERL', 'INJ') }} {{ p.injuryWeeks }}{{ i18n.pick('W', 'W') }}</span> }

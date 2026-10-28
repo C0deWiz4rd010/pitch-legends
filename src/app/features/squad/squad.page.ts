@@ -1,3 +1,6 @@
+import { LoadZone, acuteChronicRatio, loadZone } from '../../core/rpg/training-rules';
+import { dnaOf } from '../../core/rpg/player-dna';
+import { atLeast, rarityRank } from '../../data/rarity';
 import { RarityGemComponent } from '../../shared/components/rarity-gem.component';
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
@@ -12,7 +15,8 @@ import { I18nService } from '../../core/services/i18n.service';
 import { ATTRIBUTE_KEYS } from '../../models/enums';
 
 type Filter = 'ALL' | PositionGroup;
-type Sort = 'overall' | 'level' | 'value' | 'position' | 'potential';
+type Sort = 'overall' | 'level' | 'value' | 'position' | 'potential' | 'rarity';
+type RarityFilter = 'all' | 'rare' | 'epic' | 'legendary';
 
 @Component({
   selector: 'app-squad',
@@ -46,6 +50,14 @@ export class SquadPage {
     { key: 'level', de: 'Level', en: 'Level' },
     { key: 'value', de: 'Marktwert', en: 'Value' },
     { key: 'position', de: 'Position', en: 'Position' },
+    { key: 'rarity', de: 'Seltenheit', en: 'Rarity' },
+  ];
+  protected readonly rarityFilter = signal<RarityFilter>('all');
+  protected readonly rarityFilters: { key: RarityFilter; de: string; en: string }[] = [
+    { key: 'all', de: 'Alle Seltenheiten', en: 'All rarities' },
+    { key: 'rare', de: 'Selten und besser', en: 'Rare and better' },
+    { key: 'epic', de: 'Episch und besser', en: 'Epic and better' },
+    { key: 'legendary', de: 'Legendär und besser', en: 'Legendary and better' },
   ];
   protected readonly comparing = signal(false);
   protected readonly compareIds = signal<string[]>([]);
@@ -77,7 +89,8 @@ export class SquadPage {
   protected readonly players = computed<Player[]>(() => {
     const f = this.filter();
     const q = this.search().trim().toLowerCase();
-    let list = this.gs.squad().filter((p) => f === 'ALL' || p.positionGroup === f);
+    const minimum = this.rarityFilter();
+    let list = this.gs.squad().filter((p) => (f === 'ALL' || p.positionGroup === f) && (minimum === 'all' || atLeast(dnaOf(p).rarity, minimum)));
     if (q) {
       list = list.filter((p) =>
         `${p.firstName} ${p.lastName}`.toLowerCase().includes(q) || p.position.toLowerCase().includes(q),
@@ -93,6 +106,8 @@ export class SquadPage {
           return b.marketValue - a.marketValue;
         case 'potential':
           return b.potential - a.potential || b.overall - a.overall;
+        case 'rarity':
+          return rarityRank(dnaOf(b).rarity) - rarityRank(dnaOf(a).rarity) || b.overall - a.overall;
         case 'position':
           return order[a.positionGroup] - order[b.positionGroup] || b.overall - a.overall;
         default:
@@ -109,6 +124,15 @@ export class SquadPage {
   protected readonly totalSkillPoints = computed(() =>
     this.gs.squad().reduce((s, p) => s + p.skillPoints, 0),
   );
+
+  /** Traffic light of the weekly training load, for the load dot in the list. */
+  protected zone(p: Player): LoadZone {
+    return loadZone(acuteChronicRatio(p));
+  }
+
+  protected signatureCount(p: Player): number {
+    return dnaOf(p).signatures?.length ?? 0;
+  }
 
   protected xpPercent(p: Player): number {
     return Math.min(100, Math.round((p.xp / p.xpToNext) * 100));

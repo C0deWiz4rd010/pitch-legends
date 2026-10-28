@@ -6,7 +6,7 @@ import { getTrait } from '../../data/traits';
 import { computeOverall, positionFamiliarity } from '../ratings';
 import { clamp } from '../util';
 import { condMatches } from './conditions';
-import { signatureEffects } from './signatures';
+import { scaleEffect, signatureEffects } from './signatures';
 import { DerivedHook, EffectHook, EffectSpec, HOOK_BIT, HOOK_INDEX, ModifierSource, StatModifier, capFor } from './effects';
 
 export interface StatContext {
@@ -96,6 +96,10 @@ export function buildStatBlock(player: Player, context: StatContext = {}): StatB
     const talent = getTalent(id);
     if (!talent || rank <= 0) continue;
     for (const key of Object.keys(talent.modifiers) as AttributeKey[]) raw[key] += talent.modifiers[key]! * rank;
+    for (const effect of talent.effects ?? []) {
+      const scaled = scaleEffect(effect, rank);
+      if (isFlatBonus(scaled)) raw[scaled.hook as AttributeKey] += scaled.value;
+    }
   }
   const base = newAttributes();
   for (const key of ATTRIBUTE_KEYS) base[key] = clamp(raw[key] * scale, 1, 99);
@@ -109,6 +113,14 @@ export function buildStatBlock(player: Player, context: StatContext = {}): StatB
   for (const buff of player.training?.buffs ?? []) {
     for (const effect of buff.effects) {
       if (!isFlatBonus(effect)) (mods[effect.hook] ??= []).push({ ...effect, source: { kind: 'training', id: buff.drillId } });
+    }
+  }
+  for (const [id, rank] of Object.entries(player.talentRanks ?? {})) {
+    const talent = getTalent(id);
+    if (!talent || rank <= 0) continue;
+    for (const effect of talent.effects ?? []) {
+      const scaled = scaleEffect(effect, rank);
+      if (!isFlatBonus(scaled)) (mods[scaled.hook] ??= []).push({ ...scaled, source: { kind: 'talent', id } });
     }
   }
   for (const quirk of player.dna?.quirks ?? []) {
@@ -240,3 +252,48 @@ export function staticOverall(player: Player, slotPosition?: string): number {
   }
   return computeOverall(attributes, player.positionGroup);
 }
+
+export interface AttributeSources {
+  /** The attribute as printed on the card. */
+  base: number;
+  talents: number;
+  traits: number;
+  training: number;
+  quirks: number;
+  /** Form, morale and position, as points. */
+  state: number;
+  /** What the match engine starts from. */
+  total: number;
+  /** Situational effects on this attribute, shown with the condition flags they need. */
+  conditional: { source: ModifierSource; label: [string, string]; value: number; op: 'add' | 'mul'; when: number; unless: number }[];
+}
+
+/** Where the number of one attribute comes from, for the player sheet. */
+export function attributeSources(player: Player, key: AttributeKey, slotPosition?: string): AttributeSources {
+  const flat = (effects: readonly EffectSpec[] | undefined): number =>
+    (effects ?? []).filter((effect) => effect.hook === key && isFlatBonus(effect)).reduce((sum, effect) => sum + effect.value, 0);
+  let talents = 0;
+  for (const [id, rank] of Object.entries(player.talentRanks ?? {})) {
+    const talent = getTalent(id);
+    if (!talent || rank <= 0) continue;
+    talents += (talent.modifiers[key] ?? 0) * rank + flat((talent.effects ?? []).map((effect) => scaleEffect(effect, rank)));
+  }
+  const traits = (player.traitIds ?? []).reduce((sum, id) => sum + flat(getTrait(id)?.effects), 0);
+  const training = (player.training?.buffs ?? []).reduce((sum, buff) => sum + flat(buff.effects), 0);
+  const quirks = (player.dna?.quirks ?? []).reduce((sum, quirk) => sum + flat(getQuirk(quirk.id)?.effects), 0);
+  const block = buildStatBlock(player, { slotPosition });
+  const total = block.base[key];
+  const base = player.attributes[key];
+  const conditional: AttributeSources['conditional'] = [];
+  for (const mod of block.mods[key] ?? []) {
+    const same = (name: string | undefined): [string, string] | undefined => (name ? [name, name] : undefined);
+    const label = mod.source.kind === 'trait' ? same(getTrait(mod.source.id)?.name)
+      : mod.source.kind === 'talent' ? same(getTalent(mod.source.id)?.name)
+        : mod.source.kind === 'quirk' ? getQuirk(mod.source.id)?.name
+          : mod.source.kind === 'training' ? same(mod.source.id)
+            : player.dna?.signatures?.find((signature) => signature.id === mod.source.id)?.name;
+    conditional.push({ source: mod.source, label: label ?? [mod.source.id, mod.source.id], value: mod.value, op: mod.op, when: mod.when ?? 0, unless: mod.unless ?? 0 });
+  }
+  return { base, talents, traits, training, quirks, state: total - (base + talents + traits + training + quirks), total, conditional };
+}
+

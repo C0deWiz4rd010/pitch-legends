@@ -47,6 +47,9 @@ export class TrainingPage {
   protected readonly selectedSlot = signal<0 | 1 | 2>(0);
   protected readonly playerFilter = signal<PlayerFilter>('ALL');
   protected readonly feedback = signal('');
+  /** Players whose result card has been turned over. */
+  protected readonly revealedIds = signal<ReadonlySet<string>>(new Set());
+  protected readonly dragging = signal<string | null>(null);
 
   protected readonly team = computed(() => this.gs.playerTeam());
   protected readonly trainingGround = computed(() => this.team()?.facilities.trainingGround ?? 1);
@@ -130,6 +133,7 @@ export class TrainingPage {
     else if (result.masteryMilestone === 50) badges.push(this.text('MEISTERSCHAFT 50: +1 SP', 'MASTERY 50: +1 SP'));
     else if (result.masteryMilestone === 25) badges.push(this.text('MEISTERSCHAFT 25: +50 XP', 'MASTERY 25: +50 XP'));
     if (result.mentored) badges.push(this.text('MENTOR', 'MENTORED'));
+    if (result.inheritedQuirk) badges.push(this.text('EIGENHEIT GELERNT', 'QUIRK LEARNED'));
     return badges;
   }
 
@@ -170,6 +174,51 @@ export class TrainingPage {
     this.selectedSlot.set(slot);
     this.mobileTab.set('players');
     this.feedback.set('');
+  }
+
+  /** Drag and drop: a program card dropped on a session slot fills or changes that slot. */
+  protected startDrag(event: DragEvent, drill: TrainingDrill): void {
+    event.dataTransfer?.setData('text/plain', drill.id);
+    if (event.dataTransfer) event.dataTransfer.effectAllowed = 'copy';
+    this.dragging.set(drill.id);
+  }
+
+  protected endDrag(): void {
+    this.dragging.set(null);
+  }
+
+  protected allowDrop(event: DragEvent): void {
+    if (this.dragging()) event.preventDefault();
+  }
+
+  protected dropOnSlot(event: DragEvent, slot: 0 | 1 | 2): void {
+    event.preventDefault();
+    const drillId = event.dataTransfer?.getData('text/plain') || this.dragging();
+    this.dragging.set(null);
+    const drill = drillId ? this.drill(drillId) : undefined;
+    if (!drill || this.completed().some((session) => session.plan.slot === slot)) return;
+    this.activeDrillId.set(drill.id);
+    if (this.plans().some((plan) => plan.slot === slot)) {
+      this.updatePlan(slot, (plan) => ({ ...plan, drillId: drill.id, intensity: drill.focus === 'recovery' ? 'light' : plan.intensity }));
+    } else {
+      const state = this.gs.game();
+      this.plans.update((plans) => [...plans, {
+        id: `training-${state?.league.season ?? 1}-${state?.league.currentWeek ?? 1}-${slot}`,
+        slot, drillId: drill.id, scope: 'individual' as TrainingScope,
+        intensity: (drill.focus === 'recovery' ? 'light' : 'normal') as TrainingIntensity, targetIds: [],
+      }].sort((a, b) => a.slot - b.slot));
+    }
+    this.selectedSlot.set(slot);
+    this.mobileTab.set('players');
+    this.feedback.set('');
+  }
+
+  protected reveal(playerId: string): void {
+    this.revealedIds.update((ids) => new Set([...ids, playerId]));
+  }
+
+  protected isRevealed(playerId: string): boolean {
+    return this.revealedIds().has(playerId);
   }
 
   protected chooseSlot(slot: 0 | 1 | 2): void {
@@ -228,6 +277,7 @@ export class TrainingPage {
     this.gs.mutate((draft) => result = this.training.executePlan(draft, this.plans()));
     if (result.ok) {
       this.plans.set([]);
+      this.revealedIds.set(new Set());
       this.feedback.set(this.text('Wochenplan erfolgreich ausgeführt.', 'Weekly plan completed successfully.'));
       this.mobileTab.set('schedule');
     } else {

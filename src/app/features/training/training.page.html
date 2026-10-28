@@ -29,7 +29,7 @@
       <div class="panel-heading"><div><p class="eyebrow">01 · {{ text('PROGRAMMBIBLIOTHEK', 'PROGRAM LIBRARY') }}</p><h2>{{ text('Fokus wählen', 'Choose focus') }}</h2></div><span>{{ drills.length }}</span></div>
       <div class="program-list">
         @for (drill of drills; track drill.id) {
-          <button class="program-card" [class.active]="activeDrillId() === drill.id" [class.recovery]="drill.focus === 'recovery'" (click)="selectDrill(drill)">
+          <button class="program-card" draggable="true" [class.active]="activeDrillId() === drill.id" [class.recovery]="drill.focus === 'recovery'" (click)="selectDrill(drill)" (dragstart)="startDrag($event, drill)" (dragend)="endDrag()">
             <i>{{ drill.icon }}</i>
             <span><b>{{ drillName(drill) }}</b><small>{{ drillDescription(drill) }}</small>@if (drill.buff) { <small class="buff">★ {{ buffText(drill) }}</small> }</span>
             <em>{{ drill.focus === 'recovery' ? '+30' : drill.group }}</em>
@@ -54,14 +54,14 @@
               <div><b>{{ drillName(drill(result.plan.drillId)!) }}</b><small>✓ {{ text('ABGESCHLOSSEN', 'COMPLETED') }} · {{ result.players.length }} {{ text('SPIELER', 'PLAYERS') }}</small></div>
             </button>
           } @else if (planFor(slot); as plan) {
-            <button class="session-card" [class.active]="selectedSlot() === slot" [class.invalid]="!sessionPreview(plan)?.valid" type="button" (click)="chooseSlot(slot)">
+            <button class="session-card" [class.active]="selectedSlot() === slot" [class.drop]="dragging()" [class.invalid]="!sessionPreview(plan)?.valid" type="button" (click)="chooseSlot(slot)" (dragover)="allowDrop($event)" (drop)="dropOnSlot($event, slot)">
               <span class="session-number">0{{ slot + 1 }}</span>
               <i>{{ drill(plan.drillId)?.icon }}</i>
               <div><b>{{ drillName(drill(plan.drillId)!) }}</b><small>{{ plan.scope === 'individual' ? text('INDIVIDUELL', 'INDIVIDUAL') : text('GRUPPE', 'UNIT') }} · {{ plan.targetIds.length }} {{ text('ZIELE', 'TARGETS') }}</small></div>
               <span class="status-light"></span>
             </button>
           } @else {
-            <button class="session-card empty" type="button" (click)="selectedSlot.set(slot); mobileTab.set('programs')">
+            <button class="session-card empty" [class.drop]="dragging()" type="button" (click)="selectedSlot.set(slot); mobileTab.set('programs')" (dragover)="allowDrop($event)" (drop)="dropOnSlot($event, slot)">
               <span class="session-number">0{{ slot + 1 }}</span><i>+</i><div><b>{{ text('Freie Einheit', 'Open session') }}</b><small>{{ text('Programm aus der Bibliothek hinzufügen', 'Add a program from the library') }}</small></div>
             </button>
           }
@@ -111,7 +111,11 @@
             @for (session of completed(); track session.plan.id) {
               @for (result of session.players; track result.playerId) {
                 @if (playerById(result.playerId); as player) {
-                  <article><app-player-portrait [player]="player" [team]="team()!" [size]="42" /><span><b>{{ player.firstName }} {{ player.lastName }}</b><small>+{{ result.xpGained }} XP · {{ result.fitnessDelta >= 0 ? '+' : '' }}{{ result.fitnessDelta }} FIT</small></span>@if (result.attributeGained) { <em>+{{ result.breakthrough ? 2 : 1 }} {{ result.attributeGained }}</em> } @else { <em>✓</em> }@for (badge of highlights(result); track badge) { <mark class="badge">{{ badge }}</mark> }</article>
+                  <article><app-player-portrait [player]="player" [team]="team()!" [size]="42" /><span><b>{{ player.firstName }} {{ player.lastName }}</b><small>+{{ result.xpGained }} XP · {{ result.fitnessDelta >= 0 ? '+' : '' }}{{ result.fitnessDelta }} FIT</small></span>@if (result.attributeGained) { <em>+{{ result.breakthrough ? 2 : 1 }} {{ result.attributeGained }}</em> } @else { <em>✓</em> }@if (highlights(result).length && !isRevealed(result.playerId)) {
+                    <button type="button" class="reveal" (click)="reveal(result.playerId)">✦ {{ text('AUFDECKEN', 'REVEAL') }}</button>
+                  } @else {
+                    @for (badge of highlights(result); track badge) { <mark class="badge reveal-in">{{ badge }}</mark> }
+                  }</article>
                 }
               }
             }

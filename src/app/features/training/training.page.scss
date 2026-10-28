@@ -75,3 +75,11 @@
 .camp-event.done { opacity: .85; }
 @media (max-width: 430px) { .camp-options { grid-template-columns: 1fr; } }
 
+.program-card[draggable='true'] { cursor: grab; }.program-card[draggable='true']:active { cursor: grabbing; }
+.session-card.drop { outline: 2px dashed var(--accent-2); outline-offset: -3px; }
+.week-results article .reveal { grid-column: 2 / -1; justify-self: start; padding: 4px 9px; color: var(--on-accent); border: 0; background: var(--accent); font: 700 10px/1 var(--font-pixel); cursor: pointer; animation: reveal-pulse 1.4s ease-in-out infinite; }
+.reveal-in { animation: reveal-pop .35s ease-out; }
+@keyframes reveal-pulse { 50% { filter: brightness(1.25); } }
+@keyframes reveal-pop { from { transform: scale(.6); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .week-results article .reveal, .reveal-in { animation: none; } }
+

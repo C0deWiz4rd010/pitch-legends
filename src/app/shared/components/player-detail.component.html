@@ -42,66 +42,6 @@
         </div>
       </div>
 
-      @if (signatureCards(p); as cards) {
-        @if (cards.length) {
-          <div class="signatures">
-            @for (card of cards; track card.id) {
-              <article class="signature" [class.passive]="card.passive">
-                <header><b>✦ {{ card.name }}</b><span>{{ i18n.pick('STUFE', 'STAGE') }} {{ ['I', 'II', 'III'][card.level - 1] }} · {{ card.passive ? 'PASSIV' : 'TRIGGER' }} · {{ card.power }}%</span></header>
-                <p>{{ card.text }}</p>
-                <small>{{ card.when }}</small>
-                @if (card.pathText) { <small class="path">{{ card.pathText }}</small> }
-                @if (card.quest.max) {
-                  <small class="path">{{ i18n.pick('Höchste Stufe erreicht.', 'Highest stage reached.') }}</small>
-                } @else {
-                  <div class="quest">
-                    <div class="bar" role="progressbar" [attr.aria-valuenow]="card.quest.points" [attr.aria-valuemax]="card.quest.target"><i [style.width.%]="card.quest.percent"></i></div>
-                    <small>{{ i18n.pick('Evolution', 'Evolution') }}: {{ card.quest.points }} / {{ card.quest.target }}
-                      · <span [class.ok]="card.quest.levelOk">Lv {{ card.quest.level }}</span>
-                      @if (!card.quest.rarityOk) { · <span>{{ card.quest.rarityNeeded }}+</span> }</small>
-                    @if (card.quest.ready) {
-                      @if (card.quest.choosePath) {
-                        <p class="warn">{{ i18n.pick('Wähle einen Pfad. Die Entscheidung ist endgültig.', 'Choose a branch. The choice is final.') }}</p>
-                        <div class="paths">
-                          @for (path of card.paths; track path.key) {
-                            <button type="button" class="btn btn--primary btn--sm" (click)="evolve(card.id, path.key)"><b>{{ path.name }}</b><small>{{ path.text }}</small></button>
-                          }
-                        </div>
-                      } @else {
-                        <button type="button" class="btn btn--primary btn--sm" (click)="evolve(card.id, null)">{{ i18n.pick('ENTWICKELN', 'EVOLVE') }}</button>
-                      }
-                    }
-                  </div>
-                }
-              </article>
-            }
-          </div>
-        }
-      }
-
-      <div class="quirks">
-        <p class="section-title">{{ i18n.pick('EIGENHEITEN', 'QUIRKS') }}</p>
-        @for (quirk of quirkCards(p); track $index) {
-          <article class="quirk" [class.hidden]="!quirk.revealed">
-            <b>{{ quirk.name }}</b>
-            @if (quirk.revealed) {
-              <p class="plus">＋ {{ quirk.plus }}</p>
-              <p class="minus">− {{ quirk.minus }}</p>
-            } @else { <small>{{ quirk.hint }}</small> }
-          </article>
-        }
-      </div>
-
-      <div class="story">
-        <p class="section-title">{{ i18n.pick('GESCHICHTE', 'STORY') }}</p>
-        <p class="bio">{{ bio(p) }}</p>
-        @if (chronicle(p).length) {
-          <ol class="chronicle">
-            @for (entry of chronicle(p); track $index) { <li><small>{{ entry.when }}</small><span>{{ entry.text }}</span></li> }
-          </ol>
-        }
-      </div>
-
       <div class="xp">
         <div class="xp-top">
           <span>Level {{ p.level }}</span>
@@ -111,103 +51,184 @@
         <span class="muted xp-label">{{ p.xp }} / {{ p.xpToNext }} XP to next level</span>
       </div>
 
-      <div class="body">
-        <div class="radar-wrap">
-          <app-radar-chart [attributes]="p.attributes" [size]="230" />
-        </div>
+      <div class="tabs" role="tablist" [attr.aria-label]="i18n.pick('Spielerakte', 'Player sheet')">
+        @for (entry of tabs; track entry.key) {
+          <button type="button" role="tab" [id]="'sheet-tab-' + entry.key" [attr.aria-selected]="tab() === entry.key" [attr.aria-controls]="'sheet-panel'"
+                  [attr.tabindex]="tab() === entry.key ? 0 : -1" [class.active]="tab() === entry.key" (click)="tab.set(entry.key)" (keydown)="moveTab($event, entry.key)">{{ i18n.pick(entry.de, entry.en) }}</button>
+        }
+      </div>
 
-        <div class="attrs">
-          <p class="eyebrow">Attributes — spend skill points to push your stats</p>
-          @for (key of attrKeys; track key) {
-            <div class="attr-row">
-              <span class="attr-name">{{ labels[key] }}</span>
-              <div class="attr-track">
-                <div class="attr-fill" [style.width.%]="p.attributes[key]" [style.background]="ratingColor(p.attributes[key])"></div>
-              </div>
-              <span class="attr-val tabular" [style.color]="ratingColor(p.attributes[key])">{{ p.attributes[key] }}</span>
-              <button class="up" [disabled]="!canUpgrade(key)" (click)="upgrade(key)" [title]="'Cost: ' + costFor(key) + ' SP'">
-                +<small>{{ costFor(key) }}</small>
-              </button>
+      <div id="sheet-panel" role="tabpanel" [attr.aria-labelledby]="'sheet-tab-' + tab()">
+        @switch (tab()) {
+          @case ('talents') {
+          <app-talent-tree [player]="p" (unlock)="unlockTalent($event)" />
+          <p class="muted sp-hint">SP {{ p.skillPoints }}</p>
+          <div class="traits">
+            <p class="eyebrow">Traits</p>
+            <div class="trait-list">
+              @for (t of ownedTraits(); track t.id) {
+                <div class="trait owned" [title]="t.description">ON {{ t.name }}</div>
+              }
+              @for (t of lockedTraits(); track t.id) {
+                <button class="trait locked" [disabled]="!canUnlock(t.id)" (click)="unlockTrait(t.id)" [title]="t.description">
+                  {{ canUnlock(t.id) ? 'OPEN' : 'LOCK' }} {{ t.name }}
+                  <small>Lv {{ t.unlockLevel }} · 4 SP</small>
+                </button>
+              }
             </div>
-          }
-        </div>
-      </div>
-
-      @if (p.medical.activeInjury; as injury) {
-        <section class="medical-panel">
-          <div class="body-map" [attr.data-area]="injury.area"><i></i><span>{{ injury.area }}</span></div>
-          <div class="medical-copy">
-            <p class="eyebrow">MEDICAL REPORT · {{ injury.severity }}</p>
-            <h3>{{ injury.diagnosisId }}</h3>
-            <span>{{ injury.remainingWeeks }} WEEKS · {{ injury.cause }} · {{ (injury.recurrenceRisk * 100) | number:'1.0-0' }}% RECURRENCE</span>
           </div>
-          <div class="rehab-actions">
-            <button [class.active]="injury.rehabPlan === 'conservative'" (click)="setRehab('conservative')">SCHONUNG</button>
-            <button [class.active]="injury.rehabPlan === 'standard'" (click)="setRehab('standard')">STANDARD</button>
-            <button [class.active]="injury.rehabPlan === 'accelerated'" (click)="setRehab('accelerated')">SCHNELL-REHA</button>
+
+          }
+          @case ('signature') {
+          @if (signatureCards(p); as cards) {
+            @if (cards.length) {
+              <div class="signatures">
+                @for (card of cards; track card.id) {
+                  <article class="signature" [class.passive]="card.passive">
+                    <header><b>✦ {{ card.name }}</b><span>{{ i18n.pick('STUFE', 'STAGE') }} {{ ['I', 'II', 'III'][card.level - 1] }} · {{ card.passive ? 'PASSIV' : 'TRIGGER' }} · {{ card.power }}%</span></header>
+                    <p>{{ card.text }}</p>
+                    <small>{{ card.when }}</small>
+                    @if (card.pathText) { <small class="path">{{ card.pathText }}</small> }
+                    @if (card.quest.max) {
+                      <small class="path">{{ i18n.pick('Höchste Stufe erreicht.', 'Highest stage reached.') }}</small>
+                    } @else {
+                      <div class="quest">
+                        <div class="bar" role="progressbar" [attr.aria-valuenow]="card.quest.points" [attr.aria-valuemax]="card.quest.target"><i [style.width.%]="card.quest.percent"></i></div>
+                        <small>{{ i18n.pick('Evolution', 'Evolution') }}: {{ card.quest.points }} / {{ card.quest.target }}
+                          · <span [class.ok]="card.quest.levelOk">Lv {{ card.quest.level }}</span>
+                          @if (!card.quest.rarityOk) { · <span>{{ card.quest.rarityNeeded }}+</span> }</small>
+                        @if (card.quest.ready) {
+                          @if (card.quest.choosePath) {
+                            <p class="warn">{{ i18n.pick('Wähle einen Pfad. Die Entscheidung ist endgültig.', 'Choose a branch. The choice is final.') }}</p>
+                            <div class="paths">
+                              @for (path of card.paths; track path.key) {
+                                <button type="button" class="btn btn--primary btn--sm" (click)="evolve(card.id, path.key)"><b>{{ path.name }}</b><small>{{ path.text }}</small></button>
+                              }
+                            </div>
+                          } @else {
+                            <button type="button" class="btn btn--primary btn--sm" (click)="evolve(card.id, null)">{{ i18n.pick('ENTWICKELN', 'EVOLVE') }}</button>
+                          }
+                        }
+                      </div>
+                    }
+                  </article>
+                }
+              </div>
+            }
+          }
+
+          }
+          @case ('quirks') {
+          <div class="quirks">
+            <p class="section-title">{{ i18n.pick('EIGENHEITEN', 'QUIRKS') }}</p>
+            @for (quirk of quirkCards(p); track $index) {
+              <article class="quirk" [class.hidden]="!quirk.revealed">
+                <b>{{ quirk.name }}</b>
+                @if (quirk.revealed) {
+                  <p class="plus">＋ {{ quirk.plus }}</p>
+                  <p class="minus">− {{ quirk.minus }}</p>
+                } @else { <small>{{ quirk.hint }}</small> }
+              </article>
+            }
           </div>
-        </section>
-      }
 
-      <div class="development">
-        <div>
-          <p class="eyebrow">Development plan</p>
-          <span class="muted">Focused drills gain extra XP and attribute-growth chance.</span>
-        </div>
-        <div class="plan-picker">
-          @for (plan of developmentPlans; track plan) {
-            <button [class.active]="p.developmentPlan === plan" (click)="setDevelopmentPlan(plan)">{{ plan }}</button>
           }
-        </div>
-      </div>
+          @case ('story') {
+          <div class="story">
+            <p class="section-title">{{ i18n.pick('GESCHICHTE', 'STORY') }}</p>
+            <p class="bio">{{ bio(p) }}</p>
+            @if (chronicle(p).length) {
+              <ol class="chronicle">
+                @for (entry of chronicle(p); track $index) { <li><small>{{ entry.when }}</small><span>{{ entry.text }}</span></li> }
+              </ol>
+            }
+          </div>
 
-      <div class="talents">
-        <p class="eyebrow">{{ p.archetype }} talent path</p>
-        <div class="talent-path">
-          @for (talent of talents(); track talent.id; let index = $index) {
-            <button class="talent" [class.owned]="(p.talentRanks[talent.id] ?? 0) > 0"
-              [disabled]="!canUnlockTalent(talent)" (click)="unlockTalent(talent.id)" [title]="talent.description">
-              <span class="node">{{ index + 1 }}</span>
-              <strong>{{ talent.name }}</strong>
-              <small>RANK {{ p.talentRanks[talent.id] ?? 0 }}/{{ talent.maxRank }} · LV {{ talent.unlockLevel }} · {{ talent.cost }} SP</small>
-            </button>
           }
-        </div>
-      </div>
-
-      <div class="personal-goal">
-        <div>
-          <p class="eyebrow">Personal quest</p>
-          <strong>{{ p.personalGoal.type }}: {{ p.personalGoal.progress }} / {{ p.personalGoal.target }}</strong>
-        </div>
-        <span class="chip" [class.done]="p.personalGoal.completed">{{ p.personalGoal.completed ? 'COMPLETE' : '+' + p.personalGoal.rewardXp + ' XP' }}</span>
-      </div>
-
-      <div class="traits">
-        <p class="eyebrow">Traits</p>
-        <div class="trait-list">
-          @for (t of ownedTraits(); track t.id) {
-            <div class="trait owned" [title]="t.description">ON {{ t.name }}</div>
+          @case ('training') {
+            <app-training-panel [player]="p" />
           }
-          @for (t of lockedTraits(); track t.id) {
-            <button class="trait locked" [disabled]="!canUnlock(t.id)" (click)="unlockTrait(t.id)" [title]="t.description">
-              {{ canUnlock(t.id) ? 'OPEN' : 'LOCK' }} {{ t.name }}
-              <small>Lv {{ t.unlockLevel }} · 4 SP</small>
-            </button>
-          }
-        </div>
-      </div>
+          @default {
+          <div class="body">
+            <div class="radar-wrap">
+              <app-radar-chart [attributes]="p.attributes" [size]="230" />
+            </div>
 
-      <div class="season">
-        <p class="eyebrow">This season</p>
-        <div class="season-grid">
-          <span>G {{ p.seasonStats.goals }} goals</span>
-          <span>A {{ p.seasonStats.assists }} assists</span>
-          <span>AP {{ p.seasonStats.appearances }} apps</span>
-          <span>CS {{ p.seasonStats.cleanSheets }}</span>
-          <span>YC {{ p.seasonStats.yellowCards }}</span>
-          <span>M {{ p.seasonStats.motmAwards }} MOTM</span>
-        </div>
+            <div class="attrs">
+              <p class="eyebrow">Attributes — spend skill points to push your stats</p>
+              @for (key of attrKeys; track key) {
+                <div class="attr-row">
+                  <span class="attr-name">{{ labels[key] }}</span>
+                  <div class="attr-track" [attr.title]="sourceTitle(p, key)">
+                    @for (seg of segments(p, key); track seg.cls) { <div class="seg" [class]="'seg ' + seg.cls" [style.width.%]="seg.pct" [style.background]="seg.color"></div> }
+                  </div>
+                  <span class="attr-val tabular" [style.color]="ratingColor(sources(p, key).total)">{{ sources(p, key).total | number: '1.0-0' }}</span>
+                  <button class="up" [disabled]="!canUpgrade(key)" (click)="upgrade(key)" [title]="'Cost: ' + costFor(key) + ' SP'">
+                    +<small>{{ costFor(key) }}</small>
+                  </button>
+                </div>
+              }
+            </div>
+          </div>
+          <details class="where">
+            <summary>{{ i18n.pick('Wo wirkt das? · Situative Effekte', 'What does it do? · Situational effects') }}</summary>
+            <ul>
+              @for (key of attrKeys; track key) { <li><b>{{ labels[key] }}</b> {{ attributeUse(key) }}</li> }
+            </ul>
+            @for (effect of situational(p); track $index) {
+              <p class="effect"><b>{{ effect.name }}</b> <span>{{ effect.value }}</span> <small>{{ effect.attribute }} · {{ effect.when }}</small></p>
+            } @empty { <small class="muted">{{ i18n.pick('Keine situativen Effekte.', 'No situational effects.') }}</small> }
+            <div class="legend"><i class="c-base"></i>{{ i18n.pick('Basis', 'Base') }} <i class="c-talent"></i>{{ i18n.pick('Talente', 'Talents') }} <i class="c-trait"></i>Traits <i class="c-training"></i>{{ i18n.pick('Training', 'Training') }} <i class="c-quirk"></i>{{ i18n.pick('Eigenheiten', 'Quirks') }} <i class="c-state"></i>{{ i18n.pick('Form/Moral', 'Form/morale') }}</div>
+          </details>
+          @if (p.medical.activeInjury; as injury) {
+            <section class="medical-panel">
+              <div class="body-map" [attr.data-area]="injury.area"><i></i><span>{{ injury.area }}</span></div>
+              <div class="medical-copy">
+                <p class="eyebrow">MEDICAL REPORT · {{ injury.severity }}</p>
+                <h3>{{ injury.diagnosisId }}</h3>
+                <span>{{ injury.remainingWeeks }} WEEKS · {{ injury.cause }} · {{ (injury.recurrenceRisk * 100) | number:'1.0-0' }}% RECURRENCE</span>
+              </div>
+              <div class="rehab-actions">
+                <button [class.active]="injury.rehabPlan === 'conservative'" (click)="setRehab('conservative')">SCHONUNG</button>
+                <button [class.active]="injury.rehabPlan === 'standard'" (click)="setRehab('standard')">STANDARD</button>
+                <button [class.active]="injury.rehabPlan === 'accelerated'" (click)="setRehab('accelerated')">SCHNELL-REHA</button>
+              </div>
+            </section>
+          }
+
+          <div class="development">
+            <div>
+              <p class="eyebrow">Development plan</p>
+              <span class="muted">Focused drills gain extra XP and attribute-growth chance.</span>
+            </div>
+            <div class="plan-picker">
+              @for (plan of developmentPlans; track plan) {
+                <button [class.active]="p.developmentPlan === plan" (click)="setDevelopmentPlan(plan)">{{ plan }}</button>
+              }
+            </div>
+          </div>
+
+          <div class="personal-goal">
+            <div>
+              <p class="eyebrow">Personal quest</p>
+              <strong>{{ p.personalGoal.type }}: {{ p.personalGoal.progress }} / {{ p.personalGoal.target }}</strong>
+            </div>
+            <span class="chip" [class.done]="p.personalGoal.completed">{{ p.personalGoal.completed ? 'COMPLETE' : '+' + p.personalGoal.rewardXp + ' XP' }}</span>
+          </div>
+
+          <div class="season">
+            <p class="eyebrow">This season</p>
+            <div class="season-grid">
+              <span>G {{ p.seasonStats.goals }} goals</span>
+              <span>A {{ p.seasonStats.assists }} assists</span>
+              <span>AP {{ p.seasonStats.appearances }} apps</span>
+              <span>CS {{ p.seasonStats.cleanSheets }}</span>
+              <span>YC {{ p.seasonStats.yellowCards }}</span>
+              <span>M {{ p.seasonStats.motmAwards }} MOTM</span>
+            </div>
+          </div>
+          }
+        }
       </div>
     </div>
   </div>

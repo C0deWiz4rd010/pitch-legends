@@ -356,3 +356,18 @@
 .quest .warn { margin: 6px 0 4px; color: #ffd184; font-size: 11px; }
 .quest .paths { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }.quest .paths button { display: grid; gap: 3px; text-align: left; height: auto; padding: 7px; }.quest .paths button small { color: inherit; opacity: .85; font-size: 10px; white-space: normal; }
 
+.tabs { display: flex; flex-wrap: wrap; gap: 2px; margin: 10px 0 8px; border-bottom: 1px solid var(--border); }
+.tabs button { padding: 8px 10px; color: var(--muted); border: 0; border-bottom: 3px solid transparent; background: transparent; font: 700 10px/1 var(--font-pixel); cursor: pointer; }
+.tabs button.active { color: var(--text); border-bottom-color: var(--accent); }
+.tabs button:focus-visible { outline: 2px solid var(--accent-2); outline-offset: -2px; }
+.attr-track { display: flex; overflow: hidden; }
+.attr-track .seg { height: 100%; flex: 0 0 auto; }
+.where { margin: 8px 0; padding: 8px 10px; border: 1px solid var(--border); background: var(--surface-2); font-size: 11px; }
+.where summary { cursor: pointer; color: var(--muted); font: 700 10px/1 var(--font-pixel); }
+.where ul { margin: 6px 0; padding-left: 16px; }
+.where .effect { margin: 3px 0; }.where .effect span { color: var(--accent-2); }.where .effect small { color: var(--muted); }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 10px; margin-top: 8px; color: var(--muted); font-size: 10px; }
+.legend i { display: inline-block; width: 9px; height: 9px; margin-right: 3px; }
+.legend .c-base { background: #8fa3b8; }.legend .c-talent { background: #a66bff; }.legend .c-trait { background: #ffc83d; }.legend .c-training { background: #38b6ff; }.legend .c-quirk { background: #ff5fd2; }.legend .c-state { background: #4be39a; }
+.sp-hint { margin: 6px 0; font-size: 11px; }
+

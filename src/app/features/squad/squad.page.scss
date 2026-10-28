@@ -275,3 +275,9 @@
 // Responsive hiding last, so it wins over the column rules above.
 @media (max-width: 760px) { .hide-sm { display: none; } }
 @media (max-width: 520px) { .hide-md { display: none; } }
+
+.load-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--success); }
+.load-dot[data-zone='yellow'] { background: var(--warning); }
+.load-dot[data-zone='red'] { background: #e5484d; }
+.badge.sig { color: var(--accent-2); }
+

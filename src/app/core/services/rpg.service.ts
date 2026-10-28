@@ -10,7 +10,7 @@ import {
 } from '../progression';
 import { TRAITS, getTrait } from '../../data/traits';
 import { clamp } from '../util';
-import { getTalent, talentsFor } from '../../data/talents';
+import { TalentNode, getTalent, talentsFor } from '../../data/talents';
 import { ManagerProfile } from '../../models/game.model';
 
 export interface LevelUpResult {
@@ -83,11 +83,27 @@ export class RpgService {
     return talentsFor(player.archetype);
   }
 
+  /**
+   * Where a talent stands for a player: `owned` (at max rank), `open` (can take a rank now),
+   * `needs-points`, `needs-level`, `needs-parent` (the node above has no rank yet) or `excluded`
+   * (the other branch was chosen).
+   */
+  talentStatus(player: Player, talent: TalentNode): 'owned' | 'open' | 'needs-points' | 'needs-level' | 'needs-parent' | 'excluded' {
+    const ranks = player.talentRanks ?? {};
+    const current = ranks[talent.id] ?? 0;
+    if (current >= talent.maxRank) return 'owned';
+    if (talent.excludes && (ranks[talent.excludes] ?? 0) > 0) return 'excluded';
+    if (talent.requires && (ranks[talent.requires] ?? 0) === 0) return 'needs-parent';
+    if (player.level < talent.unlockLevel) return 'needs-level';
+    if (player.skillPoints < talent.cost) return 'needs-points';
+    return 'open';
+  }
+
   unlockTalent(player: Player, talentId: string): boolean {
     const talent = getTalent(talentId);
-    if (!talent || talent.archetype !== player.archetype || player.level < talent.unlockLevel) return false;
+    if (!talent || talent.archetype !== player.archetype) return false;
+    if (this.talentStatus(player, talent) !== 'open') return false;
     const current = player.talentRanks[talentId] ?? 0;
-    if (current >= talent.maxRank || player.skillPoints < talent.cost) return false;
     player.skillPoints -= talent.cost;
     player.talentRanks[talentId] = current + 1;
     this.recompute(player);

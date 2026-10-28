@@ -552,3 +552,15 @@ Offen: Das Abtrainieren von Quirks gegen Meisterschaft fehlt; Verletzungsrisiko-
 
 Offen: Die Evolutions-Zeremonie ist ein einfacher Karten-Dialog in der Spielerakte (kein eigener Vorher-/Nachher-Bildschirm); Quirk-Evolutionen laufen weiter über ihre Karrieresummen aus Phase 5 und nicht über die Quest-Infrastruktur. Die Oberfläche wurde nicht im Browser angesehen.
 
+## Phase 7 – RPG-Oberfläche „Spielerakte“ (Legends Reborn, 28.10.2026)
+
+- **Tabs** in der Spielerakte (`shared/components/player-detail.*`, Tablist mit Pfeiltasten, Home/End und ARIA): Überblick, Talente, Signatur, Eigenheiten, Geschichte, Training. Kopf, Kennzahlen und XP-Leiste bleiben immer sichtbar.
+- **Attribute mit Quellen:** Der Balken je Attribut ist gestapelt (Basis, Talente, Traits, Training, Eigenheiten, Form/Moral/Position), Tooltip mit der Rechnung („Basis 64 · Talente +4 · … = 71“). Neu `attributeSources` in `core/rpg/stat-block.ts`; darunter ein aufklappbarer Block „Wo wirkt das? · Situative Effekte“ mit allen Bedingungs-Effekten in Klartext (`data/cond-labels.ts`). Das erfüllt die Forderung aus Masterplan Phase 9, dass Training und Talente erklären, wo ein Attribut im Spiel wirkt.
+- **Talentbaum** (`player-sheet/talent-tree.component.ts`, SVG): fünf Knoten je Archetyp (Wurzel, zwei sich ausschließende Spezialisierungen, je ein Elite-Knoten). Die Ids `-1` und `-2` behalten ihre Bedeutung, bestehende Ränge bleiben gültig. Knoten wirken jetzt über Hooks (z. B. Schussfehler −3 % je Rang, +1 Schuss je Rang im gegnerischen Strafraum), skaliert mit dem Rang. `RpgService.talentStatus` (owned, open, needs-points, needs-level, needs-parent, excluded) steuert Anzeige und Freischaltung; Tastatur und Screenreader-Beschriftung sind vorhanden.
+- **Training-Tab** (`player-sheet/training-panel.component.ts`): acht Meisterschaftsringe mit Meilensteinen, Belastungskurve über vier Wochen plus Ampel, aktive Buffs.
+- **Kaderliste:** Filter nach Seltenheit, Sortierung nach Seltenheit, Signatur-Badge und Last-Ampel je Spieler.
+- **Trainingsseite:** Drag-and-drop von Programmkarten auf die Wochenslots (Tastatur-Weg über „Zum Plan“ bleibt), Ergebniskarten mit „Aufdecken“ für Durchbruch, Meisterschaft, Mentor und gelernte Eigenheit (ohne Animation bei reduzierter Bewegung).
+- Im Browser geprüft (Kader, Spielerakte, alle sechs Tabs). Tests: 310 (9 neu in `rpg-sheet.spec.ts`), Build und Stil-Check grün.
+
+Offen: Der Vorher-/Nachher-Bildschirm der Evolution ist weiter der Karten-Dialog aus Phase 6; die Spielerakte lädt `attributeSources` je Attribut mehrfach pro Änderungszyklus (unkritisch bei einem geöffneten Spieler, bei Bedarf cachen); Transfer- und Legends-Karten zeigen die neuen Tabs nicht.
+

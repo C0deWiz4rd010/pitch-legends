@@ -1,3 +1,7 @@
+import { ATTRIBUTE_USE, conditionText } from '../../data/cond-labels';
+import { AttributeSources, attributeSources } from '../../core/rpg/stat-block';
+import { TalentTreeComponent } from './player-sheet/talent-tree.component';
+import { TrainingPanelComponent } from './player-sheet/training-panel.component';
 import { PATH_NAMES, PATH_TEXT } from '../../data/evolutions';
 import { RARITY_DEFS } from '../../data/rarity';
 import { evolveSignature, signatureQuest, signatureTitle } from '../../core/rpg/evolution';
@@ -9,7 +13,7 @@ import { dnaOf } from '../../core/rpg/player-dna';
 import { I18nService } from '../../core/services/i18n.service';
 import { Player } from '../../models/player.model';
 import { RarityGemComponent } from './rarity-gem.component';
-import { ChangeDetectionStrategy, Component, computed, inject, input, output } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, input, output, signal } from '@angular/core';
 import { ModalDirective } from '../modal.directive';
 import { DecimalPipe } from '@angular/common';
 import { GameStateService } from '../../core/services/game-state.service';
@@ -25,9 +29,11 @@ import { PlayerPortraitComponent } from './player-portrait.component';
 import { PlayerPaperDollComponent } from './player-paper-doll.component';
 import { MedicalService } from '../../core/services/medical.service';
 
+export type SheetTab = 'overview' | 'talents' | 'signature' | 'quirks' | 'story' | 'training';
+
 @Component({
   selector: 'app-player-detail',
-  imports: [RadarChartComponent, DecimalPipe, PlayerPortraitComponent, PlayerPaperDollComponent, ModalDirective, RarityGemComponent],
+  imports: [RadarChartComponent, DecimalPipe, PlayerPortraitComponent, PlayerPaperDollComponent, ModalDirective, RarityGemComponent, TalentTreeComponent, TrainingPanelComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './player-detail.component.html',
   styleUrl: './player-detail.component.scss',
@@ -39,6 +45,29 @@ export class PlayerDetailComponent {
 
   readonly playerId = input.required<string>();
   readonly close = output<void>();
+
+  protected readonly tab = signal<SheetTab>('overview');
+  protected readonly tabs: { key: SheetTab; de: string; en: string }[] = [
+    { key: 'overview', de: 'Überblick', en: 'Overview' },
+    { key: 'talents', de: 'Talente', en: 'Talents' },
+    { key: 'signature', de: 'Signatur', en: 'Signature' },
+    { key: 'quirks', de: 'Eigenheiten', en: 'Quirks' },
+    { key: 'story', de: 'Geschichte', en: 'Story' },
+    { key: 'training', de: 'Training', en: 'Training' },
+  ];
+
+  /** Arrow keys move between tabs, Home/End jump to the ends. */
+  protected moveTab(event: KeyboardEvent, from: SheetTab): void {
+    const keys = this.tabs.map((entry) => entry.key);
+    const index = keys.indexOf(from);
+    const next = event.key === 'ArrowRight' ? (index + 1) % keys.length
+      : event.key === 'ArrowLeft' ? (index + keys.length - 1) % keys.length
+        : event.key === 'Home' ? 0 : event.key === 'End' ? keys.length - 1 : -1;
+    if (next < 0) return;
+    event.preventDefault();
+    this.tab.set(keys[next]);
+    queueMicrotask(() => document.getElementById('sheet-tab-' + keys[next])?.focus());
+  }
 
   protected readonly attrKeys = ATTRIBUTE_KEYS;
   protected readonly labels = ATTRIBUTE_LABELS;
@@ -121,6 +150,53 @@ export class PlayerDetailComponent {
       when: `S${entry.season} · ${this.i18n.pick('Woche', 'Week')} ${entry.week}`,
       text: chronicleLine(entry, language),
     }));
+  }
+
+  protected sources(player: Player, key: AttributeKey): AttributeSources {
+    return attributeSources(player, key, player.position);
+  }
+
+  /** Stacked bar of an attribute: base, talents, traits, training, quirks and form/morale. */
+  protected segments(player: Player, key: AttributeKey): { cls: string; pct: number; color: string }[] {
+    const source = this.sources(player, key);
+    const pct = (value: number) => Math.max(0, Math.min(100, (value / 99) * 100));
+    const base = source.base + Math.min(0, source.state);
+    return [
+      { cls: 'base', pct: pct(base), color: ratingColor(source.total) },
+      { cls: 'talent', pct: pct(source.talents), color: '#a66bff' },
+      { cls: 'trait', pct: pct(source.traits), color: '#ffc83d' },
+      { cls: 'training', pct: pct(source.training), color: '#38b6ff' },
+      { cls: 'quirk', pct: pct(source.quirks), color: '#ff5fd2' },
+      { cls: 'state', pct: pct(Math.max(0, source.state)), color: '#4be39a' },
+    ].filter((segment) => segment.pct > 0);
+  }
+
+  protected sourceTitle(player: Player, key: AttributeKey): string {
+    const s = this.sources(player, key);
+    const sign = (value: number) => (value >= 0 ? '+' : '') + Math.round(value * 10) / 10;
+    const parts = [`${this.i18n.pick('Basis', 'Base')} ${s.base}`];
+    if (s.talents) parts.push(`${this.i18n.pick('Talente', 'Talents')} ${sign(s.talents)}`);
+    if (s.traits) parts.push(`Traits ${sign(s.traits)}`);
+    if (s.training) parts.push(`${this.i18n.pick('Training', 'Training')} ${sign(s.training)}`);
+    if (s.quirks) parts.push(`${this.i18n.pick('Eigenheiten', 'Quirks')} ${sign(s.quirks)}`);
+    if (Math.abs(s.state) >= 0.05) parts.push(`${this.i18n.pick('Form/Moral/Position', 'Form/morale/position')} ${sign(s.state)}`);
+    return `${parts.join(' · ')} = ${Math.round(s.total * 10) / 10}`;
+  }
+
+  protected attributeUse(key: AttributeKey): string {
+    const pair = ATTRIBUTE_USE[key];
+    return pair ? this.i18n.pick(pair[0], pair[1]) : '';
+  }
+
+  /** All situational effects on the attributes, with the situation they need. */
+  protected situational(player: Player) {
+    const language = this.i18n.locale() === 'de' ? 'de' : 'en';
+    return ATTRIBUTE_KEYS.flatMap((key) => this.sources(player, key).conditional.map((effect) => ({
+      attribute: this.labels[key],
+      name: this.i18n.pick(effect.label[0], effect.label[1]),
+      value: effect.op === 'add' ? (effect.value >= 0 ? '+' : '') + Math.round(effect.value * 10) / 10 : '×' + Math.round(effect.value * 100) / 100,
+      when: conditionText(effect.when, effect.unless, language) || this.i18n.pick('immer', 'always'),
+    })));
   }
 
   protected nickname(player: Player): string | null {
