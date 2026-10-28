@@ -1,3 +1,4 @@
+import { enforceMythicCap } from '../rpg/player-dna';
 import { Injectable, inject } from '@angular/core';
 import { GameState, NewsItem, emptyTrainingWeek } from '../../models/game.model';
 import { Team } from '../../models/team.model';
@@ -103,6 +104,7 @@ export class SeasonService {
       for (const league of draft.otherLeagues) league.currentWeek = draft.league.currentWeek;
       draft.trainingWeek = emptyTrainingWeek(draft.league.season, draft.league.currentWeek);
       processTransferWeek(draft);
+      enforceMythicCap(draft);
       this.weeklyStories(draft);
       for (const assignment of processScoutAssignments(draft)) {
         const region = draft.world.regions.find((candidate) => candidate.id === assignment.regionId);
@@ -464,6 +466,7 @@ export class SeasonService {
       }
 
       const rollover = rollOverSquads(draft);
+      enforceMythicCap(draft);
       applyPromotionRelegation(draft, { promoted: review.promotedIds, relegated: review.relegatedIds });
       selectPlayerLeague(draft);
       const finalTopTable = review.leagues.find((league) => league.tier === 1)?.table.map((row) => row.teamId) ?? [];

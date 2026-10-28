@@ -20,6 +20,7 @@ import { createFormation } from './formations';
 import { ClubIdentity } from './names';
 import { TRAITS } from './traits';
 import { ARCHETYPES_BY_GROUP } from './talents';
+import { enforceMythicCap, generateDna } from '../core/rpg/player-dna';
 import { createClubVisualIdentity, createManagerVisualIdentity, createPlayerVisualIdentity, hash32 } from '../core/visual-identity';
 import { ClubVisualIdentity } from '../models/visual.model';
 import { countryRoot, extendWorldWithDivision, generatePersonName, generateWorld, uniqueShortName } from './world-generator';
@@ -154,6 +155,7 @@ export function generatePlayer(
     salary: weeklySalaryFor({ marketValue, age, overall }),
     contractWeeks: rng.int(40, 160),
     seasonStats: emptySeasonStats(),
+    dna: generateDna({ id, archetype, potential }),
   };
 }
 
@@ -456,6 +458,7 @@ export function createNewGame(opts: NewGameOptions): GameState {
   };
   game.objectives = generateSeasonObjectives(game);
   game.board.expectedPosition = game.objectives.find((objective) => objective.type === 'league-position')?.target ?? 6;
+  enforceMythicCap(game);
   return game;
 }
 

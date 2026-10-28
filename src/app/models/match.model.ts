@@ -97,6 +97,8 @@ export interface MatchConfig {
   weather: MatchWeather;
   /** Set to false to ignore traits, form and morale (balance comparisons); default on. */
   effects?: boolean;
+  /** Rarity rings in the match: on (default), subtle or off. */
+  auras?: 'on' | 'subtle' | 'off';
   inputDevice: InputDevice;
   camera: MatchCameraSettings;
   /** Cup ties: a draw after 90 minutes goes to extra time and then penalties. */

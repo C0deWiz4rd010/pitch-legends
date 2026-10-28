@@ -1,3 +1,4 @@
+import { RarityGemComponent } from '../../shared/components/rarity-gem.component';
 import {
   ChangeDetectionStrategy,
   Component,
@@ -43,7 +44,7 @@ const UI_MEMORY = {
 @Component({
   selector: 'app-transfer',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [ModalDirective, I18nPipe, ClubCrestComponent, PlayerPortraitComponent, RadarChartComponent],
+  imports: [ModalDirective, I18nPipe, ClubCrestComponent, PlayerPortraitComponent, RadarChartComponent, RarityGemComponent],
   templateUrl: './transfer.page.html',
   styleUrl: './transfer.page.scss',
 })

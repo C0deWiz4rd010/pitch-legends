@@ -1,3 +1,4 @@
+import { RarityGemComponent } from '../../shared/components/rarity-gem.component';
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { GameStateService } from '../../core/services/game-state.service';
@@ -15,7 +16,7 @@ type Sort = 'overall' | 'level' | 'value' | 'position' | 'potential';
 
 @Component({
   selector: 'app-squad',
-  imports: [PlayerDetailComponent, FormsModule, PlayerPortraitComponent, RadarChartComponent],
+  imports: [PlayerDetailComponent, FormsModule, PlayerPortraitComponent, RadarChartComponent, RarityGemComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './squad.page.html',
   styleUrl: './squad.page.scss',

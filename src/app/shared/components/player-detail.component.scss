@@ -319,3 +319,13 @@
   .development { align-items: flex-start; flex-direction: column; }
   .talent-path { grid-template-columns: 1fr; }
 }
+
+.nickname { margin: 2px 0 6px; color: var(--muted); font-size: 12px; font-style: italic; }
+.rarity-frame[data-rarity='rare'] { box-shadow: 0 0 0 1px #38b6ff, 0 0 18px #38b6ff44; }
+.rarity-frame[data-rarity='epic'] { box-shadow: 0 0 0 1px #a66bff, 0 0 22px #a66bff55; }
+.rarity-frame[data-rarity='legendary'] { box-shadow: 0 0 0 2px #ffc83d, 0 0 26px #ffc83d66; }
+.rarity-frame[data-rarity='mythic'] { box-shadow: 0 0 0 2px #ff5fd2, 0 0 30px #7cf7ff77; position: relative; }
+.rarity-frame[data-rarity='mythic']::after, .rarity-frame[data-rarity='legendary']::after { content: ''; position: absolute; inset: 0; pointer-events: none; background: linear-gradient(115deg, transparent 40%, #ffffff22 50%, transparent 60%); background-size: 250% 100%; animation: rarity-shimmer 5s ease-in-out infinite; }
+@keyframes rarity-shimmer { from { background-position: 150% 0; } to { background-position: -50% 0; } }
+@media (prefers-reduced-motion: reduce) { .rarity-frame::after { animation: none !important; } }
+

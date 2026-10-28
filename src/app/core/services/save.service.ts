@@ -1,3 +1,4 @@
+import { ensureGameDna } from '../rpg/player-dna';
 import { Injectable, inject } from '@angular/core';
 import { PersistentStore, SaveResult, StoreOperation } from '../storage/persistent-store';
 import { defaultSettings, GameState, SAVE_VERSION } from '../../models/game.model';
@@ -142,6 +143,7 @@ export class SaveService {
     const game = this.migrateToV6(this.migrateToV5(parsed));
     game.settings = { ...defaultSettings(), ...game.settings };
     game.trainingWeek = this.normaliseTrainingWeek(game.trainingWeek);
+    ensureGameDna(game);
     return ensureGameVisuals(game);
   }
 

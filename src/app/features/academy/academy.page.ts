@@ -1,3 +1,4 @@
+import { RarityGemComponent } from '../../shared/components/rarity-gem.component';
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { GameStateService } from '../../core/services/game-state.service';
@@ -14,7 +15,7 @@ type AcademyTab = 'intake' | 'scouting';
 
 @Component({
   selector: 'app-academy',
-  imports: [RouterLink, PlayerPortraitComponent],
+  imports: [RouterLink, PlayerPortraitComponent, RarityGemComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './academy.page.html',
   styleUrl: './academy.page.scss',

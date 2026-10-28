@@ -1,3 +1,5 @@
+import { dnaOf } from '../../core/rpg/player-dna';
+import { AURA_FROM, RARITY_DEFS, Rarity, atLeast } from '../../data/rarity';
 import * as THREE from 'three';
 import { ArcadeActor, ArcadeMatch, FIELD_LENGTH, FIELD_WIDTH, GOAL_WIDTH, GOAL_HEIGHT, PITCH, applyPitch } from '../../core/services/arcade-match';
 import { resolveMatchKits, MatchKitSelection } from '../../core/kit-visuals';
@@ -80,6 +82,10 @@ export class ThreePitchRenderer {
   private readonly matrixDummy = new THREE.Object3D();
   private readonly shadow: THREE.InstancedMesh;
   private readonly selection: THREE.Mesh<THREE.RingGeometry, THREE.MeshBasicMaterial>;
+  /** Rarity rings under Epic and better players, one instance per ring. */
+  private readonly aura: THREE.InstancedMesh<THREE.RingGeometry, THREE.MeshBasicMaterial>;
+  private readonly auraColor = new THREE.Color();
+  private readonly auraRarity = new Map<string, Rarity>();
   private readonly arrow: THREE.Mesh;
   private readonly power: THREE.Mesh<THREE.RingGeometry, THREE.MeshBasicMaterial>;
   private readonly ball: THREE.Mesh<THREE.BufferGeometry, THREE.MeshStandardMaterial>;
@@ -189,6 +195,12 @@ export class ThreePitchRenderer {
     this.selection.rotation.x = -Math.PI / 2;
     this.selection.renderOrder = 4;
     this.scene.add(this.selection);
+    this.aura = new THREE.InstancedMesh(new THREE.RingGeometry(0.93, 1.1, 48), new THREE.MeshBasicMaterial({ color: '#ffffff', transparent: true, opacity: 0.75, depthWrite: false, toneMapped: false }), 32);
+    this.aura.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    this.aura.frustumCulled = false;
+    this.aura.renderOrder = 3;
+    this.aura.count = 0;
+    this.scene.add(this.aura);
     const arrowGeometry = new THREE.ConeGeometry(0.20, 0.33, 3);
     this.arrow = new THREE.Mesh(arrowGeometry, new THREE.MeshBasicMaterial({ color: '#ffe875', depthTest: false, toneMapped: false }));
     this.arrow.rotation.z = Math.PI;
@@ -341,6 +353,9 @@ export class ThreePitchRenderer {
     const lookAt = { x: mirror > 0 ? state.ball.x : -state.ball.x, y: state.ball.y };
     this.watchEvents(match);
     let index = 0;
+    let auraIndex = 0;
+    const auraMode = this.quality === 'low' || this.software ? 'off' : match.config.auras ?? 'on';
+    this.aura.material.opacity = auraMode === 'subtle' ? 0.38 : 0.75;
     for (const model of this.models.values()) model.mesh.visible = false;
     for (const player of state.players) {
       const model = this.models.get(player.id);
@@ -365,6 +380,20 @@ export class ThreePitchRenderer {
       this.matrixDummy.scale.set(1.0, 0.66, 1);
       this.matrixDummy.updateMatrix();
       this.shadow.setMatrixAt(index++, this.matrixDummy.matrix);
+      const rarity = auraMode === 'off' ? undefined : this.auraRarity.get(player.id);
+      if (rarity && auraIndex < 32) {
+        const still = match.config.camera.reducedMotion;
+        const pulse = still ? 1 : 1 + 0.07 * Math.sin(this.time * 3 + auraIndex);
+        const size = (rarity === 'mythic' ? 1.28 : rarity === 'legendary' ? 1.14 : 1) * pulse;
+        this.matrixDummy.position.copy(model.mesh.position).setY(0.02);
+        this.matrixDummy.rotation.set(-Math.PI / 2, 0, 0);
+        this.matrixDummy.scale.set(size, size, 1);
+        this.matrixDummy.updateMatrix();
+        this.aura.setMatrixAt(auraIndex, this.matrixDummy.matrix);
+        if (rarity === 'mythic') this.auraColor.setHSL(still ? 0.52 : (this.time * 0.2) % 1, 0.9, 0.62);
+        else this.auraColor.set(RARITY_DEFS[rarity].aura);
+        this.aura.setColorAt(auraIndex++, this.auraColor);
+      }
       if (player.id === state.controlledPlayerId) {
         this.selection.position.copy(model.mesh.position).setY(0.028);
         this.selection.material.color.copy(match.ball.ownerId === player.id ? SELECTION_OWNER : SELECTION_FREE);
@@ -378,6 +407,9 @@ export class ThreePitchRenderer {
       }
     }
     this.shadow.count = index;
+    this.aura.count = auraIndex;
+    this.aura.instanceMatrix.needsUpdate = true;
+    if (this.aura.instanceColor) this.aura.instanceColor.needsUpdate = true;
     this.shadow.instanceMatrix.needsUpdate = true;
     this.selection.visible = !!this.models.get(state.controlledPlayerId)?.mesh.visible;
     this.arrow.visible = this.selection.visible;
@@ -614,6 +646,7 @@ export class ThreePitchRenderer {
       this.kits = resolveMatchKits(match.home, match.away);
       for (const model of this.models.values()) model.destroy();
       this.models.clear();
+      this.auraRarity.clear();
       disposeTree(this.stadium);
       this.stadium.clear();
       this.goalNets.length = 0;
@@ -632,6 +665,8 @@ export class ThreePitchRenderer {
       const model = createProceduralFootballer(actor.player.visuals, kit, actor.player.kitNumber, actor.player.positionGroup === 'GK', actor.player.foot === 'Left',this.software, actor.player.lastName);
       this.models.set(actor.player.id, model);
       this.scene.add(model.mesh);
+      const rarity = dnaOf(actor.player).rarity;
+      if (atLeast(rarity, AURA_FROM)) this.auraRarity.set(actor.player.id, rarity);
     }
   }
 

@@ -1,6 +1,8 @@
 import { AttributeKey, Foot, Position, PositionGroup } from './enums';
 import { PlayerVisualIdentity } from './visual.model';
 import type { EffectSpec } from '../core/rpg/effects';
+import type { Rarity } from '../data/rarity';
+import type { Nickname } from '../data/nicknames';
 
 /** A trait/perk that modifies a player's match behaviour. */
 export interface Trait {
@@ -77,6 +79,14 @@ export interface PlayerMedicalState {
   recurrenceUntilWeek: number | null;
 }
 
+/** Permanent identity of a player beyond the numbers: rarity and nickname now, signature and story later. */
+export interface PlayerDNA {
+  version: number;
+  rarity: Rarity;
+  /** German/English epithet from Epic upwards. */
+  nickname: Nickname | null;
+}
+
 /** A short-lived bonus earned in training; it plays in the next match and then expires. */
 export interface TrainingBuff {
   drillId: string;
@@ -131,6 +141,8 @@ export interface Player {
   personalGoal: PersonalGoal;
   /** Mastery, load history and match buffs from the training camp. */
   training?: PlayerTrainingState;
+  /** Rarity, nickname and (later) signature, quirks and story. Assigned once, never re-rolled. */
+  dna?: PlayerDNA;
 
   // Condition & psychology (0-100 unless noted)
   morale: number;

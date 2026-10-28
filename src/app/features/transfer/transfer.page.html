@@ -69,7 +69,7 @@
         <button class="player-row" [class.selected]="selectedTarget()?.player?.id === target.player.id" (click)="choose(target)">
           <app-player-portrait [player]="target.player" [team]="$any(target.team)" [size]="48" />
           <span class="position">{{ target.player.position }}</span>
-          <span class="identity"><strong>{{ playerName(target.player) }}</strong><small>
+          <span class="identity"><strong>{{ playerName(target.player) }} <app-rarity-gem [player]="target.player" /></strong><small>
             @if (target.team) { {{ target.team.shortName }} } @else { {{ 'transfer.freeAgent' | t }} } · {{ target.player.age }}
           </small></span>
           <span class="scout-rating" [style.--rating-color]="ratingColor(target.player.overall)">{{ overallLabel(target) }}</span>

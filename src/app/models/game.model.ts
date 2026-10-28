@@ -141,6 +141,8 @@ export interface GameSettings {
   assistPreset: AssistPreset;
   cameraShake: boolean;
   reducedMotion: boolean;
+  /** Rarity rings under Epic and better players in the match; omitted means on. */
+  auras?: 'on' | 'subtle' | 'off';
   controlLearning: ControlLearningState;
 }
 

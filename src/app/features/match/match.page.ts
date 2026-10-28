@@ -564,6 +564,7 @@ export class MatchPage implements OnDestroy {
       camera: { zoom: 1, lookAhead: 0.18, shake: settings?.cameraShake ?? true, reducedMotion: settings?.reducedMotion ?? false },
       knockout: this.knockout(),
       smallSided: !!this.exhibition?.smallSided,
+      auras: settings?.auras ?? 'on',
     }, this.gs.manager()?.perks.tactics ?? 0);
     this.autoEnabled.set(this.arcade.controllerMode === 'auto');
     const definition = CHALLENGES.find((candidate) => candidate.id === this.exhibition?.challengeId);

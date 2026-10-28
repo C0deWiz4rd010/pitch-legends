@@ -504,3 +504,15 @@ Offen: Die Hooks selbst haben noch keine Quellen außer Traits; Signaturen (Phas
 
 Offen: Das Mini‑Spiel vor der Einheit (Note aus `challenges.ts`/`practice.ts`) ist noch nicht in der UI verdrahtet; die Vererbung von Quirks durch Mentoren kommt mit Phase 5; die Meisterschafts‑Ringe auf der Spielerakte mit Phase 7. Die Playwright‑E2E‑Tests konnten lokal nicht laufen, weil die Browser nicht installiert sind (`npx playwright install` fehlt).
 
+## Phase 3 – Spieler-DNA: Seltenheit und Aura (Legends Reborn, 28.10.2026)
+
+- **Seltenheit** (`data/rarity.ts`, `core/rpg/player-dna.ts`): Common 68 % / Rare 22 % / Epic 7,5 % / Legendary 2,2 % / Mythic 0,3 %. Der Wurf ist deterministisch aus der Spieler-ID (`hash32(id|dna-v1)`), verbraucht den Zufallsstrom der Weltgenerierung nicht und ist von der Welt unabhängig. Ein hohes Potenzial zieht den Wurf um bis zu 35 % nach unten. Seltenheit gibt **keinen** Attributbonus; Budget, Quirk-Slots und Evolutionsstufen je Stufe stehen in `RARITY_DEFS` und werden ab Phase 4 genutzt.
+- **Weltregel:** höchstens 3 Mythic-Spieler (`enforceMythicCap` bei Weltgenerierung, nach dem Saisonwechsel und nach der Transferwoche; der Überschuss wird Legendary, die niedrigsten Würfe bleiben).
+- **Spitznamen** ab Epic (`data/nicknames.ts`): zweisprachige Beinamen je Archetyp, z. B. „El Muro“, „Die Seidenpfote“.
+- **Alt-Saves:** `ensureGameDna` läuft bei jedem Laden und vergibt fehlende DNA einmalig und ohne Potenzial-Einfluss (kein Re-Roll, bestehende DNA wird nie überschrieben). Dadurch keine neue Save-Version; die formale Migration folgt mit Save v7.
+- **Aura im 3D-Match:** ein instanzierter Ring pro Epic-/Legendary-/Mythic-Spieler (Farbe je Stufe, Mythic mit wanderndem Farbton, Puls nur ohne reduzierte Bewegung); bei niedriger Qualität und Software-GL aus. Einstellung „Seltenheits-Auren“: an / dezent / aus. Im Browser mit einem echten Match geprüft.
+- **UI:** `app-rarity-gem` in Kader, Transfermarkt und Akademie; Spielerakte mit Rahmen, Schimmer (Legendary/Mythic) und Spitzname. **Scouting:** Seltenheit fremder Spieler bleibt ein grauer „?“-Edelstein, bis ein Scouting-Bericht existiert; eigener Kader und Akademie sind immer bekannt.
+- Tests: 261 (9 neu in `player-dna.spec.ts`). Der Timeout des Knockout-Tests in `match-flow.spec.ts` wurde von 20 auf 60 s erhöht, weil er unter paralleler Last knapp an 20 s kam.
+
+Offen: Der Partikel-Schweif bei Signatur-Aktivierung (Legendary/Mythic) folgt mit Phase 4, weil es Signaturen noch nicht gibt. Seltenheit ist bewusst unabhängig vom Overall; ein „legendärer“ Spieler mit Overall 64 ist möglich und wird erst durch seine Signatur wertvoll. Die Legends-Team-Karten nutzen ihre eigene Stufenlogik und werden in Phase 8 vereinheitlicht.
+

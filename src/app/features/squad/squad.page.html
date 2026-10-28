@@ -87,6 +87,7 @@
       <div class="who">
         <div class="who-top">
           <strong>{{ p.firstName }} {{ p.lastName }}</strong>
+          <app-rarity-gem [player]="p" />
           <span class="pos-chip">{{ p.position }}</span>
           @if (p.skillPoints > 0) { <span class="badge sp" [title]="i18n.pick('Skillpunkte verfügbar', 'Skill points to spend')">SP {{ p.skillPoints }}</span> }
           @if (p.injuryWeeks > 0) { <span class="badge inj" [title]="i18n.pick('Verletzt', 'Injured')">{{ i18n.pick('VERL', 'INJ') }} {{ p.injuryWeeks }}{{ i18n.pick('W', 'W') }}</span> }

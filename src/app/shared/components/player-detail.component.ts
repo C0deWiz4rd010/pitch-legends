@@ -1,3 +1,7 @@
+import { dnaOf } from '../../core/rpg/player-dna';
+import { I18nService } from '../../core/services/i18n.service';
+import { Player } from '../../models/player.model';
+import { RarityGemComponent } from './rarity-gem.component';
 import { ChangeDetectionStrategy, Component, computed, inject, input, output } from '@angular/core';
 import { ModalDirective } from '../modal.directive';
 import { DecimalPipe } from '@angular/common';
@@ -16,7 +20,7 @@ import { MedicalService } from '../../core/services/medical.service';
 
 @Component({
   selector: 'app-player-detail',
-  imports: [RadarChartComponent, DecimalPipe, PlayerPortraitComponent, PlayerPaperDollComponent, ModalDirective],
+  imports: [RadarChartComponent, DecimalPipe, PlayerPortraitComponent, PlayerPaperDollComponent, ModalDirective, RarityGemComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './player-detail.component.html',
   styleUrl: './player-detail.component.scss',
@@ -34,6 +38,18 @@ export class PlayerDetailComponent {
   protected readonly ratingColor = ratingColor;
   protected readonly moraleIcon = moraleIcon;
   protected readonly developmentPlans: DevelopmentPlan[] = ['balanced', 'technical', 'physical', 'position'];
+
+  private readonly i18n = inject(I18nService);
+
+  /** Frame colour class of the sheet: Common stays plain. */
+  protected frameRarity(player: Player): string {
+    return dnaOf(player).rarity;
+  }
+
+  protected nickname(player: Player): string | null {
+    const nick = dnaOf(player).nickname;
+    return nick ? this.i18n.pick(nick[0], nick[1]) : null;
+  }
 
   protected readonly player = computed(() => this.gs.squad().find((p) => p.id === this.playerId()) ?? null);
   protected readonly currentKit = computed(() => this.gs.playerTeam()?.visuals.kits.home ?? null);

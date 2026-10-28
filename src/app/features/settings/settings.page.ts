@@ -55,6 +55,12 @@ export class SettingsPage {
     this.gs.mutate((draft) => (draft.settings.assistPreset = preset));
   }
 
+  protected setAuras(event: Event): void {
+    const value = (event.target as HTMLSelectElement).value;
+    const auras = value === 'subtle' || value === 'off' ? value : 'on';
+    this.gs.mutate((draft) => (draft.settings.auras = auras));
+  }
+
   protected toggleCameraShake(): void {
     this.gs.mutate((draft) => (draft.settings.cameraShake = !draft.settings.cameraShake));
   }
