@@ -167,6 +167,7 @@ export class SaveService {
       slotsUsed: Math.max(0, Math.min(3, training.slotsUsed ?? 0)),
       maxSlots: 3,
       completedSessions: Array.isArray(training.completedSessions) ? training.completedSessions : [],
+      eventChoice: training.eventChoice === 0 || training.eventChoice === 1 ? training.eventChoice : null,
     };
   }
 

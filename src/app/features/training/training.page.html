@@ -31,13 +31,13 @@
         @for (drill of drills; track drill.id) {
           <button class="program-card" [class.active]="activeDrillId() === drill.id" [class.recovery]="drill.focus === 'recovery'" (click)="selectDrill(drill)">
             <i>{{ drill.icon }}</i>
-            <span><b>{{ drillName(drill) }}</b><small>{{ drillDescription(drill) }}</small></span>
+            <span><b>{{ drillName(drill) }}</b><small>{{ drillDescription(drill) }}</small>@if (drill.buff) { <small class="buff">★ {{ buffText(drill) }}</small> }</span>
             <em>{{ drill.focus === 'recovery' ? '+30' : drill.group }}</em>
           </button>
         }
       </div>
       <div class="program-action">
-        <div><span>{{ activeDrill().icon }}</span><p><b>{{ drillName(activeDrill()) }}</b><small>{{ activeDrill().focus === 'recovery' ? text('Kein Risiko', 'No risk') : text('Attribut: ', 'Attribute: ') + activeDrill().focus }}</small><small class="match-effect">{{ text('Im Spiel: ', 'In matches: ') }}{{ matchEffect() }}</small></p></div>
+        <div><span>{{ activeDrill().icon }}</span><p><b>{{ drillName(activeDrill()) }}</b><small>{{ activeDrill().focus === 'recovery' ? text('Kein Risiko', 'No risk') : text('Attribut: ', 'Attribute: ') + activeDrill().focus }}</small><small class="match-effect">{{ text('Im Spiel: ', 'In matches: ') }}{{ matchEffect() }}</small>@if (activeDrill().secondary) { <small>{{ text('Nebeneffekt: ', 'Side effect: ') }}{{ activeDrill().secondary }}</small> }@if (activeDrill().buff) { <small class="buff">★ {{ buffText(activeDrill()) }}</small> }</p></div>
         <button class="btn btn--primary" [disabled]="gs.trainingSlotsRemaining() <= plans().length" (click)="addSession()">+ {{ text('ZUM PLAN', 'ADD TO PLAN') }}</button>
       </div>
     </aside>
@@ -68,6 +68,19 @@
         }
       </div>
 
+      @if (campView(); as camp) {
+        <section class="camp-event" [class.done]="camp.choice !== null">
+          <p class="eyebrow">{{ text('TRAININGSLAGER-EREIGNIS', 'CAMP EVENT') }}</p>
+          <h3>{{ pair(camp.event.title) }}</h3>
+          <p>{{ campBody() }}</p>
+          <div class="camp-options">
+            @for (option of camp.event.options; track $index) {
+              <button type="button" [class.chosen]="camp.choice === $index" [disabled]="camp.choice !== null || !canAffordCamp($index)" (click)="chooseCamp($index)">{{ pair(option.label) }}</button>
+            }
+          </div>
+        </section>
+      }
+
       @if (selectedPlan(); as plan) {
         <section class="session-editor">
           <header><div><span class="session-kicker">{{ text('EINHEIT', 'SESSION') }} 0{{ plan.slot + 1 }}</span><h3>{{ drillName(drill(plan.drillId)!) }}</h3></div><button [attr.aria-label]="text('Einheit entfernen', 'Remove session')" (click)="removePlan(plan.slot)">×</button></header>
@@ -81,7 +94,12 @@
               <div><span>{{ text('FITNESS', 'FITNESS') }}</span><b>{{ session.players.length ? session.players[0].fitnessDelta : '—' }}</b><small>{{ intensityLabel(plan.intensity) }}</small></div>
               <div><span>{{ text('WACHSTUM', 'GROWTH') }}</span><b>{{ session.players.length ? session.players[0].growthChance + '%' : '—' }}</b><small>{{ text('CHANCE', 'CHANCE') }}</small></div>
               <div><span>{{ text('RISIKO', 'RISK') }}</span><b>{{ session.players.length ? session.players[0].injuryRisk + '%' : '—' }}</b><small>{{ text('VERLETZUNG', 'INJURY') }}</small></div>
+              <div><span>{{ text('DURCHBRUCH', 'BREAKTHROUGH') }}</span><b>{{ session.players.length ? session.players[0].breakthroughChance + '%' : '—' }}</b><small>+2</small></div>
+              <div><span>{{ text('MEISTERSCHAFT', 'MASTERY') }}</span><b>{{ session.players.length ? '+' + session.players[0].masteryGain : '—' }}</b><small>{{ text('PUNKTE', 'POINTS') }}</small></div>
             </div>
+            @if (firstPlayerPreview(plan); as first) {
+              @if (first.loadRatio > 0) { <div class="load-line" [attr.data-zone]="first.loadZone"><s class="zone-dot"></s>{{ zoneLabel(first.loadZone) }} · {{ first.loadRatio }}× @if (first.mentored) { · {{ text('Mentor-Bonus aktiv', 'mentoring bonus active') }} }</div> }
+            }
             @if (!session.valid) { <div class="plan-warning"><b>!</b>{{ errorLabel(session.errors[0]) }}</div> }
           }
           <button class="choose-players" (click)="mobileTab.set('players')">{{ text('ZIELSPIELER WÄHLEN', 'CHOOSE TARGET PLAYERS') }} <span>{{ plan.targetIds.length }}</span></button>
@@ -93,7 +111,7 @@
             @for (session of completed(); track session.plan.id) {
               @for (result of session.players; track result.playerId) {
                 @if (playerById(result.playerId); as player) {
-                  <article><app-player-portrait [player]="player" [team]="team()!" [size]="42" /><span><b>{{ player.firstName }} {{ player.lastName }}</b><small>+{{ result.xpGained }} XP · {{ result.fitnessDelta >= 0 ? '+' : '' }}{{ result.fitnessDelta }} FIT</small></span>@if (result.attributeGained) { <em>+1 {{ result.attributeGained }}</em> } @else { <em>✓</em> }</article>
+                  <article><app-player-portrait [player]="player" [team]="team()!" [size]="42" /><span><b>{{ player.firstName }} {{ player.lastName }}</b><small>+{{ result.xpGained }} XP · {{ result.fitnessDelta >= 0 ? '+' : '' }}{{ result.fitnessDelta }} FIT</small></span>@if (result.attributeGained) { <em>+{{ result.breakthrough ? 2 : 1 }} {{ result.attributeGained }}</em> } @else { <em>✓</em> }@for (badge of highlights(result); track badge) { <mark class="badge">{{ badge }}</mark> }</article>
                 }
               }
             }
@@ -114,7 +132,7 @@
           @for (player of squad(); track player.id) {
             <button class="target-player" [class.selected]="isTarget(player.id)" [disabled]="!canTarget(player)" (click)="toggleTarget(player)">
               <app-player-portrait [player]="player" [team]="team()!" [size]="40" />
-              <span><b>{{ player.firstName }} {{ player.lastName }}</b><small>{{ player.position }} · POT {{ player.potential }} · FIT {{ player.fitness }}</small><i><em [style.width.%]="xpPercent(player)"></em></i></span>
+              <span><b>{{ player.firstName }} {{ player.lastName }}</b><small>{{ player.position }} · POT {{ player.potential }} · FIT {{ player.fitness }} <s class="zone-dot" [attr.data-zone]="zoneOf(player)" [attr.title]="zoneLabel(zoneOf(player))"></s></small><i><em [style.width.%]="xpPercent(player)"></em></i></span>
               <strong [style.color]="ratingColor(player.overall)">{{ player.overall }}</strong>
               @if (player.injuryWeeks > 0) { <u>+</u> } @else { <u>{{ isTarget(player.id) ? '✓' : '+' }}</u> }
             </button>

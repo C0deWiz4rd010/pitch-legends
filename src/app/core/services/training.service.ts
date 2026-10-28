@@ -1,7 +1,8 @@
 import { Injectable, inject } from '@angular/core';
-import { AttributeKey, PositionGroup } from '../../models/enums';
+import { AttributeKey } from '../../models/enums';
 import {
   GameState,
+  TrainingGrade,
   TrainingIntensity,
   TrainingPlayerResult,
   TrainingScope,
@@ -9,32 +10,32 @@ import {
   TrainingSessionResult,
 } from '../../models/game.model';
 import { Player } from '../../models/player.model';
+import { CampEffect, CampEvent, CAMP_EVENTS } from '../../data/camp-events';
+import { TRAINING_DRILLS, TrainingDrill, getDrill } from '../../data/training-drills';
 import { computeOverall, marketValueFor } from '../ratings';
+import {
+  BASE_MASTERY,
+  CORE_ATTRIBUTE,
+  GRADE_MULTIPLIER,
+  INTENSITY_MASTERY,
+  LoadZone,
+  MENTORING_XP,
+  acuteChronicRatio,
+  addMastery,
+  closeTrainingWeek,
+  ensureTraining,
+  loadRiskFactor,
+  loadZone,
+  mentoringJuniors,
+  sessionLoad,
+} from '../rpg/training-rules';
 import { Rng, clamp } from '../util';
 import { hash32 } from '../visual-identity';
 import { RpgService } from './rpg.service';
 import { applyInjury, createInjury, isPlayerAvailable } from '../injury-engine';
 
-export interface TrainingDrill {
-  id: string;
-  name: string;
-  icon: string;
-  focus: AttributeKey | 'recovery';
-  description: string;
-  group: PositionGroup | 'ALL';
-}
-
-export const TRAINING_DRILLS: TrainingDrill[] = [
-  { id: 'finishing', name: 'Finishing', icon: 'SH', focus: 'shooting', description: 'Sharpen shooting and composure in front of goal.', group: 'ATT' },
-  { id: 'vision', name: 'Vision', icon: 'PS', focus: 'passing', description: 'Improve range and weight of passing.', group: 'MID' },
-  { id: 'control', name: 'Close Control', icon: 'DR', focus: 'dribbling', description: 'Tighten dribbling and ball manipulation.', group: 'ALL' },
-  { id: 'tackling', name: 'Tackling', icon: 'DF', focus: 'defending', description: 'Drill positioning, marking and tackling.', group: 'DEF' },
-  { id: 'sprints', name: 'Sprints', icon: 'PC', focus: 'pace', description: 'Boost acceleration and top speed.', group: 'ALL' },
-  { id: 'strength', name: 'Strength', icon: 'PH', focus: 'physical', description: 'Build strength and aerial dominance.', group: 'ALL' },
-  { id: 'endurance', name: 'Endurance', icon: 'ST', focus: 'stamina', description: 'Raise stamina for a full 90 minutes.', group: 'ALL' },
-  { id: 'handling', name: 'Shot Stopping', icon: 'GK', focus: 'goalkeeping', description: 'Goalkeeper reflexes and handling.', group: 'GK' },
-  { id: 'recovery', name: 'Recovery', icon: 'RC', focus: 'recovery', description: 'Rest and regain fitness — no XP gained.', group: 'ALL' },
-];
+export { TRAINING_DRILLS };
+export type { TrainingDrill };
 
 export interface TrainingPlayerPreview {
   playerId: string;
@@ -43,6 +44,13 @@ export interface TrainingPlayerPreview {
   fitnessDelta: number;
   growthChance: number;
   injuryRisk: number;
+  /** Percent chance that a growth is a breakthrough (+2). */
+  breakthroughChance: number;
+  masteryGain: number;
+  /** Acute:chronic load ratio after this session, and its traffic-light zone. */
+  loadRatio: number;
+  loadZone: LoadZone;
+  mentored: boolean;
 }
 
 export interface TrainingSessionPreview {
@@ -66,9 +74,21 @@ export interface TrainingExecutionResult {
   sessions: TrainingSessionResult[];
 }
 
+export interface CampEventView {
+  event: CampEvent;
+  city: string;
+  /** Chosen option, or null while the choice is open. */
+  choice: 0 | 1 | null;
+}
+
 const INTENSITY_XP: Record<TrainingIntensity, number> = { light: 0.8, normal: 1, intense: 1.25 };
 const INTENSITY_FITNESS: Record<TrainingIntensity, number> = { light: 7, normal: 12, intense: 18 };
 const INTENSITY_INJURY: Record<TrainingIntensity, number> = { light: 0.01, normal: 0.03, intense: 0.06 };
+
+/** Share of the primary growth chance that the secondary attribute gets. */
+const SECONDARY_GROWTH = 0.3;
+/** Weekly chance (before facilities) that an AI player under 27 gains a point. */
+const AI_GROWTH_BASE = 0.015;
 
 @Injectable({ providedIn: 'root' })
 export class TrainingService {
@@ -116,10 +136,11 @@ export class TrainingService {
         }
 
         const seed = this.sessionSeed(state, club.id, plan.slot);
+        const juniors = plan.scope === 'unit' ? mentoringJuniors(targets) : new Set<string>();
         return {
           plan,
           drill,
-          players: drill ? targets.map((player) => this.playerPreview(state, player, drill, plan.scope, plan.intensity)) : [],
+          players: drill ? targets.map((player) => this.playerPreview(state, player, drill, plan, juniors.has(player.id))) : [],
           valid: sessionErrors.length === 0,
           errors: unique(sessionErrors),
           seed,
@@ -141,10 +162,11 @@ export class TrainingService {
     for (const session of preview.sessions) {
       const drill = session.drill!;
       const results: TrainingPlayerResult[] = [];
-      for (const targetId of session.plan.targetIds) {
-        const player = playerCopies.find((candidate) => candidate.id === targetId);
-        if (!player) return { ok: false, errors: [`target-invalid:${targetId}`], sessions: [] };
-        results.push(this.executePlayer(state, player, drill, session.plan.scope, session.plan.intensity, session.seed));
+      const targets = session.plan.targetIds.map((id) => playerCopies.find((candidate) => candidate.id === id));
+      if (targets.some((target) => !target)) return { ok: false, errors: ['target-invalid'], sessions: [] };
+      const juniors = session.plan.scope === 'unit' ? mentoringJuniors(targets as Player[]) : new Set<string>();
+      for (const player of targets as Player[]) {
+        results.push(this.executePlayer(state, player, drill, session.plan, session.seed, juniors.has(player.id)));
       }
       sessions.push({ plan: structuredClone(session.plan), players: results, seed: session.seed });
     }
@@ -156,7 +178,72 @@ export class TrainingService {
   }
 
   drill(id: string): TrainingDrill | undefined {
-    return TRAINING_DRILLS.find((drill) => drill.id === id);
+    return getDrill(id);
+  }
+
+  /**
+   * Closes the training week once the matchday is over: load history moves on, match buffs expire and the
+   * other clubs train in a simplified, deterministic form so the league does not drift away from the player.
+   */
+  rollWeek(state: GameState): void {
+    const season = state.league.season;
+    const week = state.league.currentWeek;
+    for (const team of state.teams) {
+      if (team.id === state.clubId) {
+        for (const player of team.players) closeTrainingWeek(player);
+        continue;
+      }
+      for (const player of team.players) if (player.training) closeTrainingWeek(player);
+      this.simulateAiTrainingWeek(team.players, team.facilities.trainingGround, `${team.id}|${season}|${week}`);
+    }
+  }
+
+  /** Young players of AI clubs occasionally gain a point in an attribute their position lives from. */
+  simulateAiTrainingWeek(players: Player[], trainingGround: number, key: string): void {
+    const rng = new Rng(hash32(`${key}|ai-training`));
+    for (const player of players) {
+      if (player.age >= 27 || player.overall >= player.potential) continue;
+      if (!rng.bool(AI_GROWTH_BASE + trainingGround * 0.005)) continue;
+      const focus = this.positionFocus(player);
+      const attribute = rng.pick(focus);
+      if (player.attributes[attribute] >= 99) continue;
+      player.attributes[attribute] = clamp(player.attributes[attribute] + 1, 1, 99);
+      this.recompute(player);
+    }
+  }
+
+  /** This week's camp event of the managed club; the choice is stored in the training week. */
+  campEvent(state: GameState): CampEventView {
+    const event = CAMP_EVENTS[hash32(`${state.clubId}|${state.league.season}|${state.league.currentWeek}|camp`) % CAMP_EVENTS.length];
+    const city = state.world?.cities.find((candidate) => candidate.teamId === state.clubId)?.name ?? state.teams.find((team) => team.id === state.clubId)?.name ?? '—';
+    return { event, city, choice: state.trainingWeek.eventChoice ?? null };
+  }
+
+  canAffordOption(state: GameState, option: 0 | 1): boolean {
+    const club = state.teams.find((team) => team.id === state.clubId);
+    const cost = Math.min(0, this.campEvent(state).event.options[option].effect.coins ?? 0);
+    return !!club && club.coins + cost >= 0;
+  }
+
+  resolveCampEvent(state: GameState, option: 0 | 1): { ok: boolean; error?: string } {
+    const club = state.teams.find((team) => team.id === state.clubId);
+    if (!club) return { ok: false, error: 'club-missing' };
+    if (state.trainingWeek.eventChoice === 0 || state.trainingWeek.eventChoice === 1) return { ok: false, error: 'event-done' };
+    if (!this.canAffordOption(state, option)) return { ok: false, error: 'cannot-afford' };
+    const effect = this.campEvent(state).event.options[option].effect;
+    this.applyCampEffect(club.players, effect);
+    club.coins += effect.coins ?? 0;
+    state.trainingWeek.eventChoice = option;
+    return { ok: true };
+  }
+
+  private applyCampEffect(players: Player[], effect: CampEffect): void {
+    for (const player of players) {
+      if (effect.morale) player.morale = clamp(player.morale + effect.morale, 0, 100);
+      if (effect.fitness) player.fitness = clamp(player.fitness + effect.fitness, 0, 100);
+      if (effect.xp) this.rpg.awardXp(player, effect.xp);
+      if (effect.mastery) this.grantMastery(player, CORE_ATTRIBUTE[player.positionGroup], effect.mastery);
+    }
   }
 
   private validateScope(scope: TrainingScope, players: Player[], errors: string[]): void {
@@ -171,28 +258,32 @@ export class TrainingService {
     state: GameState,
     player: Player,
     drill: TrainingDrill,
-    scope: TrainingScope,
-    intensity: TrainingIntensity,
+    plan: TrainingSessionPlan,
+    mentored: boolean,
   ): TrainingPlayerPreview {
     if (drill.focus === 'recovery') {
-      return { playerId: player.id, xpMin: 0, xpMax: 0, fitnessDelta: Math.min(30, 100 - player.fitness), growthChance: 0, injuryRisk: 0 };
+      return {
+        playerId: player.id, xpMin: 0, xpMax: 0, fitnessDelta: Math.min(30, 100 - player.fitness), growthChance: 0, injuryRisk: 0,
+        breakthroughChance: 0, masteryGain: 0, loadRatio: acuteChronicRatio(player), loadZone: loadZone(acuteChronicRatio(player)), mentored: false,
+      };
     }
     const team = state.teams.find((candidate) => candidate.id === state.clubId)!;
-    const baseXp = this.baseXp(state, player, drill, scope, intensity);
-    const cost = this.fitnessCost(scope, intensity);
+    const baseXp = this.baseXp(state, player, drill, plan, mentored);
+    const cost = this.fitnessCost(drill, plan.scope, plan.intensity);
+    const ratio = acuteChronicRatio(player, sessionLoad(plan.intensity, plan.scope, drill.fitnessCost ?? 1));
+    const growth = this.growthChance(player, drill.focus, team.facilities.trainingGround, plan, state.manager.attributes.youthDevelopment);
     return {
       playerId: player.id,
       xpMin: Math.round(baseXp * 0.85),
       xpMax: Math.round(baseXp * 1.2),
       fitnessDelta: -Math.min(player.fitness, cost),
-      growthChance: Math.round(this.growthChance(
-        player,
-        drill.focus,
-        team.facilities.trainingGround,
-        scope,
-        state.manager.attributes.youthDevelopment,
-      ) * 100),
-      injuryRisk: Math.round(this.injuryChance(intensity, team.facilities.medicalCenter) * 1000) / 10,
+      growthChance: Math.round(growth * 100),
+      injuryRisk: Math.round(this.injuryChance(drill, plan.intensity, team.facilities.medicalCenter, ratio) * 1000) / 10,
+      breakthroughChance: Math.round(this.breakthroughChance(player, team.facilities.trainingGround) * 100),
+      masteryGain: this.masteryGain(plan, false),
+      loadRatio: Math.round(ratio * 100) / 100,
+      loadZone: loadZone(ratio),
+      mentored,
     };
   }
 
@@ -200,9 +291,9 @@ export class TrainingService {
     state: GameState,
     player: Player,
     drill: TrainingDrill,
-    scope: TrainingScope,
-    intensity: TrainingIntensity,
+    plan: TrainingSessionPlan,
     sessionSeed: number,
+    mentored: boolean,
   ): TrainingPlayerResult {
     if (drill.focus === 'recovery') {
       const before = player.fitness;
@@ -212,33 +303,76 @@ export class TrainingService {
 
     const team = state.teams.find((candidate) => candidate.id === state.clubId)!;
     const rng = new Rng(hash32(`${sessionSeed}|${player.id}`));
-    const cost = this.fitnessCost(scope, intensity);
+    const training = ensureTraining(player);
+    const cost = this.fitnessCost(drill, plan.scope, plan.intensity);
     const beforeFitness = player.fitness;
     player.fitness = clamp(player.fitness - cost, 0, 100);
-    const xp = Math.round(this.baseXp(state, player, drill, scope, intensity) * rng.float(0.85, 1.2));
+    const ratio = acuteChronicRatio(player, sessionLoad(plan.intensity, plan.scope, drill.fitnessCost ?? 1));
+    training.weekLoad += sessionLoad(plan.intensity, plan.scope, drill.fitnessCost ?? 1);
+    const xp = Math.round(this.baseXp(state, player, drill, plan, mentored) * rng.float(0.85, 1.2));
     this.rpg.awardXp(player, xp);
 
     let attributeGained: AttributeKey | null = null;
+    let breakthrough = false;
     const attribute = drill.focus;
+    const growth = this.growthChance(player, attribute, team.facilities.trainingGround, plan, state.manager.attributes.youthDevelopment);
     const canGrow = player.attributes[attribute] < 99 && player.overall < player.potential + 2;
-    if (canGrow && rng.bool(this.growthChance(player, attribute, team.facilities.trainingGround, scope, state.manager.attributes.youthDevelopment))) {
-      player.attributes[attribute] = clamp(player.attributes[attribute] + 1, 1, 99);
-      player.overall = computeOverall(player.attributes, player.positionGroup);
-      player.potential = Math.max(player.potential, player.overall);
-      player.marketValue = marketValueFor(player.overall, player.age, player.potential);
+    if (canGrow && rng.bool(growth)) {
+      breakthrough = rng.bool(this.breakthroughChance(player, team.facilities.trainingGround));
+      player.attributes[attribute] = clamp(player.attributes[attribute] + (breakthrough ? 2 : 1), 1, 99);
+      this.recompute(player);
       attributeGained = attribute;
+    }
+    if (drill.secondary && player.attributes[drill.secondary] < 99 && player.overall < player.potential + 2 && rng.bool(growth * SECONDARY_GROWTH)) {
+      player.attributes[drill.secondary] = clamp(player.attributes[drill.secondary] + 1, 1, 99);
+      this.recompute(player);
+    }
+
+    const mastery = this.grantMastery(player, attribute, this.masteryGain(plan, breakthrough));
+    if (drill.secondary) this.grantMastery(player, drill.secondary, Math.max(1, Math.round(this.masteryGain(plan, false) * 0.4)));
+
+    if (drill.buff) {
+      training.buffs = training.buffs.filter((buff) => buff.drillId !== drill.id);
+      training.buffs.push({ drillId: drill.id, effects: structuredClone(drill.buff.effects), season: state.league.season, week: state.league.currentWeek });
     }
 
     let injuredWeeks = 0;
-    if (rng.bool(this.injuryChance(intensity, team.facilities.medicalCenter))) {
-      const injury = createInjury({ seed: sessionSeed, player, cause: 'training', season: state.league.season, week: state.league.currentWeek, severityBias: intensity === 'intense' ? .18 : 0 });
+    if (rng.bool(this.injuryChance(drill, plan.intensity, team.facilities.medicalCenter, ratio))) {
+      const injury = createInjury({ seed: sessionSeed, player, cause: 'training', season: state.league.season, week: state.league.currentWeek, severityBias: plan.intensity === 'intense' ? .18 : 0 });
       applyInjury(player, injury);
       injuredWeeks = injury.remainingWeeks;
     }
-    return { playerId: player.id, xpGained: xp, fitnessDelta: player.fitness - beforeFitness, attributeGained, injuredWeeks };
+    return {
+      playerId: player.id,
+      xpGained: xp,
+      fitnessDelta: player.fitness - beforeFitness,
+      attributeGained,
+      injuredWeeks,
+      ...(breakthrough ? { breakthrough } : {}),
+      masteryAttribute: attribute,
+      masteryGained: mastery.gained,
+      ...(mastery.traitUnlocked ? { masteryTrait: mastery.traitUnlocked } : {}),
+      ...(mastery.milestone ? { masteryMilestone: mastery.milestone } : {}),
+      ...(drill.buff ? { buffLabel: drill.buff.label } : {}),
+      ...(mentored ? { mentored } : {}),
+    };
   }
 
-  private baseXp(state: GameState, player: Player, drill: TrainingDrill, scope: TrainingScope, intensity: TrainingIntensity): number {
+  /** Adds mastery and pays out milestones: 25 gives XP, 50 a skill point, 100 the attribute's trait. */
+  private grantMastery(player: Player, attribute: AttributeKey, amount: number) {
+    const outcome = addMastery(player, attribute, amount);
+    if (outcome.milestone === 25) this.rpg.awardXp(player, 50);
+    if (outcome.milestone === 50) player.skillPoints += 1;
+    if (outcome.traitUnlocked) player.traitIds.push(outcome.traitUnlocked);
+    return outcome;
+  }
+
+  private masteryGain(plan: TrainingSessionPlan, breakthrough: boolean): number {
+    const grade = GRADE_MULTIPLIER[plan.grade ?? 'B'];
+    return Math.round(BASE_MASTERY * INTENSITY_MASTERY[plan.intensity] * grade * (breakthrough ? 2 : 1) * (plan.scope === 'unit' ? 0.7 : 1));
+  }
+
+  private baseXp(state: GameState, player: Player, drill: TrainingDrill, plan: TrainingSessionPlan, mentored: boolean): number {
     const team = state.teams.find((candidate) => candidate.id === state.clubId)!;
     const coachingRank = state.manager.perks.coaching ?? 0;
     const coachingAbility = 1 + (state.manager.attributes.coaching - 55) / 500;
@@ -246,20 +380,27 @@ export class TrainingService {
     const planMultiplier = this.planMultiplier(player, drill.focus);
     const personalityMultiplier = player.personality === 'professional' ? 1.08 : player.personality === 'volatile' ? 0.94 : 1;
     return 30 * (1 + team.facilities.trainingGround * 0.18) * coachingAbility * (1 + coachingRank * 0.04) * planMultiplier *
-      personalityMultiplier * INTENSITY_XP[intensity] * (scope === 'unit' ? 0.55 : 1);
+      personalityMultiplier * INTENSITY_XP[plan.intensity] * (plan.scope === 'unit' ? 0.55 : 1) * GRADE_MULTIPLIER[plan.grade ?? 'B'] * (mentored ? MENTORING_XP : 1);
   }
 
-  private growthChance(player: Player, focus: AttributeKey, facility: number, scope: TrainingScope, youthDevelopment: number): number {
+  private growthChance(player: Player, focus: AttributeKey, facility: number, plan: TrainingSessionPlan, youthDevelopment: number): number {
     const chance = 0.18 + facility * 0.06 + Math.max(-.03, Math.min(.08, (youthDevelopment - 55) / 400)) + (this.planMultiplier(player, focus) > 1 ? 0.08 : 0);
-    return Math.min(0.72, chance * (scope === 'unit' ? 0.65 : 1));
+    const grade: TrainingGrade = plan.grade ?? 'B';
+    return Math.min(0.72, chance * (plan.scope === 'unit' ? 0.65 : 1) * (grade === 'B' ? 1 : GRADE_MULTIPLIER[grade]));
   }
 
-  private injuryChance(intensity: TrainingIntensity, medicalLevel: number): number {
-    return INTENSITY_INJURY[intensity] * Math.max(0.55, 1 - (medicalLevel - 1) * 0.08);
+  /** Base 5 %, better grounds and a driven character make it likelier. */
+  private breakthroughChance(player: Player, facility: number): number {
+    return Math.min(0.25, 0.05 + facility * 0.01 + (player.personality === 'driven' ? 0.04 : 0));
   }
 
-  private fitnessCost(scope: TrainingScope, intensity: TrainingIntensity): number {
-    return Math.round(INTENSITY_FITNESS[intensity] * (scope === 'unit' ? 0.75 : 1));
+  private injuryChance(drill: TrainingDrill, intensity: TrainingIntensity, medicalLevel: number, loadRatio: number): number {
+    const base = INTENSITY_INJURY[intensity] * (drill.injuryRisk ?? 1) * Math.max(0.55, 1 - (medicalLevel - 1) * 0.08);
+    return Math.min(0.5, base * loadRiskFactor(loadRatio));
+  }
+
+  private fitnessCost(drill: TrainingDrill, scope: TrainingScope, intensity: TrainingIntensity): number {
+    return Math.round(INTENSITY_FITNESS[intensity] * (drill.fitnessCost ?? 1) * (scope === 'unit' ? 0.75 : 1));
   }
 
   private planMultiplier(player: Player, focus: AttributeKey): number {
@@ -272,10 +413,20 @@ export class TrainingService {
   }
 
   private isPositionFocus(player: Player, focus: AttributeKey): boolean {
-    if (player.positionGroup === 'GK') return focus === 'goalkeeping';
-    if (player.positionGroup === 'DEF') return ['defending', 'physical', 'pace'].includes(focus);
-    if (player.positionGroup === 'MID') return ['passing', 'dribbling', 'stamina'].includes(focus);
-    return ['shooting', 'pace', 'dribbling'].includes(focus);
+    return this.positionFocus(player).includes(focus);
+  }
+
+  private positionFocus(player: Player): AttributeKey[] {
+    if (player.positionGroup === 'GK') return ['goalkeeping'];
+    if (player.positionGroup === 'DEF') return ['defending', 'physical', 'pace'];
+    if (player.positionGroup === 'MID') return ['passing', 'dribbling', 'stamina'];
+    return ['shooting', 'pace', 'dribbling'];
+  }
+
+  private recompute(player: Player): void {
+    player.overall = computeOverall(player.attributes, player.positionGroup);
+    player.potential = Math.max(player.potential, player.overall);
+    player.marketValue = marketValueFor(player.overall, player.age, player.potential);
   }
 
   private sessionSeed(state: GameState, clubId: string, slot: number): number {

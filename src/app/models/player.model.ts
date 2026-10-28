@@ -77,6 +77,26 @@ export interface PlayerMedicalState {
   recurrenceUntilWeek: number | null;
 }
 
+/** A short-lived bonus earned in training; it plays in the next match and then expires. */
+export interface TrainingBuff {
+  drillId: string;
+  effects: EffectSpec[];
+  /** Season and week the session took place. */
+  season: number;
+  week: number;
+}
+
+/** Long-term training memory of a player. Created on first use, so older saves need no migration. */
+export interface PlayerTrainingState {
+  /** Mastery per attribute, 0-100. 100 unlocks the attribute's signature trait. */
+  mastery: Partial<Record<AttributeKey, number>>;
+  /** Training load of the last completed weeks, oldest first (at most four). */
+  load: number[];
+  /** Load collected so far in the running week. */
+  weekLoad: number;
+  buffs: TrainingBuff[];
+}
+
 export interface Player {
   id: string;
   firstName: string;
@@ -109,6 +129,8 @@ export interface Player {
   talentRanks: Record<string, number>;
   personality: PlayerPersonality;
   personalGoal: PersonalGoal;
+  /** Mastery, load history and match buffs from the training camp. */
+  training?: PlayerTrainingState;
 
   // Condition & psychology (0-100 unless noted)
   morale: number;

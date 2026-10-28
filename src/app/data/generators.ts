@@ -9,7 +9,7 @@ import {
 } from '../models/player.model';
 import { Team } from '../models/team.model';
 import { League, Fixture } from '../models/league.model';
-import { GameState, ManagerProfile, SAVE_VERSION, TacticalPhilosophy, defaultSettings } from '../models/game.model';
+import { GameState, ManagerProfile, SAVE_VERSION, TacticalPhilosophy, defaultSettings, emptyTrainingWeek } from '../models/game.model';
 import { emptyTransferState } from '../models/transfer.model';
 import { defaultFacilities } from '../models/team.model';
 import { defaultTactics } from '../models/tactics.model';
@@ -443,7 +443,7 @@ export function createNewGame(opts: NewGameOptions): GameState {
     },
     manager: ownManager,
     managers: aiManagers,
-    trainingWeek: { season: 1, week: 1, slotsUsed: 0, maxSlots: 3, completedSessions: [] },
+    trainingWeek: emptyTrainingWeek(1, 1),
     objectives: [],
     transfers: emptyTransferState(1, 1),
     world: worldBlueprint.world,

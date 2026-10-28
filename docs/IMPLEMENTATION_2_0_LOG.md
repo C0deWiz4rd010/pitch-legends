@@ -488,3 +488,19 @@ Traits, Talente, Form, Moral und Positionsvertrautheit wirken jetzt im 60‑Hz�
 
 Offen: Die Hooks selbst haben noch keine Quellen außer Traits; Signaturen (Phase 4), Quirks (Phase 5) und Trainings‑Buffs (Phase 2) hängen sich hier ein. `collisions.ts` liest die Körpermasse weiterhin roh (bewusst, nicht situativ).
 
+## Phase 2 – Training 2.0 „Das Trainingslager“ (Legends Reborn, 28.10.2026)
+
+- **Drills:** 15 statt 9 (`data/training-drills.ts`). Jeder Drill hat Primär‑ und Nebenattribut sowie einen **Match‑Buff** für das nächste Spiel, der über die Effekt‑Pipeline läuft (`source.kind = 'training'`). Neu: Rondo, Standardsituationen, Pressing‑Jagd, Kopfballpendel, Reflexwand, Videoanalyse (keine Last).
+- **Durchbruch:** 5 % + 1 % je Trainingsgelände‑Stufe (+4 % bei `driven`) auf +2 statt +1; verdoppelt die Meisterschaft.
+- **Meisterschaft:** 0–100 je Attribut (`player.training.mastery`). 25 gibt 50 XP, 50 einen Skillpunkt, 100 schaltet den Attribut‑Trait ohne Skillpunkte frei.
+- **Belastungssteuerung:** Wochenlast (leicht 1 / normal 2 / intensiv 3,5), Historie über 4 Wochen, Verhältnis akut:chronisch bestimmt Ampel (≤1,3 grün, ≤1,6 gelb, sonst rot) und Verletzungsrisiko (bis ×2,5). Die harte Regel „intensiv erst ab Fitness 55“ bleibt.
+- **Mentoring:** Senior (ab 29 Jahren, Level 12) plus Junior (bis 21) in einer Gruppeneinheit: +20 % XP für den Junior.
+- **Trainingslager‑Ereignisse:** 8 Ereignisse mit zwei Optionen, deterministisch aus Verein/Saison/Woche; Wahl in `trainingWeek.eventChoice`, Kosten werden gegen die Vereinskasse geprüft.
+- **Note einer selbst gespielten Einheit** (`plan.grade` S/A/B/C, Faktor 1,5 / 1,25 / 1 / 0,8) ist im Service und in der Vorschau umgesetzt.
+- **KI‑Vereine:** `simulateAiTrainingWeek` (Spieler unter 27 gewinnen mit ca. 1,5–3 % pro Woche einen Punkt) und Wochenabschluss `rollWeek` in `season.service.ts`.
+- **UI:** Trainingsseite zeigt Buffs, Nebeneffekt, Durchbruch‑ und Meisterschaftsprognose, Lastampel pro Einheit und Spieler, Ereigniskarte und Ergebnis‑Badges. Im Browser (Desktop, 1024×768 und 1440×900) durchgespielt.
+- **Kompatibilität:** Alle neuen Spielerfelder sind optional und werden beim ersten Gebrauch angelegt, daher keine neue Save‑Version (Save v7 folgt in Phase 8).
+- Tests: 252 (13 neu in `training-v3.spec.ts`), Build und Stil‑Check grün.
+
+Offen: Das Mini‑Spiel vor der Einheit (Note aus `challenges.ts`/`practice.ts`) ist noch nicht in der UI verdrahtet; die Vererbung von Quirks durch Mentoren kommt mit Phase 5; die Meisterschafts‑Ringe auf der Spielerakte mit Phase 7. Die Playwright‑E2E‑Tests konnten lokal nicht laufen, weil die Browser nicht installiert sind (`npx playwright install` fehlt).
+

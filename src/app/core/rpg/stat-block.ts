@@ -76,6 +76,11 @@ export function buildStatBlock(player: Player, context: StatContext = {}): StatB
       if (isFlatBonus(effect)) raw[effect.hook as AttributeKey] += effect.value;
     }
   }
+  for (const buff of player.training?.buffs ?? []) {
+    for (const effect of buff.effects) {
+      if (isFlatBonus(effect)) raw[effect.hook as AttributeKey] += effect.value;
+    }
+  }
   for (const [id, rank] of Object.entries(player.talentRanks ?? {})) {
     const talent = getTalent(id);
     if (!talent || rank <= 0) continue;
@@ -89,6 +94,11 @@ export function buildStatBlock(player: Player, context: StatContext = {}): StatB
     const trait = getTrait(id);
     if (!trait?.effects) continue;
     for (const effect of trait.effects) if (!isFlatBonus(effect)) (mods[effect.hook] ??= []).push({ ...effect, source: { kind: 'trait', id } });
+  }
+  for (const buff of player.training?.buffs ?? []) {
+    for (const effect of buff.effects) {
+      if (!isFlatBonus(effect)) (mods[effect.hook] ??= []).push({ ...effect, source: { kind: 'training', id: buff.drillId } });
+    }
   }
   return {
     playerId: player.id, base, mods, state,

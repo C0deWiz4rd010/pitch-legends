@@ -1,16 +1,19 @@
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
+import { acuteChronicRatio, loadZone, LoadZone } from '../../core/rpg/training-rules';
 import { GameStateService } from '../../core/services/game-state.service';
 import { I18nService } from '../../core/services/i18n.service';
 import {
   TRAINING_DRILLS,
   TrainingDrill,
   TrainingExecutionResult,
+  TrainingPlayerPreview,
   TrainingService,
 } from '../../core/services/training.service';
 import { PositionGroup } from '../../models/enums';
 import {
   TrainingIntensity,
   TrainingScope,
+  TrainingPlayerResult,
   TrainingSessionPlan,
   TrainingSessionResult,
 } from '../../models/game.model';
@@ -69,6 +72,10 @@ export class TrainingPage {
     const state = this.gs.game();
     return state ? this.training.preview(state, this.plans()) : { valid: false, errors: ['game-missing'], sessions: [] };
   });
+  protected readonly campView = computed(() => {
+    const state = this.gs.game();
+    return state ? this.training.campEvent(state) : null;
+  });
   protected readonly completed = computed(() => this.gs.game()?.trainingWeek.completedSessions ?? []);
   protected readonly squad = computed(() => {
     const filter = this.playerFilter();
@@ -83,6 +90,52 @@ export class TrainingPage {
   });
 
   protected text(de: string, en: string): string { return this.i18n.pick(de, en); }
+
+  protected pair(value: readonly [string, string]): string { return this.i18n.pick(value[0], value[1]); }
+
+  protected campBody(): string {
+    const view = this.campView();
+    return view ? this.pair(view.event.body).replace('{city}', view.city) : '';
+  }
+
+  protected canAffordCamp(option: number): boolean {
+    const state = this.gs.game();
+    return !!state && this.training.canAffordOption(state, option === 1 ? 1 : 0);
+  }
+
+  protected chooseCamp(option: number): void {
+    let outcome: { ok: boolean; error?: string } = { ok: false };
+    this.gs.mutate((draft) => outcome = this.training.resolveCampEvent(draft, option === 1 ? 1 : 0));
+    this.feedback.set(outcome.ok ? this.text('Entscheidung getroffen.', 'Decision made.') : this.text('Das kannst du dir gerade nicht leisten.', 'You cannot afford that right now.'));
+  }
+
+  /** Traffic light of the current weekly load of a player (nothing planned). */
+  protected zoneOf(player: Player): LoadZone {
+    return loadZone(acuteChronicRatio(player));
+  }
+
+  protected zoneLabel(zone: LoadZone): string {
+    return ({ green: this.text('Belastung ok', 'Load fine'), yellow: this.text('Belastung hoch', 'Load high'), red: this.text('Überlastung', 'Overload') })[zone];
+  }
+
+  protected firstPlayerPreview(plan: TrainingSessionPlan): TrainingPlayerPreview | undefined {
+    return this.sessionPreview(plan)?.players[0];
+  }
+
+  /** Short badges for the standout moments of a session result. */
+  protected highlights(result: TrainingPlayerResult): string[] {
+    const badges: string[] = [];
+    if (result.breakthrough) badges.push(this.text('DURCHBRUCH +2', 'BREAKTHROUGH +2'));
+    if (result.masteryTrait) badges.push(this.text('TRAIT FREIGESCHALTET', 'TRAIT UNLOCKED'));
+    else if (result.masteryMilestone === 50) badges.push(this.text('MEISTERSCHAFT 50: +1 SP', 'MASTERY 50: +1 SP'));
+    else if (result.masteryMilestone === 25) badges.push(this.text('MEISTERSCHAFT 25: +50 XP', 'MASTERY 25: +50 XP'));
+    if (result.mentored) badges.push(this.text('MENTOR', 'MENTORED'));
+    return badges;
+  }
+
+  protected buffText(drill: TrainingDrill): string {
+    return drill.buff ? this.pair(drill.buff.label) : '';
+  }
 
   protected drill(id: string): TrainingDrill | undefined {
     return this.training.drill(id);
@@ -207,6 +260,8 @@ export class TrainingPage {
       finishing: ['Abschluss', 'Finishing'], vision: ['Spielübersicht', 'Vision'], control: ['Ballkontrolle', 'Close control'],
       tackling: ['Zweikampf', 'Tackling'], sprints: ['Sprints', 'Sprints'], strength: ['Kraft', 'Strength'],
       endurance: ['Ausdauer', 'Endurance'], handling: ['Torwarttraining', 'Shot stopping'], recovery: ['Regeneration', 'Recovery'],
+      rondo: ['Rondo', 'Rondo'], setpieces: ['Standardsituationen', 'Set pieces'], pressing: ['Pressing-Jagd', 'Pressing hunt'],
+      headers: ['Kopfballpendel', 'Aerial duels'], reflexwall: ['Reflexwand', 'Reflex wall'], video: ['Videoanalyse', 'Video analysis'],
     };
     const label = labels[drill.id] ?? [drill.name, drill.name];
     return this.text(label[0], label[1]);
@@ -219,6 +274,9 @@ export class TrainingPage {
       sprints: ['Antritt, Höchsttempo und explosive Läufe.', drill.description], strength: ['Robustheit, Balance und Kopfballduelle.', drill.description],
       endurance: ['Belastbarkeit für intensive Spielphasen.', drill.description], handling: ['Reflexe, Fangsicherheit und Stellungsspiel.', drill.description],
       recovery: ['Aktive Erholung: +30 Fitness, ohne XP oder Risiko.', drill.description],
+      rondo: ['Ein-Kontakt-Passspiel auf engem Raum.', drill.description], setpieces: ['Freistöße, Ecken und Elfmeter im Wiederholungsmodus.', drill.description],
+      pressing: ['Ballverlust sofort in Ballgewinn verwandeln.', drill.description], headers: ['Kopfbälle nach Flanken und Ecken, vorn und hinten.', drill.description],
+      reflexwall: ['Schüsse aus kurzer Distanz für Torhüter.', drill.description], video: ['Gegner und eigene Fehler analysieren, ohne körperliche Last.', drill.description],
     };
     const label = labels[drill.id] ?? [drill.description, drill.description];
     return this.text(label[0], label[1]);

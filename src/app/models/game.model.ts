@@ -72,7 +72,11 @@ export interface TrainingSessionPlan {
   scope: TrainingScope;
   intensity: TrainingIntensity;
   targetIds: string[];
+  /** Result of the optional self-played drill; scales XP, growth and mastery. Omitted counts as B. */
+  grade?: TrainingGrade;
 }
+
+export type TrainingGrade = 'S' | 'A' | 'B' | 'C';
 
 export interface TrainingPlayerResult {
   playerId: string;
@@ -80,6 +84,18 @@ export interface TrainingPlayerResult {
   fitnessDelta: number;
   attributeGained: AttributeKey | null;
   injuredWeeks: number;
+  /** A breakthrough gave +2 instead of +1. */
+  breakthrough?: boolean;
+  masteryAttribute?: AttributeKey;
+  masteryGained?: number;
+  /** Trait id unlocked by reaching 100 mastery. */
+  masteryTrait?: string;
+  /** Mastery milestone reached (25 or 50) with its reward. */
+  masteryMilestone?: 25 | 50;
+  /** Label of the match buff earned. */
+  buffLabel?: [string, string];
+  /** The junior of a mentoring pair. */
+  mentored?: boolean;
 }
 
 export interface TrainingSessionResult {
@@ -94,6 +110,12 @@ export interface TrainingWeekState {
   slotsUsed: number;
   maxSlots: 3;
   completedSessions: TrainingSessionResult[];
+  /** Option picked for this week's camp event (null/omitted while open). */
+  eventChoice?: 0 | 1 | null;
+}
+
+export function emptyTrainingWeek(season: number, week: number): TrainingWeekState {
+  return { season, week, slotsUsed: 0, maxSlots: 3, completedSessions: [], eventChoice: null };
 }
 
 export interface CareerObjective {

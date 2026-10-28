@@ -1,10 +1,11 @@
 import { Injectable, inject } from '@angular/core';
-import { GameState, NewsItem } from '../../models/game.model';
+import { GameState, NewsItem, emptyTrainingWeek } from '../../models/game.model';
 import { Team } from '../../models/team.model';
 import { MatchResult } from '../../models/match.model';
 import { CupTie } from '../../models/career.model';
 import { GameStateService } from './game-state.service';
 import { MatchEngineService } from './match-engine.service';
+import { TrainingService } from './training.service';
 import { RpgService } from './rpg.service';
 import { Rng, clamp, uid } from '../util';
 import { playerName } from '../ratings';
@@ -30,6 +31,7 @@ export class SeasonService {
   private readonly gs = inject(GameStateService);
   private readonly engine = inject(MatchEngineService);
   private readonly rpg = inject(RpgService);
+  private readonly training = inject(TrainingService);
 
   /** Simulate the player's upcoming fixture and return the result (not yet committed). */
   simulatePlayerMatch(): MatchResult | null {
@@ -96,9 +98,10 @@ export class SeasonService {
       this.playCupRound(draft, week);
 
       this.weeklyUpkeep(draft);
+      this.training.rollWeek(draft);
       if (draft.league.currentWeek <= draft.league.totalWeeks) draft.league.currentWeek++;
       for (const league of draft.otherLeagues) league.currentWeek = draft.league.currentWeek;
-      draft.trainingWeek = { season: draft.league.season, week: draft.league.currentWeek, slotsUsed: 0, maxSlots: 3, completedSessions: [] };
+      draft.trainingWeek = emptyTrainingWeek(draft.league.season, draft.league.currentWeek);
       processTransferWeek(draft);
       this.weeklyStories(draft);
       for (const assignment of processScoutAssignments(draft)) {
@@ -467,7 +470,7 @@ export class SeasonService {
 
       const season = draft.league.season + 1;
       scheduleSeason(draft, season);
-      draft.trainingWeek = { season, week: 1, slotsUsed: 0, maxSlots: 3, completedSessions: [] };
+      draft.trainingWeek = emptyTrainingWeek(season, 1);
       returnSeasonLoans(draft);
       draft.transfers.season = season;
       draft.transfers.week = 1;
