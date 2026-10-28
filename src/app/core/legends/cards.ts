@@ -1,3 +1,5 @@
+import { dnaForRarity } from '../rpg/player-dna';
+import { Rarity } from '../../data/rarity';
 import { generatePlayer } from '../../data/generators';
 import { extendWorldWithDivision, generateWorld, uniqueShortName } from '../../data/world-generator';
 import { Position } from '../../models/enums';
@@ -7,6 +9,8 @@ import { Rng, clamp } from '../util';
 import { createPlayerVisualIdentity, hash32 } from '../visual-identity';
 
 export const TIER_ORDER: CardTier[] = ['bronze', 'silver', 'gold', 'legend'];
+/** A card's tier fixes the rarity of its player, so signatures and nicknames follow the tier. */
+export const TIER_RARITY: Record<CardTier, Rarity> = { bronze: 'common', silver: 'rare', gold: 'epic', legend: 'legendary' };
 export const TIER_RANGES: Record<CardTier, [number, number]> = { bronze: [50, 64], silver: [65, 74], gold: [75, 84], legend: [86, 93] };
 /** Distinct players per tier; drawing the same one twice gives a duplicate. */
 export const TIER_POOL: Record<CardTier, number> = { bronze: 220, silver: 160, gold: 110, legend: 24 };
@@ -83,12 +87,13 @@ function basePlayer(seed: number, tier: CardTier, index: number, position?: Posi
   }
   player.id = `lp-${tier}-${index}${position ? `-${position}` : ''}`;
   player.visuals = createPlayerVisualIdentity(`${seed}|${player.id}`);
+  player.dna = dnaForRarity(player, TIER_RARITY[tier]);
   player.potential = Math.max(player.potential, player.overall);
   player.fitness = 100;
   player.morale = 75;
   player.injuryWeeks = 0;
   player.contractWeeks = 999;
-  player.marketValue = marketValueFor(player.overall, player.age, player.potential);
+  player.marketValue = marketValueFor(player.overall, player.age, player.potential, player.dna);
   player.salary = weeklySalaryFor(player);
   return player;
 }

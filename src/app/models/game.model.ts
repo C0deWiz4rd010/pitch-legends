@@ -170,7 +170,7 @@ export function defaultSettings(): GameSettings {
   };
 }
 
-export const SAVE_VERSION = 6;
+export const SAVE_VERSION = 7;
 
 export interface GameState {
   version: number;

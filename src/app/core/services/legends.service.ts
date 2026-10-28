@@ -1,3 +1,5 @@
+import { TIER_RARITY } from '../legends/cards';
+import { dnaForRarity } from '../rpg/player-dna';
 import { Injectable, computed, inject, signal } from '@angular/core';
 import { Router } from '@angular/router';
 import { LegendsState, PackId } from '../../models/legends.model';
@@ -23,6 +25,15 @@ export interface LegendsMatchReport {
 }
 
 /** The Legends Team mode: its own save and currency, never connected to the career. */
+/** Cards from before DNA existed (or with a changed tier mapping) get the DNA of their tier. Idempotent. */
+export function ensureCardDna(state: LegendsState): void {
+  for (const card of state.cards) {
+    const rarity = TIER_RARITY[card.tier];
+    if (card.player.dna?.rarity === rarity && card.player.dna.signatures && card.player.dna.quirks) continue;
+    card.player.dna = dnaForRarity(card.player, rarity);
+  }
+}
+
 @Injectable({ providedIn: 'root' })
 export class LegendsService {
   private readonly exhibitions = inject(ExhibitionService);
@@ -42,6 +53,7 @@ export class LegendsService {
       const parsed = JSON.parse(raw) as LegendsState;
       if (parsed?.version !== 1 || !Array.isArray(parsed.cards) || !parsed.squad) return null;
       ensureTasks(parsed);
+      ensureCardDna(parsed);
       return parsed;
     } catch {
       return null;

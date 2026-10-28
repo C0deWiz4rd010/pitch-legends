@@ -91,7 +91,7 @@ function generateFreeAgents(game: GameState, count: number): void {
     const player = generatePlayer(rng, slot.position, slot.alts, target, rng.int(2, 39));
     player.id = deterministicId('free', game.league.id, game.league.season, index);
     player.visuals = createPlayerVisualIdentity(player.id);
-    player.marketValue = marketValueFor(player.overall, player.age, player.potential);
+    player.marketValue = marketValueFor(player.overall, player.age, player.potential, player.dna);
     player.salary = weeklySalaryFor(player);
     player.contractWeeks = 0;
     game.transfers.freeAgents.push(player);

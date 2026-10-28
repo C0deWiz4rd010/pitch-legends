@@ -1,16 +1,21 @@
 import { Injectable, computed, effect, inject, signal } from '@angular/core';
+import { PersistentStore } from '../storage/persistent-store';
 import { GameStateService } from './game-state.service';
 import { defaultSettings } from '../../models/game.model';
 import { FootballContact, MatchEvent } from '../../models/match.model';
 
 type Channel = 'musicVolume' | 'sfxVolume' | 'crowdVolume';
+const VOLUME_KEY = 'pitch-legends:audio-volumes:v1';
 
 /** Original, locally synthesized football audio with independent mixer channels. */
 @Injectable({ providedIn: 'root' })
 export class AudioService {
   private readonly gs=inject(GameStateService);
   private readonly standalone=signal(defaultSettings());
-  readonly settings=computed(()=>this.gs.game()?.settings ?? this.standalone());
+  private readonly store=inject(PersistentStore);
+  /** Volumes live in the preferences, not in the career: dragging a slider no longer copies the whole game state. */
+  private readonly volumes=signal<Partial<Record<Channel,number>>>(this.loadVolumes());
+  readonly settings=computed(()=>({...(this.gs.game()?.settings ?? this.standalone()), ...this.volumes()}));
   private context:AudioContext|null=null;
   private musicTimer:ReturnType<typeof setInterval>|null=null;
   private musicStep=0;
@@ -24,9 +29,20 @@ export class AudioService {
   constructor() { effect(()=>{this.settings();this.updateCrowdGain();}); }
   setVolume(channel:Channel, value:number):void {
     const level=Number.isFinite(value)?Math.max(0,Math.min(1,value)):0;
-    if(this.gs.game()) this.gs.mutate(game=>{game.settings[channel]=level;});
-    else this.standalone.update(settings=>({...settings,[channel]:level}));
+    this.volumes.update(volumes=>({...volumes,[channel]:level}));
+    void this.store.set(VOLUME_KEY,JSON.stringify(this.volumes()));
     this.updateCrowdGain();
+  }
+  private loadVolumes():Partial<Record<Channel,number>> {
+    try {
+      const parsed=JSON.parse(this.store.get(VOLUME_KEY) ?? '{}') as Record<string,unknown>;
+      const result:Partial<Record<Channel,number>>={};
+      for(const channel of ['musicVolume','sfxVolume','crowdVolume'] as const) {
+        const value=parsed[channel];
+        if(typeof value==='number' && Number.isFinite(value)) result[channel]=Math.max(0,Math.min(1,value));
+      }
+      return result;
+    } catch { return {}; }
   }
   toggleSound():void {
     if(this.gs.game()) this.gs.mutate(game=>{game.settings.soundEnabled=!game.settings.soundEnabled;});

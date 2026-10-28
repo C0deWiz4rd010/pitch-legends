@@ -1,3 +1,4 @@
+import { SAVE_VERSION } from './models/game.model';
 import { TestBed } from '@angular/core/testing';
 import { vi } from 'vitest';
 import { createNewGame } from './data/generators';
@@ -153,7 +154,7 @@ describe('Career V2: divisions, cup, finances and the season cycle', () => {
     game.league.currentWeek = 5;
 
     const migrated = saves.parseImport(JSON.stringify(game));
-    expect(migrated.version).toBe(6);
+    expect(migrated.version).toBe(SAVE_VERSION);
     expect(migrated.teams).toHaveLength(24);
     expect(migrated.otherLeagues[0].fixtures.filter((fixture) => fixture.week < 5).every((fixture) => fixture.played)).toBe(true);
     expect(migrated.cup.rounds[0].week).toBeGreaterThanOrEqual(5);

@@ -93,3 +93,25 @@ export const MENTORING_XP = 1.2;
 export function isAttribute(value: string): value is AttributeKey {
   return (ATTRIBUTE_KEYS as string[]).includes(value);
 }
+
+/** Attributes a position group lives from; their mastery is what a veteran is assumed to have trained. */
+const CORE_FOCUS: Record<PositionGroup, AttributeKey[]> = {
+  GK: ['goalkeeping'],
+  DEF: ['defending', 'physical', 'pace'],
+  MID: ['passing', 'dribbling', 'stamina'],
+  ATT: ['shooting', 'pace', 'dribbling'],
+};
+
+/**
+ * Training state for a player from a save that had none: mastery in the position's core attributes is
+ * estimated from level and attribute (at most 60, so nobody gets a mastery trait for free), the load
+ * history starts neutral.
+ */
+export function estimateTraining(player: Player): PlayerTrainingState {
+  const mastery: Partial<Record<AttributeKey, number>> = {};
+  for (const key of CORE_FOCUS[player.positionGroup]) {
+    mastery[key] = clamp(Math.round(player.level * 2 + Math.max(0, player.attributes[key] - 55) * 0.8), 0, 60);
+  }
+  return { mastery, load: [...DEFAULT_LOAD], weekLoad: 0, buffs: [] };
+}
+

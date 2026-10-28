@@ -22,7 +22,8 @@ class FakeAudioContext {
 }
 
 describe('Football presentation',()=>{
-  afterEach(()=>{vi.useRealTimers();vi.unstubAllGlobals();TestBed.resetTestingModule();});
+  beforeEach(()=>localStorage.clear());
+  afterEach(()=>{vi.useRealTimers();vi.unstubAllGlobals();TestBed.resetTestingModule();localStorage.clear();});
   it('keeps music audible when effects are muted, and honors the master switch',()=>{
     vi.useFakeTimers();vi.stubGlobal('AudioContext',FakeAudioContext);FakeAudioContext.oscillators=0;
     TestBed.configureTestingModule({providers:[{provide:GameStateService,useValue:{game:()=>null}}]});

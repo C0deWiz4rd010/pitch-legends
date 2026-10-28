@@ -1,3 +1,4 @@
+import { estimateTraining } from '../rpg/training-rules';
 import { ensureGameDna } from '../rpg/player-dna';
 import { Injectable, inject } from '@angular/core';
 import { PersistentStore, SaveResult, StoreOperation } from '../storage/persistent-store';
@@ -140,7 +141,7 @@ export class SaveService {
   }
 
   private upgrade(parsed: GameState): GameState {
-    const game = this.migrateToV6(this.migrateToV5(parsed));
+    const game = this.migrateToV7(this.migrateToV6(this.migrateToV5(parsed)));
     game.settings = { ...defaultSettings(), ...game.settings };
     game.trainingWeek = this.normaliseTrainingWeek(game.trainingWeek);
     ensureGameDna(game);
@@ -227,6 +228,21 @@ export class SaveService {
     game.board ??= { confidence: 60, warnedSeason: null, expectedPosition: game.objectives.find((objective) => objective.type === 'league-position')?.target ?? 6, jobOffer: null };
     game.scouting ??= [];
     game.academy ??= { season, prospects: [] };
+    game.version = 6;
+    return game;
+  }
+
+  /**
+   * Version 7: the RPG layer. Every player gets his permanent DNA (rarity, nickname, signatures, quirks,
+   * chronicle) from his id, the managed club's players get a training state whose mastery is estimated from
+   * level and attributes, and the mythic cap is enforced. Existing values are never overwritten, so running it
+   * again changes nothing.
+   */
+  private migrateToV7(game: GameState): GameState {
+    ensureGameDna(game);
+    const own = game.teams.find((team) => team.id === game.clubId);
+    for (const player of own?.players ?? []) if (!player.training) player.training = estimateTraining(player);
+    game.trainingWeek.eventChoice ??= null;
     game.version = SAVE_VERSION;
     return game;
   }
@@ -271,7 +287,7 @@ export class SaveService {
   private validateBase(value: unknown): value is GameState {
     if (!value || typeof value !== 'object') return false;
     const g = value as Partial<GameState>;
-    if (![4, 5, SAVE_VERSION].includes(g.version ?? -1) || typeof g.clubId !== 'string') return false;
+    if (![4, 5, 6, SAVE_VERSION].includes(g.version ?? -1) || typeof g.clubId !== 'string') return false;
     if (!Array.isArray(g.teams) || !g.teams.length || !g.league || !Array.isArray(g.league.fixtures)) return false;
     if (!g.settings || !['de', 'en'].includes(g.settings.locale) || ![3, 5, 8].includes(g.settings.matchDuration)) return false;
     if (!g.manager || !g.trainingWeek || !Array.isArray(g.objectives) || !g.transfers) return false;

@@ -1,3 +1,4 @@
+import { SAVE_VERSION } from './models/game.model';
 import { TestBed } from '@angular/core/testing';
 import { IDBFactory, IDBObjectStore } from 'fake-indexeddb';
 import { INDEXED_DB, IDB_NAME, PersistentStore, StorageArea } from './core/storage/persistent-store';
@@ -158,7 +159,7 @@ describe('Platform: IndexedDB saves, failures and recovery', () => {
     expect(result.status).toBe('ok');
     if (result.status !== 'ok') return;
     expect(result.migratedFrom).toBe(5);
-    expect(result.state.version).toBe(6);
+    expect(result.state.version).toBe(SAVE_VERSION);
     expect(result.state.clubId).toBe(legacy.clubId);
     expect(result.state.manager.id).toBe(legacy.manager.id);
     const before = legacy.teams.flatMap((team) => team.players.map((player) => player.id)).sort();
@@ -169,7 +170,7 @@ describe('Platform: IndexedDB saves, failures and recovery', () => {
     await store.flush();
     expect(store.get(migrationBackupKey(5))).toBe(raw);
     expect(store.has('pitch-legends:save:v5')).toBe(false);
-    expect(JSON.parse(String(await onDisk(factory, 'career', CAREER_KEY))).version).toBe(6);
+    expect(JSON.parse(String(await onDisk(factory, 'career', CAREER_KEY))).version).toBe(SAVE_VERSION);
     expect(await onDisk(factory, 'backups', migrationBackupKey(5))).toBe(raw);
   });
 

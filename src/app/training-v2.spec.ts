@@ -1,3 +1,4 @@
+import { SAVE_VERSION } from './models/game.model';
 import { TestBed } from '@angular/core/testing';
 import { createNewGame } from './data/generators';
 import { TrainingSessionPlan } from './models/game.model';
@@ -92,6 +93,6 @@ describe('Training camp V2', () => {
     delete (game.trainingWeek as unknown as { completedSessions?: unknown }).completedSessions;
     const parsed = TestBed.inject(SaveService).parseImport(JSON.stringify(game));
     expect(parsed.trainingWeek.completedSessions).toEqual([]);
-    expect(parsed.version).toBe(6);
+    expect(parsed.version).toBe(SAVE_VERSION);
   });
 });

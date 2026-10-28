@@ -65,7 +65,7 @@ export function developPlayer(player: Player, rng: Rng, growthFactor = 1): void 
   }
   player.overall = computeOverall(player.attributes, player.positionGroup);
   player.potential = Math.max(player.potential, player.overall);
-  player.marketValue = marketValueFor(player.overall, player.age, player.potential);
+  player.marketValue = marketValueFor(player.overall, player.age, player.potential, player.dna);
 }
 
 export function addCareerStats(player: Player, teamShortName: string): void {

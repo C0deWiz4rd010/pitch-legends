@@ -1,3 +1,4 @@
+import { SAVE_VERSION } from './models/game.model';
 import { TestBed } from '@angular/core/testing';
 import { createNewGame } from './data/generators';
 import { recommendedContract } from './core/transfer-engine';
@@ -135,7 +136,7 @@ describe('Transfer market V2', () => {
     expect(saves.load()).toEqual({ status: 'empty' });
     expect(localStorage.getItem('pitch-legends:save:v3')).toBeTruthy();
     saves.save(game);
-    expect(JSON.parse(localStorage.getItem('pitch-legends:save:v6')!).version).toBe(6);
+    expect(JSON.parse(localStorage.getItem('pitch-legends:save:v6')!).version).toBe(SAVE_VERSION);
     expect(localStorage.getItem('pitch-legends:save:v5')).toBeNull();
     expect(localStorage.getItem('pitch-legends:save:v4')).toBeNull();
   });

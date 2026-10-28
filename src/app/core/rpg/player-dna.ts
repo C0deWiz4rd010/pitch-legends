@@ -43,6 +43,14 @@ export function generateDna(player: Pick<Player, 'id' | 'archetype' | 'potential
   return { version: DNA_VERSION, rarity, nickname, signatures: generateSignatures(player, rarity), quirks: generateQuirks(player, rarity), chronicle: [] };
 }
 
+/** DNA with a fixed rarity (Legends cards take theirs from the card tier), still deterministic from the id. */
+export function dnaForRarity(player: Pick<Player, 'id' | 'archetype'>, rarity: Rarity): PlayerDNA {
+  const rng = new Rng(hash32(`${dnaSeed(player.id)}|forced`));
+  const nicknames = NICKNAMES[player.archetype] ?? [];
+  const nickname = atLeast(rarity, AURA_FROM) && nicknames.length ? nicknames[rng.int(0, nicknames.length - 1)] : null;
+  return { version: DNA_VERSION, rarity, nickname, signatures: generateSignatures(player, rarity), quirks: generateQuirks(player, rarity), chronicle: [] };
+}
+
 /** The DNA of a player, or a plain common one for data from before DNA existed and not yet migrated. */
 export function dnaOf(player: Player): PlayerDNA {
   return player.dna ?? { version: DNA_VERSION, rarity: 'common', nickname: null, signatures: [], quirks: [], chronicle: [] };
@@ -91,8 +99,13 @@ export function enforceMythicCap(game: GameState): void {
 /** Rarity of a player is public for the own club and after a scouting report; otherwise it stays a "?". */
 export function rarityKnown(game: GameState, player: Player): boolean {
   if (game.teams.find((team) => team.id === game.clubId)?.players.some((own) => own.id === player.id)) return true;
-  if (game.academy?.prospects.some((prospect) => prospect.id === player.id)) return true;
   return game.transfers.reports.some((report) => report.playerId === player.id);
+}
+
+/** A vague hint of a rarity that is not known yet: nothing, a faint spark (Rare) or a bright one (Epic and better). */
+export function raritySpark(player: Player): 'none' | 'faint' | 'bright' {
+  const rarity = dnaOf(player).rarity;
+  return atLeast(rarity, 'epic') ? 'bright' : rarity === 'rare' ? 'faint' : 'none';
 }
 
 export function rarityRankOf(player: Player): number {

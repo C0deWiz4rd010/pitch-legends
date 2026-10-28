@@ -1,3 +1,4 @@
+import { SAVE_VERSION } from './models/game.model';
 import { TestBed } from '@angular/core/testing';
 import { createNewGame } from './data/generators';
 import { createInjury, applyInjury, advanceInjury, isPlayerAvailable, setRehabPlan } from './core/injury-engine';
@@ -39,7 +40,7 @@ describe('Living world V1.4', () => {
 
     const migrated = TestBed.inject(SaveService).parseImport(raw);
 
-    expect(migrated.version).toBe(6);
+    expect(migrated.version).toBe(SAVE_VERSION);
     expect(migrated.world.cities).toHaveLength(migrated.teams.length);
     expect(migrated.managers).toHaveLength(migrated.teams.length - 1);
     expect(migrated.teams[0].players.find((player) => player.id === injuredId)?.medical.activeInjury?.diagnosisId).toBe('legacy-knock');

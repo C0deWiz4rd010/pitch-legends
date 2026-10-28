@@ -119,7 +119,8 @@ export function generatePlayer(
       : group === 'GK' || group === 'DEF'
         ? [{ type: 'clean-sheets', target: rng.int(4, 9), progress: 0, rewardXp: 220, completed: false }]
         : [{ type: 'assists', target: rng.int(4, 10), progress: 0, rewardXp: 220, completed: false }];
-  const marketValue = marketValueFor(overall, age, potential);
+  const dna = generateDna({ id, archetype, potential });
+  const marketValue = marketValueFor(overall, age, potential, dna);
 
   return {
     id,
@@ -155,7 +156,7 @@ export function generatePlayer(
     salary: weeklySalaryFor({ marketValue, age, overall }),
     contractWeeks: rng.int(40, 160),
     seasonStats: emptySeasonStats(),
-    dna: generateDna({ id, archetype, potential }),
+    dna,
   };
 }
 

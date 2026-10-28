@@ -15,6 +15,8 @@ import { PlayerPortraitComponent } from './player-portrait.component';
     <div class="top"><b>{{ card().player.overall }}</b><span>{{ card().player.position }}</span></div>
     @if (!compact()) { <app-player-portrait [player]="card().player" [team]="team()" [size]="64" /> }
     <strong>{{ card().player.lastName }}</strong>
+    @if (!compact() && nickname()) { <em class="nick">„{{ nickname() }}“</em> }
+    @if (signature()) { <span class="sig" [title]="signature()">✦</span> }
     <small>{{ club()?.short }} · {{ nation() }}</small>
     @if (chemistry() !== null) { <i class="chem" [title]="i18n.pick('Chemie', 'Chemistry')">{{ chemistry() }}</i> }
     @if (duplicate()) { <em class="dup">{{ i18n.pick('DOPPELT', 'DUPLICATE') }}</em> }
@@ -32,6 +34,8 @@ import { PlayerPortraitComponent } from './player-portrait.component';
     strong { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
     small { font-size: 10px; opacity: .85; }
     .chem { position: absolute; top: -8px; right: -8px; min-width: 22px; height: 22px; display: grid; place-items: center; border-radius: 50%; background: var(--accent); color: var(--on-accent); font: 11px var(--font-display); font-style: normal; }
+    .nick { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 10px; font-style: italic; opacity: .9; }
+    .sig { position: absolute; top: 4px; left: 5px; font-size: 11px; }
     .dup { position: absolute; bottom: -8px; left: 50%; transform: translateX(-50%); padding: 2px 6px; background: var(--danger); color: #fff; font: 10px var(--font-display); font-style: normal; }
   `],
 })
@@ -44,6 +48,14 @@ export class LegendsCardComponent {
   readonly duplicate = input(false);
   protected readonly club = computed(() => legendsWorld(this.seed()).clubs.find((club) => club.id === this.card().clubId) ?? null);
   protected readonly team = computed(() => { const club = this.club(); return club ? clubTeam(club) : undefined; });
+  protected readonly nickname = computed(() => {
+    const nick = this.card().player.dna?.nickname;
+    return nick ? this.i18n.pick(nick[0], nick[1]) : '';
+  });
+  protected readonly signature = computed(() => {
+    const first = this.card().player.dna?.signatures?.[0];
+    return first ? this.i18n.pick(first.name[0], first.name[1]) : '';
+  });
   protected readonly nation = computed(() => this.card().nation.slice(0, 3).toUpperCase());
   protected readonly label = computed(() => {
     const card = this.card();

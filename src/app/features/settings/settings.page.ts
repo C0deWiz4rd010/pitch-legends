@@ -24,7 +24,7 @@ export class SettingsPage {
   private readonly router = inject(Router);
   protected readonly i18n = inject(I18nService);
   private readonly rpg = inject(RpgService);
-  private readonly audio = inject(AudioService);
+  protected readonly audio = inject(AudioService);
 
   protected readonly message = signal('');
   protected readonly confirmNew = signal(false);
@@ -71,7 +71,7 @@ export class SettingsPage {
 
   protected setVolume(kind: 'musicVolume' | 'sfxVolume' | 'crowdVolume', event: Event): void {
     const value = Number((event.target as HTMLInputElement).value);
-    this.gs.mutate((draft) => (draft.settings[kind] = Math.max(0, Math.min(1, value))));
+    this.audio.setVolume(kind, value);
     if (kind === 'sfxVolume') this.audio.click();
   }
 

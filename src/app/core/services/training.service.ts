@@ -447,7 +447,7 @@ export class TrainingService {
   private recompute(player: Player): void {
     player.overall = computeOverall(player.attributes, player.positionGroup);
     player.potential = Math.max(player.potential, player.overall);
-    player.marketValue = marketValueFor(player.overall, player.age, player.potential);
+    player.marketValue = marketValueFor(player.overall, player.age, player.potential, player.dna);
   }
 
   private sessionSeed(state: GameState, clubId: string, slot: number): number {

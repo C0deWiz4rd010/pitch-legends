@@ -14,7 +14,7 @@
       @for (prospect of prospects(); track prospect.id) {
         <article class="prospect">
           @if (gs.playerTeam(); as team) { <app-player-portrait [player]="prospect" [team]="team" [size]="56" /> }
-          <div class="who"><b>{{ playerName(prospect) }} <app-rarity-gem [player]="prospect" /></b><small>{{ prospect.position }} · {{ prospect.age }} {{ text('J.', 'y') }} · {{ prospect.nationality }}</small></div>
+          <div class="who"><b>{{ playerName(prospect) }} <app-rarity-gem [player]="prospect" [spark]="true" /></b><small>{{ prospect.position }} · {{ prospect.age }} {{ text('J.', 'y') }} · {{ prospect.nationality }}</small></div>
           <div class="ratings"><span [style.background]="ratingColor(prospect.overall)">{{ prospect.overall }}</span><em>↑ {{ prospect.potential }}</em></div>
           <div class="buttons">
             <button type="button" class="btn btn--primary btn--sm" (click)="promote(prospect.id)">{{ text('HOCHZIEHEN', 'PROMOTE') }}</button>

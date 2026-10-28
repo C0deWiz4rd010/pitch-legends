@@ -262,3 +262,8 @@ Spielspaß wird regelmäßig überprüft. Ein bestandener Build oder eine hohe d
 ## Prioritätskorrektur vom 6. September 2026
 
 Nach der sichtbaren 3D-Umstellung priorisiert der Nutzer ausdrücklich weitere Gameplay-/Animationsarbeit: ruhigere Kamera, beständigere Spielerwahl, glaubhafte Torwart- und Aktionsabläufe. Diese Rückmeldungen werden als zusätzlicher Abnahmeblock vor Phase 8 behandelt. Das Handbuch erhält danach die tatsächliche neue Steuerung und eine moderne interaktive Darstellung. Die Phasen 8–12 bleiben beauftragt; sie werden zugunsten dieser Gameplay-Abnahme zurückgestellt.
+
+## Nachtrag 28.10.2026: RPG-Schicht „Legends Reborn“
+
+Die RPG-Erweiterung (Effekt-Pipeline, Training 2.0, Seltenheit, Signaturen, Quirks, Evolutionen, Spielerakte, Save v7) ist in `RPG_SYSTEM_DESIGN.md` beschrieben, ihr Fortschritt je Phase in `IMPLEMENTATION_2_0_LOG.md`. Sie ergänzt den Masterplan, besonders Phase 9 (Training und Talente erklären, wo ein Attribut im Spiel wirkt), und ersetzt keine seiner Abnahmekriterien.
+

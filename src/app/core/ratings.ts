@@ -1,5 +1,5 @@
 import { AttributeKey, PositionGroup } from '../models/enums';
-import { Player, PlayerAttributes } from '../models/player.model';
+import { Player, PlayerAttributes, PlayerDNA } from '../models/player.model';
 import { Role } from '../models/tactics.model';
 import { getTrait } from '../data/traits';
 import { getTalent } from '../data/talents';
@@ -94,12 +94,20 @@ export function playerName(player: Player): string {
   return `${player.firstName} ${player.lastName}`;
 }
 
-export function marketValueFor(overall: number, age: number, potential: number): number {
+/** Rarer players and evolved signatures are worth more: up to +35 % in total. */
+export function rarityValueFactor(dna?: Pick<PlayerDNA, 'rarity' | 'signatures'>): number {
+  if (!dna) return 1;
+  const base = { common: 1, rare: 1.05, epic: 1.12, legendary: 1.22, mythic: 1.3 }[dna.rarity] ?? 1;
+  const evolved = (dna.signatures ?? []).reduce((sum, signature) => sum + (signature.level - 1) * 0.02, 0);
+  return Math.min(1.35, base + evolved);
+}
+
+export function marketValueFor(overall: number, age: number, potential: number, dna?: Pick<PlayerDNA, 'rarity' | 'signatures'>): number {
   const rating = clamp((overall - 45) / 45, 0, 1);
   const base = 20_000 + Math.pow(rating, 2.25) * 1_800_000;
   const ageFactor = age <= 20 ? 1.08 : age <= 24 ? 1.12 : age <= 28 ? 1 : age <= 31 ? 0.82 : 0.58;
   const potentialFactor = 1 + clamp(potential - overall, 0, 18) * 0.025;
-  return Math.max(15_000, Math.round((base * ageFactor * potentialFactor) / 1000) * 1000);
+  return Math.max(15_000, Math.round((base * ageFactor * potentialFactor * rarityValueFactor(dna)) / 1000) * 1000);
 }
 
 /** Weekly wage target used by squad generation, agents and transfer reserve checks. */
