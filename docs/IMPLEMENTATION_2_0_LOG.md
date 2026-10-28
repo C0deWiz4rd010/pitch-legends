@@ -528,3 +528,16 @@ Offen: Der Partikel-Schweif bei Signatur-Aktivierung (Legendary/Mythic) folgt mi
 
 Offen: Die aktive Mythic-Ultimate (Fokus-Meter, neuer Eingabebefehl, KI-Heuristik) und der Partikel-Schweif sind nicht umgesetzt; Mythic trägt vorerst beide Signaturen mit höchster Stärke. Die Oberfläche (Spielerakte, Tab, Flackern) wurde nach den letzten Änderungen nicht mehr im Browser angesehen, weil der Browser den Dev-Server nicht erreichte; sie ist durch Typecheck, Build und die Tests abgesichert.
 
+## Phase 5 – Quirks und Story (Legends Reborn, 28.10.2026)
+
+- **Quirks** (`data/quirks.ts`): 34 Eigenheiten in sechs Gruppen (Umwelt, Bühne, Psyche, Körper, Sozial, Kurioses), jede mit Vorteil **und** Nachteil. Beispiele: Regenspieler, Derby-Held, Heimkind, Nervenbündel, Comeback-Typ, Gummiband, Glasknochen, Standard-Tüftler. Anzahl nach Rarity (Common 1, Rare 1–2, Epic 2, Legendary 2–3, Mythic 3), deterministisch aus der Spieler-ID, alle zunächst verdeckt. Sie wirken ab dem ersten Spiel, auch verdeckt.
+- **Pipeline:** Quirk-Effekte sind normale Modifier. Neu: `unless` im Effekt (Nachteil „sonst“), Situationen `night`, `clear`, `derby`, `bigMatch`. `MatchConfig.derby` und `bigMatch` setzt die Matchseite (Rivalen des Heimvereins, K.-o.-Spiel). `injuryRisk` wirkt im Training (Gummiband −30 %, Glasknochen +50 %).
+- **Entdecken:** nach je 3 Einsätzen ein weiterer Quirk (`revealByAppearances`), ein Scouting-Bericht deckt den ersten auf. **Wandel:** Nervenbündel → Eisherz (5 Spieler-des-Spiels), Spätzünder → Routinier (40 Einsätze); die Karriere-Summen führen jetzt auch Weiße Westen und MVP-Titel.
+- **Mentoring:** In einer Gruppeneinheit gibt ein Senior (29+, Level 12+) mit 10 % pro Junior einen vererbbaren, aufgedeckten Quirk weiter; der Junior lernt ihn verdeckt und nur bei freiem Slot.
+- **Story:** `DNA.chronicle` (höchstens 40 Zeilen) mit Debüt, erstem Tor, Hattrick, Spieler des Spiels, Verletzung und Comeback, Level 5/10/…, Quirk entdeckt, Quirk gewandelt und Meisterschaft. Die Texte entstehen aus Art und Parametern in der Sprache der Oberfläche. Die Bio (`buildBio`) ist rein berechnet aus Spieler-ID, Heimatstadt der Welt, Jugendverein, Persönlichkeit und Rarity (nichts gespeichert). Beats der Mannschaft (erstes Tor, neue Eigenheit, Wandel) erscheinen als Nachrichten im Dashboard.
+- **UI:** Die Spielerakte zeigt Quirks (verdeckte als „???“ mit Hinweis, nach wie vielen Einsätzen die nächste kommt) und Geschichte (Bio plus Chronik, neueste zuerst).
+- **Kompatibilität:** DNA-Version 3; Alt-DNA erhält ihre Quirks beim Laden (Rarity und Signaturen bleiben), keine neue Save-Version.
+- **Balance** (500 Matches): 2,85 Tore, 65,7 % Pässe, 23,6 % Remis, 46,8 % Heimsiege (Heimkind und Auswärtsfahrer verschieben den Heimvorteil leicht, weiter im Korridor 42–52 %). Matchzeit 444 → 500 ms (+13 %). Tests: 291 (17 neu in `quirks-story.spec.ts`).
+
+Offen: Das Abtrainieren von Quirks gegen Meisterschaft fehlt; Verletzungsrisiko-Quirks wirken nur im Training, nicht bei Kontaktverletzungen im Match; Quirks, die Reisen, Vertragsjahr oder Rückennummer betreffen, wurden nicht aufgenommen, weil die Engine dafür keine Situation liefert. Die Oberfläche wurde nicht im Browser angesehen (Dev-Server war nicht erreichbar); Typecheck, Build und Tests sind grün.
+

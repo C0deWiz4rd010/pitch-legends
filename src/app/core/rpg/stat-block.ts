@@ -1,6 +1,7 @@
 import { ATTRIBUTE_KEYS, AttributeKey } from '../../models/enums';
 import { Player } from '../../models/player.model';
 import { getTalent } from '../../data/talents';
+import { getQuirk } from '../../data/quirks';
 import { getTrait } from '../../data/traits';
 import { computeOverall, positionFamiliarity } from '../ratings';
 import { clamp } from '../util';
@@ -69,7 +70,7 @@ export function stateMultipliers(player: Player, slotPosition?: string): StatBlo
 
 /** Unconditional attribute bonuses are baked into the base; only situational ones stay as modifiers. */
 function isFlatBonus(effect: EffectSpec): boolean {
-  return !effect.when && effect.op === 'add' && IS_ATTRIBUTE.has(effect.hook);
+  return !effect.when && !effect.unless && effect.op === 'add' && IS_ATTRIBUTE.has(effect.hook);
 }
 
 export function buildStatBlock(player: Player, context: StatContext = {}): StatBlock {
@@ -83,6 +84,11 @@ export function buildStatBlock(player: Player, context: StatContext = {}): StatB
   }
   for (const buff of player.training?.buffs ?? []) {
     for (const effect of buff.effects) {
+      if (isFlatBonus(effect)) raw[effect.hook as AttributeKey] += effect.value;
+    }
+  }
+  for (const quirk of player.dna?.quirks ?? []) {
+    for (const effect of getQuirk(quirk.id)?.effects ?? []) {
       if (isFlatBonus(effect)) raw[effect.hook as AttributeKey] += effect.value;
     }
   }
@@ -105,6 +111,11 @@ export function buildStatBlock(player: Player, context: StatContext = {}): StatB
       if (!isFlatBonus(effect)) (mods[effect.hook] ??= []).push({ ...effect, source: { kind: 'training', id: buff.drillId } });
     }
   }
+  for (const quirk of player.dna?.quirks ?? []) {
+    for (const effect of getQuirk(quirk.id)?.effects ?? []) {
+      if (!isFlatBonus(effect)) (mods[effect.hook] ??= []).push({ ...effect, source: { kind: 'quirk', id: quirk.id } });
+    }
+  }
   (player.dna?.signatures ?? []).slice(0, 2).forEach((signature, slot) => {
     for (const effect of signatureEffects(signature, slot as 0 | 1)) (mods[effect.hook] ??= []).push({ ...effect, source: { kind: 'signature', id: signature.id } });
   });
@@ -113,7 +124,7 @@ export function buildStatBlock(player: Player, context: StatContext = {}): StatB
     hasMods: Object.keys(mods).length > 0,
     modAttrs: ATTRIBUTE_KEYS.filter((key) => !!mods[key]),
     hasHookMods: Object.keys(mods).some((hook) => !IS_ATTRIBUTE.has(hook) && !OFF_PITCH_HOOKS.has(hook)),
-    flagMask: Object.values(mods).reduce((mask, list) => (list ?? []).reduce((inner, mod) => inner | (mod.when ?? 0), mask), 0),
+    flagMask: Object.values(mods).reduce((mask, list) => (list ?? []).reduce((inner, mod) => inner | (mod.when ?? 0) | (mod.unless ?? 0), mask), 0),
     hookMask: Object.keys(mods).reduce((mask, hook) => mask | (HOOK_BIT[hook as DerivedHook] ?? 0), 0),
   };
 }
@@ -140,7 +151,7 @@ function resolve(block: StatBlock, hook: EffectHook, start: number, flags: numbe
   let add = 0;
   let mul = 1;
   for (const mod of list) {
-    if (!condMatches(flags, mod.when)) continue;
+    if (!condMatches(flags, mod.when, mod.unless)) continue;
     if (mod.op === 'add') add += mod.value;
     else mul *= mod.value;
   }
@@ -165,7 +176,7 @@ export function refreshHooks(block: StatBlock, flags: number, add: Float64Array,
     let sum = 0;
     let product = 1;
     for (const modifier of block.mods[hook]!) {
-      if (!condMatches(flags, modifier.when)) continue;
+      if (!condMatches(flags, modifier.when, modifier.unless)) continue;
       if (modifier.op === 'add') sum += modifier.value;
       else product *= modifier.value;
     }
@@ -206,7 +217,7 @@ export function explainStat(player: Player, key: AttributeKey, flags = 0, contex
     const trait = getTrait(id);
     for (const effect of trait?.effects ?? []) {
       if (effect.hook !== key) continue;
-      parts.push({ source: { kind: 'trait', id }, label: trait!.name, value: effect.value, op: effect.op, active: condMatches(flags, effect.when) });
+      parts.push({ source: { kind: 'trait', id }, label: trait!.name, value: effect.value, op: effect.op, active: condMatches(flags, effect.when, effect.unless) });
     }
   }
   return parts;

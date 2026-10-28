@@ -572,6 +572,8 @@ export class MatchPage implements OnDestroy {
       knockout: this.knockout(),
       smallSided: !!this.exhibition?.smallSided,
       auras: settings?.auras ?? 'on',
+      derby: !!home.rivalTeamIds?.includes(away.id),
+      bigMatch: this.knockout(),
     }, this.gs.manager()?.perks.tactics ?? 0);
     this.autoEnabled.set(this.arcade.controllerMode === 'auto');
     const definition = CHALLENGES.find((candidate) => candidate.id === this.exhibition?.challengeId);

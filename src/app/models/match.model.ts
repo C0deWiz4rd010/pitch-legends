@@ -99,6 +99,10 @@ export interface MatchConfig {
   effects?: boolean;
   /** Rarity rings in the match: on (default), subtle or off. */
   auras?: 'on' | 'subtle' | 'off';
+  /** A match against a rival; quirks such as Derby Hero react to it. */
+  derby?: boolean;
+  /** A cup or top-of-the-table match for the Big-Game quirk. */
+  bigMatch?: boolean;
   inputDevice: InputDevice;
   camera: MatchCameraSettings;
   /** Cup ties: a draw after 90 minutes goes to extra time and then penalties. */

@@ -91,11 +91,31 @@ export interface SignatureState {
   path: 'a' | 'b' | null;
 }
 
+/** A quirk a player carries; hidden ones already act but are shown as "???" until discovered. */
+export interface QuirkState {
+  id: string;
+  revealed: boolean;
+}
+
+export type ChronicleKind = 'debut' | 'firstGoal' | 'hattrick' | 'motm' | 'injury' | 'comeback' | 'level' | 'quirk' | 'evolution' | 'mastery' | 'transfer';
+
+/** One line of a player's career story; the text is built from kind and params in the UI language. */
+export interface ChronicleEntry {
+  season: number;
+  week: number;
+  kind: ChronicleKind;
+  params?: Record<string, string | number>;
+}
+
 export interface PlayerDNA {
   version: number;
   rarity: Rarity;
   /** One or two signatures: Common 1 passive, Rare/Epic 1 triggered, Legendary/Mythic both. */
   signatures?: SignatureState[];
+  /** Quirks with a plus and a minus; one to three by rarity. */
+  quirks?: QuirkState[];
+  /** The career story, newest last, at most 40 entries. */
+  chronicle?: ChronicleEntry[];
   /** German/English epithet from Epic upwards. */
   nickname: Nickname | null;
 }

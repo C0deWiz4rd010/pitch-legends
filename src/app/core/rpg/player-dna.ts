@@ -2,12 +2,13 @@ import { AURA_FROM, MYTHIC_WORLD_CAP, RARITIES, RARITY_DEFS, Rarity, atLeast, ra
 import { NICKNAMES } from '../../data/nicknames';
 import { GameState } from '../../models/game.model';
 import { Player, PlayerDNA } from '../../models/player.model';
+import { generateQuirks } from './quirks';
 import { generateSignatures } from './signatures';
 import { clamp } from '../util';
 import { Rng } from '../util';
 import { hash32 } from '../visual-identity';
 
-export const DNA_VERSION = 2;
+export const DNA_VERSION = 3;
 
 /** The seed depends on the player id only, so a player keeps the same DNA in every save and context. */
 function dnaSeed(playerId: string): number {
@@ -39,12 +40,12 @@ export function generateDna(player: Pick<Player, 'id' | 'archetype' | 'potential
   if (rarity === 'mythic' && options.allowMythic === false) rarity = 'legendary';
   const nicknames = NICKNAMES[player.archetype] ?? [];
   const nickname = atLeast(rarity, AURA_FROM) && nicknames.length ? nicknames[rng.int(0, nicknames.length - 1)] : null;
-  return { version: DNA_VERSION, rarity, nickname, signatures: generateSignatures(player, rarity) };
+  return { version: DNA_VERSION, rarity, nickname, signatures: generateSignatures(player, rarity), quirks: generateQuirks(player, rarity), chronicle: [] };
 }
 
 /** The DNA of a player, or a plain common one for data from before DNA existed and not yet migrated. */
 export function dnaOf(player: Player): PlayerDNA {
-  return player.dna ?? { version: DNA_VERSION, rarity: 'common', nickname: null, signatures: [] };
+  return player.dna ?? { version: DNA_VERSION, rarity: 'common', nickname: null, signatures: [], quirks: [], chronicle: [] };
 }
 
 /** Gives every player without DNA its permanent DNA. Idempotent, so it doubles as the save migration. */
@@ -53,7 +54,9 @@ export function ensureDna(players: Iterable<Player>, mythicTaken = 0): number {
   for (const player of players) {
     if (player.dna) {
       // DNA from before signatures existed keeps its rarity and nickname and gains its signatures.
-      if (!player.dna.signatures) player.dna = { ...player.dna, version: DNA_VERSION, signatures: generateSignatures(player, player.dna.rarity) };
+      if (!player.dna.signatures) player.dna = { ...player.dna, signatures: generateSignatures(player, player.dna.rarity) };
+      if (!player.dna.quirks) player.dna = { ...player.dna, quirks: generateQuirks(player, player.dna.rarity), chronicle: player.dna.chronicle ?? [] };
+      if (player.dna.version < DNA_VERSION) player.dna = { ...player.dna, version: DNA_VERSION };
       continue;
     }
     const dna = generateDna(player, { usePotential: false, allowMythic: mythic < MYTHIC_WORLD_CAP });

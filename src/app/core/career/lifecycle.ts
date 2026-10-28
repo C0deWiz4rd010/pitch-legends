@@ -75,6 +75,8 @@ export function addCareerStats(player: Player, teamShortName: string): void {
   career.appearances += stats.appearances;
   career.goals += stats.goals;
   career.assists += stats.assists;
+  career.cleanSheets = (career.cleanSheets ?? 0) + stats.cleanSheets;
+  career.motmAwards = (career.motmAwards ?? 0) + stats.motmAwards;
   if (!career.clubs.includes(teamShortName)) career.clubs.push(teamShortName);
   player.career = career;
   player.seasonStats = emptySeasonStats();

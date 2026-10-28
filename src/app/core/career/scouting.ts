@@ -1,3 +1,4 @@
+import { revealNext } from '../rpg/quirks';
 import { ScoutAssignment } from '../../models/career.model';
 import { GameState } from '../../models/game.model';
 import { Player } from '../../models/player.model';
@@ -36,6 +37,7 @@ export function deliverScoutReports(game: GameState, players: Player[], count: n
       potentialMax: clamp(player.potential + variance, 1, 99),
       exact: variance === 0,
     });
+    revealNext(player);
     delivered.push(player.id);
   }
   game.transfers.reports = game.transfers.reports.slice(0, 80);

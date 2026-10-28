@@ -2605,6 +2605,10 @@ export class ArcadeMatch {
       if (this.inExtraTime) shared |= Cond.extraTime;
       if (this.config.weather === 'rain') shared |= Cond.rain;
       else if (this.config.weather === 'storm') shared |= Cond.storm | Cond.rain;
+      else shared |= Cond.clear;
+      if (this.home.visuals?.stadium?.atmosphere === 'night') shared |= Cond.night;
+      if (this.config.derby) shared |= Cond.derby;
+      if (this.config.bigMatch) shared |= Cond.bigMatch;
       this.sharedFlags = shared;
     }
     result[0] = this.sharedFlags | Cond.home;

@@ -105,6 +105,9 @@ export interface PlayerCareerStats {
   appearances: number;
   goals: number;
   assists: number;
+  /** Added with the quirk system; older careers start counting from there. */
+  cleanSheets?: number;
+  motmAwards?: number;
   clubs: string[];
 }
 

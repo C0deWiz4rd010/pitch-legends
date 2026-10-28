@@ -96,6 +96,8 @@ export interface TrainingPlayerResult {
   buffLabel?: [string, string];
   /** The junior of a mentoring pair. */
   mentored?: boolean;
+  /** Quirk a senior passed on in a unit session (it starts hidden). */
+  inheritedQuirk?: string;
 }
 
 export interface TrainingSessionResult {

@@ -45,6 +45,8 @@ export interface EffectSpec {
   value: number;
   /** Cond flags that must all be set for the modifier to apply; omitted means always. */
   when?: number;
+  /** Cond flags that must all be absent; this is how a drawback "otherwise" is written. */
+  unless?: number;
 }
 
 export interface StatModifier extends EffectSpec {

@@ -56,6 +56,29 @@
         }
       }
 
+      <div class="quirks">
+        <p class="section-title">{{ i18n.pick('EIGENHEITEN', 'QUIRKS') }}</p>
+        @for (quirk of quirkCards(p); track $index) {
+          <article class="quirk" [class.hidden]="!quirk.revealed">
+            <b>{{ quirk.name }}</b>
+            @if (quirk.revealed) {
+              <p class="plus">＋ {{ quirk.plus }}</p>
+              <p class="minus">− {{ quirk.minus }}</p>
+            } @else { <small>{{ quirk.hint }}</small> }
+          </article>
+        }
+      </div>
+
+      <div class="story">
+        <p class="section-title">{{ i18n.pick('GESCHICHTE', 'STORY') }}</p>
+        <p class="bio">{{ bio(p) }}</p>
+        @if (chronicle(p).length) {
+          <ol class="chronicle">
+            @for (entry of chronicle(p); track $index) { <li><small>{{ entry.when }}</small><span>{{ entry.text }}</span></li> }
+          </ol>
+        }
+      </div>
+
       <div class="xp">
         <div class="xp-top">
           <span>Level {{ p.level }}</span>

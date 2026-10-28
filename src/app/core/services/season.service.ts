@@ -1,3 +1,5 @@
+import { StoryBeat, recordMatchStory } from '../rpg/story';
+import { getQuirk } from '../../data/quirks';
 import { enforceMythicCap } from '../rpg/player-dna';
 import { Injectable, inject } from '@angular/core';
 import { GameState, NewsItem, emptyTrainingWeek } from '../../models/game.model';
@@ -240,6 +242,7 @@ export class SeasonService {
       const goalsAgainst = own === home ? result.awayScore : result.homeScore;
       applyBoardDelta(draft.board, boardMatchDelta(teamStrength(own), teamStrength(opponent), own === home, goalsFor, goalsAgainst) * (competition === 'cup' ? 0.6 : 1));
       this.applyPlayerRewards(draft, home, away, result, competition);
+      for (const beat of recordMatchStory(draft, own, result)) this.storyNews(draft, beat);
       this.updateObjectives(draft, result, home.id === draft.clubId ? homeGrowth : awayGrowth);
       this.matchStories(draft, result, own, opponent, goalsFor, goalsAgainst);
     }
@@ -427,6 +430,20 @@ export class SeasonService {
     const suitors = draft.teams.filter((candidate) => candidate.id !== team.id && candidate.id !== draft.clubId && candidate.coins > player.marketValue);
     if (!suitors.length) return;
     this.pushNews(draft, 'rumour', 'news.rumour.title', 'news.rumour.body', { player: playerName(player), club: team.name, suitor: rng.pick(suitors).name });
+  }
+
+  /** A story beat of the managed club becomes a news item. */
+  private storyNews(draft: GameState, beat: StoryBeat): void {
+    const player = `${beat.player.firstName} ${beat.player.lastName}`;
+    if (beat.kind === 'firstGoal') {
+      this.pushNews(draft, 'goal', 'news.story.firstGoal.title', 'news.story.firstGoal.body', { player });
+      return;
+    }
+    const quirk = beat.quirkId ? getQuirk(beat.quirkId) : undefined;
+    if (!quirk) return;
+    const titleKey = beat.kind === 'quirk' ? 'news.story.quirk.title' : 'news.story.evolution.title';
+    const bodyKey = beat.kind === 'quirk' ? 'news.story.quirk.body' : 'news.story.evolution.body';
+    this.pushNews(draft, 'star', titleKey, bodyKey, { player, quirkDe: quirk.name[0], quirkEn: quirk.name[1] });
   }
 
   private pushNews(draft: GameState, icon: string, titleKey: string, bodyKey: string, params?: Record<string, string | number>): void {

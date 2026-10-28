@@ -32,11 +32,15 @@ export const Cond = {
   /** Signature slot 1 is awake; the pipeline maps the data files' marker to the slot of the player. */
   signature: 1 << 21,
   signature2: 1 << 22,
+  /** The home stadium plays under floodlights. */
+  night: 1 << 23,
+  /** Clear weather (neither rain nor storm). */
+  clear: 1 << 24,
 } as const;
 
 export type CondFlag = (typeof Cond)[keyof typeof Cond];
 
-/** True when every flag of `mask` is set (an empty mask always matches). */
-export function condMatches(flags: number, mask: number | undefined): boolean {
-  return !mask || (flags & mask) === mask;
+/** True when every flag of `mask` is set (an empty mask always matches) and none of `unless` is. */
+export function condMatches(flags: number, mask: number | undefined, unless?: number): boolean {
+  return (!mask || (flags & mask) === mask) && (!unless || (flags & unless) === 0);
 }

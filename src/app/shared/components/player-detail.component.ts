@@ -1,3 +1,6 @@
+import { getQuirk } from '../../data/quirks';
+import { REVEAL_EVERY, careerTotal } from '../../core/rpg/quirks';
+import { buildBio, chronicleLine } from '../../core/rpg/story';
 import { getSignature } from '../../data/signatures';
 import { dnaOf } from '../../core/rpg/player-dna';
 import { I18nService } from '../../core/services/i18n.service';
@@ -40,7 +43,7 @@ export class PlayerDetailComponent {
   protected readonly moraleIcon = moraleIcon;
   protected readonly developmentPlans: DevelopmentPlan[] = ['balanced', 'technical', 'physical', 'position'];
 
-  private readonly i18n = inject(I18nService);
+  protected readonly i18n = inject(I18nService);
 
   /** Frame colour class of the sheet: Common stays plain. */
   protected frameRarity(player: Player): string {
@@ -65,6 +68,37 @@ export class PlayerDetailComponent {
         passive: trigger?.kind === 'condition',
       };
     });
+  }
+
+  /** Quirks as cards; hidden ones show only a "???" until they are discovered. */
+  protected quirkCards(player: Player) {
+    const quirks = dnaOf(player).quirks ?? [];
+    const revealed = quirks.filter((quirk) => quirk.revealed).length;
+    const untilNext = Math.max(1, REVEAL_EVERY * (revealed + 1) - careerTotal(player, 'appearances'));
+    return quirks.map((quirk) => {
+      const definition = quirk.revealed ? getQuirk(quirk.id) : undefined;
+      return {
+        revealed: quirk.revealed,
+        name: definition ? this.i18n.pick(definition.name[0], definition.name[1]) : '???',
+        plus: definition ? this.i18n.pick(definition.plus[0], definition.plus[1]) : '',
+        minus: definition ? this.i18n.pick(definition.minus[0], definition.minus[1]) : '',
+        hint: quirk.revealed ? '' : this.i18n.pick(`Wird nach etwa ${untilNext} Einsätzen entdeckt`, `Discovered in about ${untilNext} appearances`),
+      };
+    });
+  }
+
+  protected bio(player: Player): string {
+    const game = this.gs.game();
+    return game ? buildBio(player, game, this.i18n.locale() === 'de' ? 'de' : 'en') : '';
+  }
+
+  /** The chronicle, newest first, as readable lines with the season and week. */
+  protected chronicle(player: Player) {
+    const language = this.i18n.locale() === 'de' ? 'de' : 'en';
+    return [...(dnaOf(player).chronicle ?? [])].reverse().map((entry) => ({
+      when: `S${entry.season} · ${this.i18n.pick('Woche', 'Week')} ${entry.week}`,
+      text: chronicleLine(entry, language),
+    }));
   }
 
   protected nickname(player: Player): string | null {

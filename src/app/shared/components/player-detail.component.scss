@@ -338,3 +338,14 @@
 .signature p { margin: 4px 0 2px; font-size: 12px; }
 .signature small { color: var(--muted); font-size: 10px; }
 
+.section-title { margin: 10px 0 4px; color: var(--muted); font: 700 10px/1 var(--font-pixel); }
+.quirks { display: grid; gap: 5px; }
+.quirk { padding: 7px 10px; border: 1px solid var(--border); background: var(--surface-2); }
+.quirk.hidden { border-style: dashed; opacity: .75; }
+.quirk b { font-size: 12px; }.quirk p { margin: 3px 0 0; font-size: 11px; }.quirk .plus { color: var(--success); }.quirk .minus { color: #ff8f93; }.quirk small { display: block; margin-top: 2px; color: var(--muted); font-size: 10px; }
+.story { margin-bottom: 8px; }
+.bio { margin: 0 0 6px; color: var(--muted); font-size: 12px; line-height: 1.5; }
+.chronicle { display: grid; gap: 3px; margin: 0; padding: 0; list-style: none; max-height: 150px; overflow-y: auto; }
+.chronicle li { display: grid; grid-template-columns: 82px 1fr; gap: 8px; padding: 3px 0; border-bottom: 1px solid var(--border); font-size: 11px; }
+.chronicle small { color: var(--muted); font-size: 10px; }
+

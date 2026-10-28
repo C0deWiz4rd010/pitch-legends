@@ -1,3 +1,6 @@
+import { addChronicle } from '../rpg/story';
+import { inheritQuirk } from '../rpg/quirks';
+import { buildStatBlock, resolveHook } from '../rpg/stat-block';
 import { Injectable, inject } from '@angular/core';
 import { AttributeKey } from '../../models/enums';
 import {
@@ -93,6 +96,8 @@ const AI_GROWTH_BASE = 0.015;
 @Injectable({ providedIn: 'root' })
 export class TrainingService {
   private readonly rpg = inject(RpgService);
+  /** Season and week of the session being executed, for chronicle entries. */
+  private currentWeek: { season: number; week: number } | null = null;
 
   preview(state: GameState, plans: readonly TrainingSessionPlan[]): TrainingPlanPreview {
     const club = state.teams.find((team) => team.id === state.clubId);
@@ -159,6 +164,7 @@ export class TrainingService {
 
     const playerCopies = structuredClone(club.players) as Player[];
     const sessions: TrainingSessionResult[] = [];
+    this.currentWeek = { season: state.league.season, week: state.league.currentWeek };
     for (const session of preview.sessions) {
       const drill = session.drill!;
       const results: TrainingPlayerResult[] = [];
@@ -168,9 +174,19 @@ export class TrainingService {
       for (const player of targets as Player[]) {
         results.push(this.executePlayer(state, player, drill, session.plan, session.seed, juniors.has(player.id)));
       }
+      // A senior in a unit session can pass an inheritable quirk on to a junior.
+      if (juniors.size) {
+        const seniors = (targets as Player[]).filter((player) => player.age >= 29 && player.level >= 12);
+        for (const result of results) {
+          const junior = (targets as Player[]).find((player) => player.id === result.playerId);
+          const inherited = junior && juniors.has(junior.id) ? inheritQuirk(seniors, junior, String(session.seed)) : null;
+          if (inherited) result.inheritedQuirk = inherited;
+        }
+      }
       sessions.push({ plan: structuredClone(session.plan), players: results, seed: session.seed });
     }
 
+    this.currentWeek = null;
     club.players = playerCopies;
     state.trainingWeek.slotsUsed += sessions.length;
     state.trainingWeek.completedSessions.push(...sessions);
@@ -278,7 +294,7 @@ export class TrainingService {
       xpMax: Math.round(baseXp * 1.2),
       fitnessDelta: -Math.min(player.fitness, cost),
       growthChance: Math.round(growth * 100),
-      injuryRisk: Math.round(this.injuryChance(drill, plan.intensity, team.facilities.medicalCenter, ratio) * 1000) / 10,
+      injuryRisk: Math.round(this.injuryChance(drill, plan.intensity, team.facilities.medicalCenter, ratio, player) * 1000) / 10,
       breakthroughChance: Math.round(this.breakthroughChance(player, team.facilities.trainingGround) * 100),
       masteryGain: this.masteryGain(plan, false),
       loadRatio: Math.round(ratio * 100) / 100,
@@ -337,7 +353,7 @@ export class TrainingService {
     }
 
     let injuredWeeks = 0;
-    if (rng.bool(this.injuryChance(drill, plan.intensity, team.facilities.medicalCenter, ratio))) {
+    if (rng.bool(this.injuryChance(drill, plan.intensity, team.facilities.medicalCenter, ratio, player))) {
       const injury = createInjury({ seed: sessionSeed, player, cause: 'training', season: state.league.season, week: state.league.currentWeek, severityBias: plan.intensity === 'intense' ? .18 : 0 });
       applyInjury(player, injury);
       injuredWeeks = injury.remainingWeeks;
@@ -363,7 +379,10 @@ export class TrainingService {
     const outcome = addMastery(player, attribute, amount);
     if (outcome.milestone === 25) this.rpg.awardXp(player, 50);
     if (outcome.milestone === 50) player.skillPoints += 1;
-    if (outcome.traitUnlocked) player.traitIds.push(outcome.traitUnlocked);
+    if (outcome.traitUnlocked) {
+      player.traitIds.push(outcome.traitUnlocked);
+      if (this.currentWeek) addChronicle(player, { ...this.currentWeek, kind: 'mastery', params: { attribute, trait: outcome.traitUnlocked } });
+    }
     return outcome;
   }
 
@@ -394,9 +413,11 @@ export class TrainingService {
     return Math.min(0.25, 0.05 + facility * 0.01 + (player.personality === 'driven' ? 0.04 : 0));
   }
 
-  private injuryChance(drill: TrainingDrill, intensity: TrainingIntensity, medicalLevel: number, loadRatio: number): number {
+  private injuryChance(drill: TrainingDrill, intensity: TrainingIntensity, medicalLevel: number, loadRatio: number, player?: Player): number {
     const base = INTENSITY_INJURY[intensity] * (drill.injuryRisk ?? 1) * Math.max(0.55, 1 - (medicalLevel - 1) * 0.08);
-    return Math.min(0.5, base * loadRiskFactor(loadRatio));
+    // Quirks such as Rubber Band or Glass Bones scale the risk through the effect pipeline.
+    const quirk = player ? resolveHook(buildStatBlock(player), 'injuryRisk', 1, 0) : 1;
+    return Math.min(0.5, base * loadRiskFactor(loadRatio) * quirk);
   }
 
   private fitnessCost(drill: TrainingDrill, scope: TrainingScope, intensity: TrainingIntensity): number {
