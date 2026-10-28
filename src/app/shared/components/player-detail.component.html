@@ -47,9 +47,32 @@
           <div class="signatures">
             @for (card of cards; track card.id) {
               <article class="signature" [class.passive]="card.passive">
-                <header><b>✦ {{ card.name }}</b><span>{{ card.passive ? 'PASSIV' : 'TRIGGER' }} · {{ card.power }}%</span></header>
+                <header><b>✦ {{ card.name }}</b><span>{{ i18n.pick('STUFE', 'STAGE') }} {{ ['I', 'II', 'III'][card.level - 1] }} · {{ card.passive ? 'PASSIV' : 'TRIGGER' }} · {{ card.power }}%</span></header>
                 <p>{{ card.text }}</p>
                 <small>{{ card.when }}</small>
+                @if (card.pathText) { <small class="path">{{ card.pathText }}</small> }
+                @if (card.quest.max) {
+                  <small class="path">{{ i18n.pick('Höchste Stufe erreicht.', 'Highest stage reached.') }}</small>
+                } @else {
+                  <div class="quest">
+                    <div class="bar" role="progressbar" [attr.aria-valuenow]="card.quest.points" [attr.aria-valuemax]="card.quest.target"><i [style.width.%]="card.quest.percent"></i></div>
+                    <small>{{ i18n.pick('Evolution', 'Evolution') }}: {{ card.quest.points }} / {{ card.quest.target }}
+                      · <span [class.ok]="card.quest.levelOk">Lv {{ card.quest.level }}</span>
+                      @if (!card.quest.rarityOk) { · <span>{{ card.quest.rarityNeeded }}+</span> }</small>
+                    @if (card.quest.ready) {
+                      @if (card.quest.choosePath) {
+                        <p class="warn">{{ i18n.pick('Wähle einen Pfad. Die Entscheidung ist endgültig.', 'Choose a branch. The choice is final.') }}</p>
+                        <div class="paths">
+                          @for (path of card.paths; track path.key) {
+                            <button type="button" class="btn btn--primary btn--sm" (click)="evolve(card.id, path.key)"><b>{{ path.name }}</b><small>{{ path.text }}</small></button>
+                          }
+                        </div>
+                      } @else {
+                        <button type="button" class="btn btn--primary btn--sm" (click)="evolve(card.id, null)">{{ i18n.pick('ENTWICKELN', 'EVOLVE') }}</button>
+                      }
+                    }
+                  </div>
+                }
               </article>
             }
           </div>

@@ -2,6 +2,8 @@ import { ChronicleKind } from '../models/player.model';
 
 /** Chronicle line templates; `{name}` placeholders are filled from the entry's params. */
 export const CHRONICLE_TEXT: Record<ChronicleKind, [string, string]> = {
+  signature: ['Signatur „{name}“ erreicht Stufe {level}.', 'Signature “{name}” reaches stage {level}.'],
+  ascension: ['Aufstieg: {from} → {to} ({reason}).', 'Ascension: {from} → {to} ({reason}).'],
   debut: ['Debüt für {club}.', 'Debut for {club}.'],
   firstGoal: ['Erstes Tor im Profifußball, gegen {opponent}.', 'First professional goal, against {opponent}.'],
   hattrick: ['Hattrick gegen {opponent}!', 'Hat-trick against {opponent}!'],

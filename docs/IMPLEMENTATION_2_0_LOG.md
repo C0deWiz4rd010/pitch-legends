@@ -541,3 +541,14 @@ Offen: Die aktive Mythic-Ultimate (Fokus-Meter, neuer Eingabebefehl, KI-Heuristi
 
 Offen: Das Abtrainieren von Quirks gegen Meisterschaft fehlt; Verletzungsrisiko-Quirks wirken nur im Training, nicht bei Kontaktverletzungen im Match; Quirks, die Reisen, Vertragsjahr oder Rückennummer betreffen, wurden nicht aufgenommen, weil die Engine dafür keine Situation liefert. Die Oberfläche wurde nicht im Browser angesehen (Dev-Server war nicht erreichbar); Typecheck, Build und Tests sind grün.
 
+## Phase 6 – Evolutionen (Legends Reborn, 28.10.2026)
+
+- **Quest** (`data/evolutions.ts`, `core/rpg/evolution.ts`): Jede Signatur sammelt über die Karriere Wirkungspunkte (Auslösungen + Schüsse im aktiven Fenster + 3 je Tor im aktiven Fenster); die Zahlen kommen aus `MatchResult.signatures` und werden nach jedem Spiel des eigenen Vereins addiert (`SignatureState.progress`). Stufe I→II: 40 Punkte und Spielerlevel 10; II→III: 120 Punkte, Level 18 und mindestens Rare.
+- **Pfade ab Stufe II** (endgültig, kein Re-Roll): **A** macht die Effekte 25 % stärker; **B** hält Ereignis-Signaturen 50 % länger wach und verkürzt die Abklingzeit um 30 % (Situations-Signaturen werden 10 % stärker). Jeder Archetyp hat eigene Pfadnamen (z. B. Speedster: Sternschnuppe / Meteor). Die Stufen skalieren die Wirkung zusätzlich (II ×1,15, III ×1,3). Die Laufzeiten stehen im Match-Runtime der Signatur (`seconds`, `cooldown`).
+- **Aufstieg der Seltenheit** (einmal pro Karriere, höchstens bis Legendary; Mythic bleibt der Weltregel vorbehalten): am Saisonende für den Torschützenkönig der Welt (ab 10 Tore), fünf Spieler-des-Spiels-Auszeichnungen in einer Saison oder 100 Einsätze. Die neuen Signaturen der Stufe werden zu den bestehenden hinzugefügt (Level und Pfad bleiben), ab Epic gibt es einen Spitznamen, Chronik-Eintrag und eine Nachricht für den eigenen Verein.
+- **UI:** Die Signatur-Karten der Spielerakte zeigen Stufe, Pfadtext, Fortschrittsbalken mit Punkten, Level- und Rarity-Anforderung. Bei Bereitschaft erscheinen die Pfad-Buttons (mit Warnung „endgültig“) beziehungsweise der Button „Entwickeln“.
+- **Nebenbei (aus Phase 9 vorgezogen):** Die Stadionrendite flacht ab (`stadium^0,8` statt linear in `gateIncome`). Der Zehn-Saisons-Test scheiterte erstmals an „reichster Club unter 12× Median“ (9,1 Mio gegen 7,6 Mio), weil sich durch die Aufstiege die Verläufe verschoben; nach der Änderung liegt das Verhältnis bei 5–8× (vorher bis über 12×).
+- Tests: 301 (10 neu in `evolution.spec.ts`).
+
+Offen: Die Evolutions-Zeremonie ist ein einfacher Karten-Dialog in der Spielerakte (kein eigener Vorher-/Nachher-Bildschirm); Quirk-Evolutionen laufen weiter über ihre Karrieresummen aus Phase 5 und nicht über die Quest-Infrastruktur. Die Oberfläche wurde nicht im Browser angesehen.
+

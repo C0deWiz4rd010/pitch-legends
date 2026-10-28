@@ -1,3 +1,6 @@
+import { PATH_NAMES, PATH_TEXT } from '../../data/evolutions';
+import { RARITY_DEFS } from '../../data/rarity';
+import { evolveSignature, signatureQuest, signatureTitle } from '../../core/rpg/evolution';
 import { getQuirk } from '../../data/quirks';
 import { REVEAL_EVERY, careerTotal } from '../../core/rpg/quirks';
 import { buildBio, chronicleLine } from '../../core/rpg/story';
@@ -58,14 +61,33 @@ export class PlayerDetailComponent {
       const when = !trigger ? '' : trigger.kind === 'condition'
         ? this.i18n.pick('Situationsabhängig', 'While the situation lasts')
         : this.i18n.pick(`Löst aus: ${signatureEvent(trigger.event, 'de')} · ${trigger.seconds} s · Abklingzeit ${trigger.cooldown} s`, `Wakes on: ${signatureEvent(trigger.event, 'en')} · ${trigger.seconds} s · cooldown ${trigger.cooldown} s`);
+      const quest = signatureQuest(player, signature);
+      const names = PATH_NAMES[player.archetype];
       return {
         id: signature.id,
-        name: this.i18n.pick(signature.name[0], signature.name[1]),
+        name: signatureTitle(signature, player.archetype, this.i18n.locale() === 'de' ? 'de' : 'en'),
         text: definition ? this.i18n.pick(definition.text[0], definition.text[1]) : '',
         when,
         power: Math.round(signature.power * 100),
         level: signature.level,
         passive: trigger?.kind === 'condition',
+        pathText: signature.path ? this.i18n.pick(PATH_TEXT[signature.path][0], PATH_TEXT[signature.path][1]) : '',
+        quest: {
+          max: !quest.stage,
+          points: quest.points,
+          target: quest.target,
+          percent: quest.target ? Math.min(100, Math.round((quest.points / quest.target) * 100)) : 100,
+          level: quest.stage?.playerLevel ?? 0,
+          levelOk: quest.levelOk,
+          rarityOk: quest.rarityOk,
+          rarityNeeded: quest.stage ? this.i18n.pick(RARITY_DEFS[quest.stage.minRarity].label[0], RARITY_DEFS[quest.stage.minRarity].label[1]) : '',
+          ready: quest.ready,
+          choosePath: quest.stage?.to === 2,
+        },
+        paths: [
+          { key: 'a' as const, name: this.i18n.pick(names.a[0], names.a[1]), text: this.i18n.pick(PATH_TEXT.a[0], PATH_TEXT.a[1]) },
+          { key: 'b' as const, name: this.i18n.pick(names.b[0], names.b[1]), text: this.i18n.pick(PATH_TEXT.b[0], PATH_TEXT.b[1]) },
+        ],
       };
     });
   }
@@ -149,6 +171,15 @@ export class PlayerDetailComponent {
       const club = draft.teams.find((t) => t.id === draft.clubId);
       const target = club?.players.find((p) => p.id === id);
       if (target) this.rpg.upgradeAttribute(target, attr);
+    });
+  }
+
+  /** Takes the next evolution step of a signature; the branch choice at stage II is final. */
+  protected evolve(signatureId: string, path: 'a' | 'b' | null): void {
+    const id = this.playerId();
+    this.gs.mutate((draft) => {
+      const target = draft.teams.find((team) => team.id === draft.clubId)?.players.find((candidate) => candidate.id === id);
+      if (target) evolveSignature(target, signatureId, path, { season: draft.league.season, week: draft.league.currentWeek });
     });
   }
 

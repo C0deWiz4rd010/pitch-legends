@@ -44,7 +44,8 @@ export function ensureFinance(team: Team, season: number): void {
  */
 export function gateIncome(team: Team, tier: 1 | 2): number {
   const crowd = clamp(team.reputation / 65, 0.7, 1.25);
-  return (32000 + team.facilities.stadium * 18000) * crowd * TIER_FACTOR[tier];
+  // Returns on the stadium flatten out: the last expansion stages add less than the first ones.
+  return (32000 + Math.pow(team.facilities.stadium, 0.8) * 18000) * crowd * TIER_FACTOR[tier];
 }
 
 export function matchPrize(goalsFor: number, goalsAgainst: number, tier: 1 | 2): number {

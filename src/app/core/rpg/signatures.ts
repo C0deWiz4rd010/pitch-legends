@@ -41,7 +41,9 @@ export function signatureEffects(state: SignatureState, slot: 0 | 1): EffectSpec
   const definition = getSignature(state.id);
   if (!definition) return [];
   const bit = slot === 0 ? Cond.signature : Cond.signature2;
-  const factor = state.power * LEVEL_SCALE[state.level];
+  const condition = definition.trigger.kind === 'condition';
+  const pathScale = state.path === 'a' ? 1.25 : state.path === 'b' && condition ? 1.1 : 1;
+  const factor = state.power * LEVEL_SCALE[state.level] * pathScale;
   return definition.effects.map((effect) => {
     const scaled = scaleEffect(effect, factor);
     scaled.when = ((effect.when ?? 0) & ~Cond.signature) | bit;
@@ -61,6 +63,9 @@ export interface SignatureRuntime {
   awake: boolean;
   /** Stamina refill is a once-per-match gift. */
   refilled: boolean;
+  /** Seconds awake and cooldown of an event trigger after the branch of the signature is applied. */
+  seconds: number;
+  cooldown: number;
   /** True for condition triggers; `masks` caches their situation masks for the per-tick test. */
   isCondition: boolean;
   masks: number[];
@@ -72,6 +77,8 @@ export function createRuntimes(dna: PlayerDNA | undefined): SignatureRuntime[] {
     const definition = getSignature(state.id);
     if (definition && index < 2) runtimes.push({
       slot: index as 0 | 1, definition, state, until: 0, readyAt: 0, awake: false, refilled: false,
+      seconds: definition.trigger.kind === 'event' ? definition.trigger.seconds * (state.path === 'b' ? 1.5 : 1) : 0,
+      cooldown: definition.trigger.kind === 'event' ? definition.trigger.cooldown * (state.path === 'b' ? 0.7 : 1) : 0,
       isCondition: definition.trigger.kind === 'condition',
       masks: definition.trigger.kind === 'condition' ? definition.trigger.any : [],
     });

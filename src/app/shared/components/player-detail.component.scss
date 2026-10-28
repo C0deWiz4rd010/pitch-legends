@@ -349,3 +349,10 @@
 .chronicle li { display: grid; grid-template-columns: 82px 1fr; gap: 8px; padding: 3px 0; border-bottom: 1px solid var(--border); font-size: 11px; }
 .chronicle small { color: var(--muted); font-size: 10px; }
 
+.signature .path { display: block; margin-top: 3px; color: var(--accent-2); }
+.quest { margin-top: 6px; }
+.quest .bar { height: 5px; background: var(--bg-900); border: 1px solid var(--border); }.quest .bar i { display: block; height: 100%; background: var(--accent-2); }
+.quest small { display: block; margin-top: 3px; }.quest small .ok { color: var(--success); }
+.quest .warn { margin: 6px 0 4px; color: #ffd184; font-size: 11px; }
+.quest .paths { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }.quest .paths button { display: grid; gap: 3px; text-align: left; height: auto; padding: 7px; }.quest .paths button small { color: inherit; opacity: .85; font-size: 10px; white-space: normal; }
+

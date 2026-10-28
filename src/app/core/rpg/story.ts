@@ -1,4 +1,6 @@
 import { BIO_ORIGIN, BIO_PERSONALITY, BIO_RARITY, CHRONICLE_TEXT } from '../../data/story';
+import { ASCENSION_REASONS } from '../../data/evolutions';
+import { RARITY_DEFS, Rarity } from '../../data/rarity';
 import { getQuirk } from '../../data/quirks';
 import { getTrait } from '../../data/traits';
 import { GameState } from '../../models/game.model';
@@ -30,6 +32,15 @@ export function chronicleLine(entry: ChronicleEntry, language: 'de' | 'en'): str
   for (const key of ['quirk', 'from', 'to']) {
     const quirk = typeof params[key] === 'string' ? getQuirk(params[key] as string) : undefined;
     if (quirk) params[key] = quirk.name[index];
+  }
+  if (typeof params['nameDe'] === 'string') params['name'] = params[index === 0 ? 'nameDe' : 'nameEn'];
+  if (entry.kind === 'ascension') {
+    for (const key of ['from', 'to']) {
+      const def = RARITY_DEFS[params[key] as Rarity];
+      if (def) params[key] = def.label[index];
+    }
+    const reason = ASCENSION_REASONS.find((candidate) => candidate.id === params['reason']);
+    if (reason) params['reason'] = reason.text[index];
   }
   if (typeof params['trait'] === 'string') params['trait'] = getTrait(params['trait'])?.name ?? params['trait'];
   return fill(CHRONICLE_TEXT[entry.kind][index], params);

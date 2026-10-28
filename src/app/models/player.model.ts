@@ -89,6 +89,8 @@ export interface SignatureState {
   /** Evolution stage (Phase 6) and the branch chosen at stage II. */
   level: 1 | 2 | 3;
   path: 'a' | 'b' | null;
+  /** What the signature did over the career; fuels the evolution quest. */
+  progress?: { activations: number; shots: number; goals: number };
 }
 
 /** A quirk a player carries; hidden ones already act but are shown as "???" until discovered. */
@@ -97,7 +99,7 @@ export interface QuirkState {
   revealed: boolean;
 }
 
-export type ChronicleKind = 'debut' | 'firstGoal' | 'hattrick' | 'motm' | 'injury' | 'comeback' | 'level' | 'quirk' | 'evolution' | 'mastery' | 'transfer';
+export type ChronicleKind = 'signature' | 'ascension' | 'debut' | 'firstGoal' | 'hattrick' | 'motm' | 'injury' | 'comeback' | 'level' | 'quirk' | 'evolution' | 'mastery' | 'transfer';
 
 /** One line of a player's career story; the text is built from kind and params in the UI language. */
 export interface ChronicleEntry {
@@ -114,6 +116,8 @@ export interface PlayerDNA {
   signatures?: SignatureState[];
   /** Quirks with a plus and a minus; one to three by rarity. */
   quirks?: QuirkState[];
+  /** Set once the player has used his single rarity step. */
+  ascended?: boolean;
   /** The career story, newest last, at most 40 entries. */
   chronicle?: ChronicleEntry[];
   /** German/English epithet from Epic upwards. */

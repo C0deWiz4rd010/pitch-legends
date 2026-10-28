@@ -1,3 +1,5 @@
+import { applySignatureProgress, ascendPlayers } from '../rpg/evolution';
+import { RARITY_DEFS } from '../../data/rarity';
 import { StoryBeat, recordMatchStory } from '../rpg/story';
 import { getQuirk } from '../../data/quirks';
 import { enforceMythicCap } from '../rpg/player-dna';
@@ -243,6 +245,7 @@ export class SeasonService {
       applyBoardDelta(draft.board, boardMatchDelta(teamStrength(own), teamStrength(opponent), own === home, goalsFor, goalsAgainst) * (competition === 'cup' ? 0.6 : 1));
       this.applyPlayerRewards(draft, home, away, result, competition);
       for (const beat of recordMatchStory(draft, own, result)) this.storyNews(draft, beat);
+      applySignatureProgress(own, result);
       this.updateObjectives(draft, result, home.id === draft.clubId ? homeGrowth : awayGrowth);
       this.matchStories(draft, result, own, opponent, goalsFor, goalsAgainst);
     }
@@ -482,6 +485,15 @@ export class SeasonService {
         if (offer) this.takeOverClub(draft, offer);
       }
 
+      const ownSquad = draft.teams.find((team) => team.id === draft.clubId)?.players ?? [];
+      for (const change of ascendPlayers(draft)) {
+        if (ownSquad.some((own) => own.id === change.player.id)) {
+          const label = RARITY_DEFS[change.to].label;
+          this.pushNews(draft, 'star', 'news.story.ascension.title', 'news.story.ascension.body', {
+            player: `${change.player.firstName} ${change.player.lastName}`, toDe: label[0], toEn: label[1], reasonDe: change.reason.text[0], reasonEn: change.reason.text[1],
+          });
+        }
+      }
       const rollover = rollOverSquads(draft);
       enforceMythicCap(draft);
       applyPromotionRelegation(draft, { promoted: review.promotedIds, relegated: review.relegatedIds });

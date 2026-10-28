@@ -2483,8 +2483,8 @@ export class ArcadeMatch {
         const trigger = runtime.definition.trigger;
         if (trigger.kind !== 'event' || trigger.event !== event || this.tick < runtime.readyAt) continue;
         if (trigger.requires && !condMatches(actor.flags ?? 0, trigger.requires)) continue;
-        runtime.until = this.tick + Math.round(trigger.seconds * 60);
-        runtime.readyAt = this.tick + Math.round(trigger.cooldown * 60);
+        runtime.until = this.tick + Math.round(runtime.seconds * 60);
+        runtime.readyAt = this.tick + Math.round(runtime.cooldown * 60);
         this.wakeSignature(actor, runtime);
       }
     }
