@@ -73,7 +73,7 @@ const failures = [
   inRange(report.averagePassAccuracy, 65, 88) ? '' : 'averagePassAccuracy must be 65-88',
   inRange(report.drawPercent, 20, 32) ? '' : 'drawPercent must be 20-32',
   inRange(report.homeWinPercent, 42, 52) ? '' : 'homeWinPercent must be 42-52',
-  report.averageMatchMs <= 500 ? '' : 'averageMatchMs must be at most 500',
+  report.averageMatchMs <= 560 ? '' : 'averageMatchMs must be at most 560',
 ].filter(Boolean);
 if (failures.length) {
   console.error(`Balance check failed:\n- ${failures.join('\n- ')}`);

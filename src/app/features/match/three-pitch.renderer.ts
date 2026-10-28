@@ -26,6 +26,8 @@ export const CAMERA_PRESETS: Record<MatchCameraPreset, { pitch: number; fov: num
   tv: { pitch: 25, fov: 32, width: 1.1, follow: 0.3 },
   tactic: { pitch: 60, fov: 46, width: 1.55, follow: 1 },
 };
+const AURA_FLASH = new THREE.Color('#ffffff');
+
 const SKY: Record<'day' | 'sunset' | 'night', { zenith: string; horizon: string }> = {
   day: { zenith: '#5d8fc4', horizon: '#c9dde2' },
   sunset: { zenith: '#3f5480', horizon: '#eea977' },
@@ -86,6 +88,8 @@ export class ThreePitchRenderer {
   private readonly aura: THREE.InstancedMesh<THREE.RingGeometry, THREE.MeshBasicMaterial>;
   private readonly auraColor = new THREE.Color();
   private readonly auraRarity = new Map<string, Rarity>();
+  /** Players whose signature is awake this frame; their ring flares. */
+  private readonly awakeIds = new Set<string>();
   private readonly arrow: THREE.Mesh;
   private readonly power: THREE.Mesh<THREE.RingGeometry, THREE.MeshBasicMaterial>;
   private readonly ball: THREE.Mesh<THREE.BufferGeometry, THREE.MeshStandardMaterial>;
@@ -355,6 +359,8 @@ export class ThreePitchRenderer {
     let index = 0;
     let auraIndex = 0;
     const auraMode = this.quality === 'low' || this.software ? 'off' : match.config.auras ?? 'on';
+    this.awakeIds.clear();
+    if (auraMode !== 'off') for (const actor of match.actors) if (actor.sig) for (const runtime of actor.sig) if (runtime.awake) { this.awakeIds.add(actor.player.id); break; }
     this.aura.material.opacity = auraMode === 'subtle' ? 0.38 : 0.75;
     for (const model of this.models.values()) model.mesh.visible = false;
     for (const player of state.players) {
@@ -381,17 +387,19 @@ export class ThreePitchRenderer {
       this.matrixDummy.updateMatrix();
       this.shadow.setMatrixAt(index++, this.matrixDummy.matrix);
       const rarity = auraMode === 'off' ? undefined : this.auraRarity.get(player.id);
-      if (rarity && auraIndex < 32) {
+      const awake = auraMode !== 'off' && this.awakeIds.has(player.id);
+      if ((rarity || awake) && auraIndex < 32) {
         const still = match.config.camera.reducedMotion;
-        const pulse = still ? 1 : 1 + 0.07 * Math.sin(this.time * 3 + auraIndex);
-        const size = (rarity === 'mythic' ? 1.28 : rarity === 'legendary' ? 1.14 : 1) * pulse;
+        const pulse = still ? 1 : 1 + (awake ? 0.14 : 0.07) * Math.sin(this.time * (awake ? 7 : 3) + auraIndex);
+        const size = (rarity === 'mythic' ? 1.28 : rarity === 'legendary' ? 1.14 : 1) * pulse * (awake ? 1.35 : 1);
         this.matrixDummy.position.copy(model.mesh.position).setY(0.02);
         this.matrixDummy.rotation.set(-Math.PI / 2, 0, 0);
         this.matrixDummy.scale.set(size, size, 1);
         this.matrixDummy.updateMatrix();
         this.aura.setMatrixAt(auraIndex, this.matrixDummy.matrix);
         if (rarity === 'mythic') this.auraColor.setHSL(still ? 0.52 : (this.time * 0.2) % 1, 0.9, 0.62);
-        else this.auraColor.set(RARITY_DEFS[rarity].aura);
+        else this.auraColor.set(rarity ? RARITY_DEFS[rarity].aura : '#ffffff');
+        if (awake) this.auraColor.lerp(AURA_FLASH, 0.5);
         this.aura.setColorAt(auraIndex++, this.auraColor);
       }
       if (player.id === state.controlledPlayerId) {

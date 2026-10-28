@@ -29,6 +29,9 @@ export const Cond = {
   storm: 1 << 18,
   derby: 1 << 19,
   bigMatch: 1 << 20,
+  /** Signature slot 1 is awake; the pipeline maps the data files' marker to the slot of the player. */
+  signature: 1 << 21,
+  signature2: 1 << 22,
 } as const;
 
 export type CondFlag = (typeof Cond)[keyof typeof Cond];

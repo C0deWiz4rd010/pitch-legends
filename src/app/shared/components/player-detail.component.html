@@ -42,6 +42,20 @@
         </div>
       </div>
 
+      @if (signatureCards(p); as cards) {
+        @if (cards.length) {
+          <div class="signatures">
+            @for (card of cards; track card.id) {
+              <article class="signature" [class.passive]="card.passive">
+                <header><b>✦ {{ card.name }}</b><span>{{ card.passive ? 'PASSIV' : 'TRIGGER' }} · {{ card.power }}%</span></header>
+                <p>{{ card.text }}</p>
+                <small>{{ card.when }}</small>
+              </article>
+            }
+          </div>
+        }
+      }
+
       <div class="xp">
         <div class="xp-top">
           <span>Level {{ p.level }}</span>

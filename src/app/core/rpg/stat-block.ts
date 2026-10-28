@@ -5,7 +5,8 @@ import { getTrait } from '../../data/traits';
 import { computeOverall, positionFamiliarity } from '../ratings';
 import { clamp } from '../util';
 import { condMatches } from './conditions';
-import { EffectHook, EffectSpec, ModifierSource, StatModifier, capFor } from './effects';
+import { signatureEffects } from './signatures';
+import { DerivedHook, EffectHook, EffectSpec, HOOK_BIT, HOOK_INDEX, ModifierSource, StatModifier, capFor } from './effects';
 
 export interface StatContext {
   /** Formation slot the player fills; out-of-position players lose some sharpness. */
@@ -39,6 +40,10 @@ export interface StatBlock {
   modAttrs: AttributeKey[];
   /** True when a derived engine hook (not an attribute) is modified, so hook() has work to do. */
   hasHookMods: boolean;
+  /** OR of every flag any modifier depends on: other flag changes cannot change a resolved value. */
+  flagMask: number;
+  /** Bit of every modified derived hook (see HOOK_BIT); a hook without its bit needs no lookup. */
+  hookMask: number;
 }
 
 const IS_ATTRIBUTE = new Set<string>(ATTRIBUTE_KEYS);
@@ -100,11 +105,16 @@ export function buildStatBlock(player: Player, context: StatContext = {}): StatB
       if (!isFlatBonus(effect)) (mods[effect.hook] ??= []).push({ ...effect, source: { kind: 'training', id: buff.drillId } });
     }
   }
+  (player.dna?.signatures ?? []).slice(0, 2).forEach((signature, slot) => {
+    for (const effect of signatureEffects(signature, slot as 0 | 1)) (mods[effect.hook] ??= []).push({ ...effect, source: { kind: 'signature', id: signature.id } });
+  });
   return {
     playerId: player.id, base, mods, state,
     hasMods: Object.keys(mods).length > 0,
     modAttrs: ATTRIBUTE_KEYS.filter((key) => !!mods[key]),
     hasHookMods: Object.keys(mods).some((hook) => !IS_ATTRIBUTE.has(hook) && !OFF_PITCH_HOOKS.has(hook)),
+    flagMask: Object.values(mods).reduce((mask, list) => (list ?? []).reduce((inner, mod) => inner | (mod.when ?? 0), mask), 0),
+    hookMask: Object.keys(mods).reduce((mask, hook) => mask | (HOOK_BIT[hook as DerivedHook] ?? 0), 0),
   };
 }
 
@@ -118,6 +128,8 @@ export function rawStatBlock(player: Player): StatBlock {
     hasMods: false,
     modAttrs: [],
     hasHookMods: false,
+    flagMask: 0,
+    hookMask: 0,
   };
 }
 
@@ -140,6 +152,27 @@ function resolve(block: StatBlock, hook: EffectHook, start: number, flags: numbe
 export function resolveAttribute(block: StatBlock, key: AttributeKey, flags: number): number {
   if (!block.hasMods) return block.base[key];
   return clamp(resolve(block, key, block.base[key], flags), 1, 99);
+}
+
+/**
+ * Caches the additive and multiplicative part of every modified derived hook for one flag set, so the
+ * engine answers a hook with `(base + add) * mul` instead of walking modifier lists on every call.
+ */
+export function refreshHooks(block: StatBlock, flags: number, add: Float64Array, mul: Float64Array): void {
+  for (const hook of Object.keys(block.mods) as EffectHook[]) {
+    if (IS_ATTRIBUTE.has(hook)) continue;
+    const index = HOOK_INDEX[hook as DerivedHook];
+    let sum = 0;
+    let product = 1;
+    for (const modifier of block.mods[hook]!) {
+      if (!condMatches(flags, modifier.when)) continue;
+      if (modifier.op === 'add') sum += modifier.value;
+      else product *= modifier.value;
+    }
+    const cap = capFor(hook, false);
+    add[index] = clamp(sum, cap.add[0], cap.add[1]);
+    mul[index] = clamp(product, cap.mul[0], cap.mul[1]);
+  }
 }
 
 /**

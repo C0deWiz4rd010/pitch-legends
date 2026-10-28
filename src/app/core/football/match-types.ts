@@ -1,5 +1,6 @@
 import type { Player } from '../../models/player.model';
 import type { AttributeKey } from '../../models/enums';
+import type { SignatureRuntime } from '../rpg/signatures';
 import type { StatBlock } from '../rpg/stat-block';
 import type { PlayerActionState, PlayerRuntimeSnapshot, Side } from '../../models/match.model';
 
@@ -84,6 +85,11 @@ export interface ArcadeActor {
   attrs?: Record<AttributeKey, number>;
   /** Writable storage behind `attrs` for players with situational modifiers. */
   attrBuffer?: Record<AttributeKey, number>;
+  /** Cached additive and multiplicative part of the modified derived hooks (see refreshHooks). */
+  hookAdd?: Float64Array;
+  hookMul?: Float64Array;
+  /** Signature state of this match; absent for players without one. */
+  sig?: SignatureRuntime[];
 }
 
 export interface ArcadeBall {

@@ -32,6 +32,7 @@ import {
   MatchViewState,
   MatchWeather,
   MatchSnapshot,
+  SignatureReport,
 } from '../../models/match.model';
 import { Team } from '../../models/team.model';
 import { Player } from '../../models/player.model';
@@ -151,13 +152,14 @@ export class MatchPage implements OnDestroy {
   protected readonly subInId = signal('');
   protected readonly confirmAction = signal<'forfeit' | 'simulate' | null>(null);
   protected readonly showMinimap = signal(true);
-  protected readonly reportTab = signal<'overview' | 'stats' | 'ratings' | 'heatmap' | 'timeline'>('overview');
+  protected readonly reportTab = signal<'overview' | 'stats' | 'ratings' | 'heatmap' | 'signatures' | 'timeline'>('overview');
   protected readonly heatmapPlayerId = signal('');
   protected readonly reportTabs = [
     { key: 'overview', de: 'Übersicht', en: 'Overview' },
     { key: 'stats', de: 'Statistik', en: 'Stats' },
     { key: 'ratings', de: 'Noten', en: 'Ratings' },
     { key: 'heatmap', de: 'Heatmap', en: 'Heatmap' },
+    { key: 'signatures', de: 'Signaturen', en: 'Signatures' },
     { key: 'timeline', de: 'Verlauf', en: 'Timeline' },
   ] as const;
   protected readonly modes: { key: MatchMode; label: string; hintDe: string; hintEn: string }[] = [
@@ -511,6 +513,11 @@ export class MatchPage implements OnDestroy {
   }
 
   /** Arrow keys move between report tabs (WAI-ARIA tabs pattern). */
+  /** Signature entries of the report, busiest first. */
+  protected signatureRows(report: MatchResult): SignatureReport[] {
+    return [...(report.signatures ?? [])].sort((a, b) => b.activations - a.activations || b.goals - a.goals);
+  }
+
   protected moveReportTab(event: KeyboardEvent, from: string = this.reportTab()): void {
     if (event.key !== 'ArrowRight' && event.key !== 'ArrowLeft' && event.key !== 'Home' && event.key !== 'End') return;
     event.preventDefault();

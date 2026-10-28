@@ -391,6 +391,16 @@ export interface MatchCheckpoint {
     pendingOffsideTargetId: string | null;
     intendedReceiverId: string | null;
     activeShot: { shooterId: string; side: Side; xG: number; targetY: number; checkedKeeper: boolean } | null;
+    /** Effect pipeline state that decides later ticks: situation flags, awake signatures and their tallies. */
+    effects?: {
+      possessionGainedTick: Record<Side, number>;
+      lastOwnerSide: Side | null;
+      lastOwnerId: string | null;
+      sharedFlags: number;
+      sharedFlagsTick: number;
+      actors: Record<string, { flags: number; sig: { until: number; readyAt: number; awake: boolean; refilled: boolean }[] }>;
+      signatureStats: SignatureReport[];
+    };
     halftimeReached: boolean;
     halftimeRecoveryApplied: boolean;
     subsUsed: number;
@@ -438,6 +448,21 @@ export interface MatchResult {
   endingFitness?: Record<string, number>;
   extraTime?: boolean;
   shootout?: PenaltyShootout;
+  signatures?: SignatureReport[];
+}
+
+/** What a signature did in one match; shown in the report tab. */
+export interface SignatureReport {
+  playerId: string;
+  playerName: string;
+  side: Side;
+  signatureId: string;
+  name: [string, string];
+  activations: number;
+  /** Shots and xG of the player while the signature was awake, and goals scored then. */
+  shots: number;
+  xG: number;
+  goals: number;
 }
 
 export interface MatchContribution {

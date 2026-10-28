@@ -329,3 +329,12 @@
 @keyframes rarity-shimmer { from { background-position: 150% 0; } to { background-position: -50% 0; } }
 @media (prefers-reduced-motion: reduce) { .rarity-frame::after { animation: none !important; } }
 
+.signatures { display: grid; gap: 6px; margin: 10px 0; }
+.signature { padding: 8px 10px; border: 1px solid var(--accent-2); background: color-mix(in srgb, var(--accent-2) 8%, var(--surface-2)); }
+.signature.passive { border-color: var(--border); background: var(--surface-2); }
+.signature header { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.signature header b { font-size: 13px; }
+.signature header span { color: var(--muted); font: 700 10px/1 var(--font-pixel); }
+.signature p { margin: 4px 0 2px; font-size: 12px; }
+.signature small { color: var(--muted); font-size: 10px; }
+

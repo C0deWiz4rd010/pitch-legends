@@ -54,6 +54,10 @@ export class AudioService {
     this.crowdSwell(.9,1.8,700,'crowdVolume');
     [392,523,659].forEach((frequency,index)=>this.tone(frequency,.3,'triangle',.075,frequency,'sfxVolume',index*.09));
   }
+  /** A short rising sparkle when a signature ability wakes up. */
+  signature():void {
+    [659,880,1175].forEach((frequency,index)=>this.tone(frequency,.16,'triangle',.05,frequency*1.01,'sfxVolume',index*.05));
+  }
   error():void {this.tone(150,.16,'sawtooth',.10,90);}
   contact(contact:FootballContact, speed:number):void {
     if(contact.tick<=this.lastContactTick) return;
@@ -69,6 +73,7 @@ export class AudioService {
   post():void {this.tone(740,.22,'triangle',.16,710);this.tone(1170,.15,'sine',.045,1100);}
   matchEvent(event:MatchEvent):void {
     if(event.type==='goal') this.goal();
+    else if(event.messageKey==='match.signature') this.signature();
     else if(event.messageKey==='match.offside') this.doubleWhistle();
     else if(event.type==='foul'||event.type==='yellow'||event.type==='red') {
       this.whistle();

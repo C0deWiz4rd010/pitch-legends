@@ -1,3 +1,4 @@
+import { getSignature } from '../../data/signatures';
 import { dnaOf } from '../../core/rpg/player-dna';
 import { I18nService } from '../../core/services/i18n.service';
 import { Player } from '../../models/player.model';
@@ -44,6 +45,26 @@ export class PlayerDetailComponent {
   /** Frame colour class of the sheet: Common stays plain. */
   protected frameRarity(player: Player): string {
     return dnaOf(player).rarity;
+  }
+
+  /** The signatures of a player as cards: name, what it does, when it wakes up and how strong it is. */
+  protected signatureCards(player: Player) {
+    return (dnaOf(player).signatures ?? []).map((signature) => {
+      const definition = getSignature(signature.id);
+      const trigger = definition?.trigger;
+      const when = !trigger ? '' : trigger.kind === 'condition'
+        ? this.i18n.pick('Situationsabhängig', 'While the situation lasts')
+        : this.i18n.pick(`Löst aus: ${signatureEvent(trigger.event, 'de')} · ${trigger.seconds} s · Abklingzeit ${trigger.cooldown} s`, `Wakes on: ${signatureEvent(trigger.event, 'en')} · ${trigger.seconds} s · cooldown ${trigger.cooldown} s`);
+      return {
+        id: signature.id,
+        name: this.i18n.pick(signature.name[0], signature.name[1]),
+        text: definition ? this.i18n.pick(definition.text[0], definition.text[1]) : '',
+        when,
+        power: Math.round(signature.power * 100),
+        level: signature.level,
+        passive: trigger?.kind === 'condition',
+      };
+    });
   }
 
   protected nickname(player: Player): string | null {
@@ -138,4 +159,18 @@ export class PlayerDetailComponent {
   protected setRehab(plan: RehabPlan): void {
     this.medical.setPlan(this.playerId(), plan);
   }
+}
+
+const EVENT_LABELS: Record<string, [string, string]> = {
+  ballWon: ['Ballgewinn', 'ball won'],
+  ballLost: ['Ballverlust', 'ball lost'],
+  passReceived: ['Passannahme', 'pass received'],
+  skillWon: ['gewonnenes Dribbling', 'won dribble'],
+  shotAgainst: ['Schuss auf das eigene Tor', 'shot at own goal'],
+  bigChanceAgainst: ['Großchance des Gegners', 'big chance against'],
+};
+
+function signatureEvent(event: string, language: 'de' | 'en'): string {
+  const pair = EVENT_LABELS[event];
+  return pair ? pair[language === 'de' ? 0 : 1] : event;
 }

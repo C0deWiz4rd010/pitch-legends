@@ -80,9 +80,22 @@ export interface PlayerMedicalState {
 }
 
 /** Permanent identity of a player beyond the numbers: rarity and nickname now, signature and story later. */
+export interface SignatureState {
+  id: string;
+  /** German/English name of this player's variant. */
+  name: [string, string];
+  /** Strength: 1 = as written in the data; scaled by rarity and a small personal tuning. */
+  power: number;
+  /** Evolution stage (Phase 6) and the branch chosen at stage II. */
+  level: 1 | 2 | 3;
+  path: 'a' | 'b' | null;
+}
+
 export interface PlayerDNA {
   version: number;
   rarity: Rarity;
+  /** One or two signatures: Common 1 passive, Rare/Epic 1 triggered, Legendary/Mythic both. */
+  signatures?: SignatureState[];
   /** German/English epithet from Epic upwards. */
   nickname: Nickname | null;
 }

@@ -375,6 +375,18 @@
               <small class="muted">{{ i18n.pick('Die eigene Mannschaft spielt immer nach rechts.', 'Your side always attacks to the right.') }}</small>
             </article>
           }
+          @case ('signatures') {
+            <article class="card sig-report">
+              @for (entry of signatureRows(report); track entry.playerId + entry.signatureId) {
+                <div class="sig-row" [attr.data-side]="entry.side">
+                  <b>✦ {{ i18n.pick(entry.name[0], entry.name[1]) }}</b>
+                  <span>{{ entry.playerName }}</span>
+                  <small>{{ entry.activations }}× · {{ entry.shots }} {{ i18n.pick('Schüsse', 'shots') }} · xG {{ entry.xG }} · {{ entry.goals }} {{ i18n.pick('Tore', 'goals') }}</small>
+                </div>
+              } @empty { <span class="muted">{{ i18n.pick('Keine Signatur wurde ausgelöst.', 'No signature was triggered.') }}</span> }
+              <small class="muted">{{ i18n.pick('Schüsse und Tore zählen nur, solange die Signatur aktiv war.', 'Shots and goals count only while the signature was active.') }}</small>
+            </article>
+          }
           @case ('timeline') {
             <article class="card timeline-card">
               <div class="timeline">

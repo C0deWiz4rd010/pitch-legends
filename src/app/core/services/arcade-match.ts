@@ -26,7 +26,7 @@ import {
 import { Team } from '../../models/team.model';
 import { Tactics } from '../../models/tactics.model';
 import { Difficulty } from '../../models/game.model';
-import type { PenaltyShootout } from '../../models/match.model';
+import type { PenaltyShootout, SignatureReport } from '../../models/match.model';
 import { playerName, groupForPosition } from '../ratings';
 import { tacticalIntent } from '../football/tactical-intent';
 import { ReplayRing } from '../football/replay-ring';
@@ -43,9 +43,11 @@ import { keeperDiveTarget, keeperPositionIntent } from '../football/keeper-ai';
 import { arrangeRestart, chooseRestartTaker } from '../football/set-pieces';
 import { shootoutConversionChance } from '../football/penalty';
 import { AttributeKey } from '../../models/enums';
-import { Cond } from '../rpg/conditions';
-import { DerivedHook } from '../rpg/effects';
-import { StatBlock, buildStatBlock, newAttributes, rawStatBlock, refreshAttributes, resolveAttribute, resolveHook } from '../rpg/stat-block';
+import { Cond, condMatches } from '../rpg/conditions';
+import { SignatureRuntime, createRuntimes, signatureBit } from '../rpg/signatures';
+import { SigEvent } from '../../data/signatures';
+import { HK, HOOK_BIT, HOOK_COUNT, hookName } from '../rpg/effects';
+import { StatBlock, buildStatBlock, newAttributes, rawStatBlock, refreshAttributes, refreshHooks, resolveAttribute, resolveHook } from '../rpg/stat-block';
 import { shotAngleQuality, shotXg } from '../football/xg';
 
 export { FIELD_LENGTH, FIELD_WIDTH, GOAL_HEIGHT, GOAL_WIDTH, MATCH_TICK, PITCH, applyPitch } from '../football/match-types';
@@ -185,6 +187,14 @@ export class ArcadeMatch {
   /** Cond flags that apply to every player right now (dead-ball kicks, penalties). */
   private ambientFlags = 0;
   private lastOwnerSide: Side | null = null;
+  private lastOwnerId: string | null = null;
+  private sideFlagsTick = -1;
+  private sharedFlagsTick = -1;
+  private sharedFlags = 0;
+  private sideFlagsValue: [number, number] = [0, 0];
+  /** True when anybody on the pitch carries an event-driven signature, so events can be skipped otherwise. */
+  private anySignatureEvents = false;
+  private readonly signatureStats = new Map<string, SignatureReport>();
   private readonly possessionGainedTick: Record<Side, number> = { home: -100000, away: -100000 };
   private readonly collisions = new PlayerCollisionGrid();
 
@@ -339,21 +349,10 @@ export class ArcadeMatch {
           .filter((actor) => actor.active && actor.side === this.controlledSide && actor.player.id !== this.selectedPlayerId && actor.player.positionGroup !== 'GK')
           .sort((a, b) => distance(a, this.ball) - distance(b, this.ball))[0]
       : undefined;
-    let sideFlags: [number, number] | undefined;
+    let slot = 0;
     for (const actor of this.actors) {
       if (!actor.active) continue;
-      // Players without any modifier never read their flags, so most of the squad costs nothing here.
-      // Every change of `actor.player` goes through initAttrs, so the block is always current here.
-      const block = actor.stats!;
-      if (block.hasMods) {
-        sideFlags ??= this.sideFlagsThisTick(ownerBeforeMovement);
-        const flags = this.actorFlags(actor, sideFlags[actor.side === 'home' ? 0 : 1], ownerBeforeMovement);
-        // Flags change rarely (a box edge, a counter window), so the values are re-resolved only then.
-        if (flags !== actor.flags || actor.attrs === undefined || actor.attrs !== actor.attrBuffer) {
-          actor.flags = flags;
-          actor.attrs = refreshAttributes(block, flags, actor.attrBuffer ??= newAttributes(block.base));
-        }
-      } else if (actor.attrs !== block.base) actor.attrs = block.base;
+      this.refreshActorState(actor, ++slot, ownerBeforeMovement);
       actor.skillCooldown = Math.max(0, actor.skillCooldown - safeDt);
       actor.tackleCooldown = Math.max(0, actor.tackleCooldown - safeDt);
       // Rushing out is only possible for a ball close to the own goal, never across the pitch.
@@ -689,6 +688,18 @@ export class ArcadeMatch {
         pendingOffsideTargetId: this.pendingOffsideTargetId,
         intendedReceiverId: this.intendedReceiverId,
         activeShot: this.activeShot ? { ...this.activeShot } : null,
+        effects: {
+          possessionGainedTick: { ...this.possessionGainedTick },
+          lastOwnerSide: this.lastOwnerSide,
+          lastOwnerId: this.lastOwnerId,
+          sharedFlags: this.sharedFlags,
+          sharedFlagsTick: this.sharedFlagsTick,
+          actors: Object.fromEntries(this.actors.map((actor) => [actor.player.id, {
+            flags: actor.flags ?? 0,
+            sig: (actor.sig ?? []).map((runtime) => ({ until: runtime.until, readyAt: runtime.readyAt, awake: runtime.awake, refilled: runtime.refilled })),
+          }])),
+          signatureStats: structuredClone([...this.signatureStats.values()]),
+        },
         halftimeReached: this.halftimeReached,
         halftimeRecoveryApplied: this.halftimeRecoveryApplied,
         subsUsed: this.subsUsed,
@@ -721,6 +732,7 @@ export class ArcadeMatch {
     }
     Object.assign(this.ball, checkpoint.ball);
     this.tick = checkpoint.tick;
+    this.restoreEffects(checkpoint.runtime.effects);
     this.config.controllerMode = checkpoint.controllerMode;
     this.controllerChangedAtTick = checkpoint.controllerChangedAtTick;
     this.elapsed = checkpoint.elapsed;
@@ -813,6 +825,9 @@ export class ArcadeMatch {
         flags: 0,
         attrs: undefined,
         attrBuffer: undefined,
+        sig: undefined,
+        hookAdd: undefined,
+        hookMul: undefined,
       });
       this.initAttrs(this.actors[this.actors.length - 1]);
       this.ratings[player.id] = 6.5;
@@ -923,7 +938,7 @@ export class ArcadeMatch {
     const fitnessPenalty = actor.stamina < 40 ? 0.78 + actor.stamina * 0.0055 : 1;
     const attrs = actor.attrs!;
     const accelerationBase = ARCADE_MATCH_TUNING.acceleration * (0.88 + attrs.pace * 0.0012 + attrs.dribbling * 0.0005) * fitnessPenalty;
-    const acceleration = actor.stats!.hasHookMods ? this.hook(actor, 'acceleration', accelerationBase) : accelerationBase;
+    const acceleration = (actor.stats!.hookMask & HOOK_BIT.acceleration) !== 0 ? this.hook(actor, HK.acceleration, accelerationBase) : accelerationBase;
     const braking = ARCADE_MATCH_TUNING.braking * (0.9 + attrs.dribbling * 0.0015);
     const counterSteering = actor.vx * targetVx + actor.vy * targetVy < 0;
     const rate = targetSpeed === 0 || counterSteering ? braking : acceleration;
@@ -947,7 +962,7 @@ export class ArcadeMatch {
     const footballMinutes = dt * 90 / this.totalSeconds;
     const pressureCost = this.teamOf(actor.side).tactics.pressing === 'gegenpress' ? 0.16 : 0;
     const drainBase = (magnitude > 0.1 ? 0.2 : 0.06) + (sprint ? 0.56 : 0) + (ownsBall ? 0.05 : 0) + pressureCost;
-    const drain = actor.stats!.hasHookMods ? this.hook(actor, 'staminaDrain', drainBase) : drainBase;
+    const drain = (actor.stats!.hookMask & HOOK_BIT.staminaDrain) !== 0 ? this.hook(actor, HK.staminaDrain, drainBase) : drainBase;
     actor.stamina = clamp(actor.stamina - footballMinutes * drain, 0, 100);
   }
 
@@ -1147,7 +1162,7 @@ export class ArcadeMatch {
     const targetY = clamp(runner.y + runner.vy * flight * 0.8, 1, FIELD_WIDTH - 1);
     const dx = targetX - actor.x, dy = targetY - actor.y, length = len2(dx, dy) || 1;
     const pressure = clamp((5 - this.closestOpponent(actor)) / 5, 0, 1);
-    const error = this.rng.normal(0, this.hook(actor, 'passError', (100 - this.stat(actor,'passing')) / 100 * 0.07 + pressure * 0.04));
+    const error = this.rng.normal(0, this.hook(actor, HK.passError, (100 - this.stat(actor,'passing')) / 100 * 0.07 + pressure * 0.04));
     const cos = Math.cos(error), sin = Math.sin(error);
     const px = dx / length * cos - dy / length * sin, py = dx / length * sin + dy / length * cos;
     const time = length / speed;
@@ -1219,7 +1234,7 @@ export class ArcadeMatch {
     const manualFactor = humanPass
       ? this.config.assist === 'manual' ? 1.2 : this.config.assist === 'assisted' ? 0.55 : 0.82
       : this.aiLevel(actor.side) === 'easy' ? 0.54 : this.aiLevel(actor.side) === 'hard' ? 0.24 : 0.30;
-    const error = this.hook(actor, 'passError', (100 - this.stat(actor,'passing')) / 100 * 0.075 + pressure * 0.045 + weakFoot * 0.018 + fatigue * 0.04);
+    const error = this.hook(actor, HK.passError, (100 - this.stat(actor,'passing')) / 100 * 0.075 + pressure * 0.045 + weakFoot * 0.018 + fatigue * 0.04);
     const angleError = this.rng.gaussian(0, error * manualFactor * this.composure(actor.side));
     const cos = Math.cos(angleError);
     const sin = Math.sin(angleError);
@@ -1251,7 +1266,7 @@ export class ArcadeMatch {
     // Striking a bouncing or dropping ball (volley) and hitting it with full force are both harder to place.
     const volley = this.ball.z > 0.35;
     const techniqueFactor = (driven ? 1.3 : 1) * (volley ? 1.2 : 1);
-    const baseError = this.hook(actor, 'shotError', ((100 - this.stat(actor,'shooting')) / 100 * 2.15 + pressure * 1.35 + (1 - balance) * 0.9 + weakFoot + fatigue + Math.max(0, distanceToGoal - 20) * 0.15) * techniqueFactor);
+    const baseError = this.hook(actor, HK.shotError, ((100 - this.stat(actor,'shooting')) / 100 * 2.15 + pressure * 1.35 + (1 - balance) * 0.9 + weakFoot + fatigue + Math.max(0, distanceToGoal - 20) * 0.15) * techniqueFactor);
     const assistFactor = this.config.assist === 'assisted' ? 0.72 : this.config.assist === 'manual' ? 1.18 : 0.92;
     const manual = this.isHumanControlled(actor) && this.config.assist === 'manual';
     const manualX = Math.abs(aimX) > 0.04 ? aimX : direction * 0.04;
@@ -1280,6 +1295,7 @@ export class ArcadeMatch {
     const heightAtGoal = this.ball.z + vz * flightTime - 4.905 * flightTime * flightTime;
     if (Math.abs(targetY - goalCentre) <= GOAL_WIDTH / 2 && heightAtGoal <= GOAL_HEIGHT) stats.shotsOnTarget++;
     this.activeShot = { shooterId: actor.player.id, side: actor.side, xG, targetY, checkedKeeper: false };
+    this.registerShotForSignatures(actor, xG);
     this.intendedReceiverId = null;
     // Driven and hard shots carry topspin (they dip); chips carry backspin (they float and check up).
     const topspin = chip ? -3 : driven ? 4 : power > 0.7 && !finesse ? 1.5 : 0;
@@ -1326,12 +1342,15 @@ export class ArcadeMatch {
     this.setAction(actor, move);
     if (opponentGap > 3.6) return;
     const quality = this.stat(actor,'dribbling') / 100 * (actor.stamina > 20 ? 1 : 0.7);
+    let beaten = false;
     for (const opponent of this.actors) {
       if (!opponent.active || opponent.side === actor.side || opponent.player.positionGroup === 'GK' || distance(opponent, actor) > 3.6) continue;
+      beaten = true;
       opponent.tackleCooldown = Math.max(opponent.tackleCooldown, 0.2 + quality * 0.35);
       opponent.vx *= 0.5; opponent.vy *= 0.5;
       if (!this.isHumanControlled(opponent)) opponent.decisionCooldown += 0.15 + quality * 0.25;
     }
+    if (beaten && this.anySignatureEvents) this.fireSignature('skillWon', actor, null);
   }
 
   /** Expected value of shooting now: chance quality, blocked lanes and a keeper caught off the line. */
@@ -1411,7 +1430,7 @@ export class ArcadeMatch {
       if (distance(defender, owner) > 1.25) continue;
       const pressing = this.teamOf(defender.side).tactics.pressing;
       const press = pressing === 'gegenpress' ? 1.45 : pressing === 'high' ? 1.2 : 1;
-      if (this.rng.bool(dt * this.hook(defender, 'pressTackle', 0.22 + this.stat(defender,'defending') / 115) * press)) {
+      if (this.rng.bool(dt * this.hook(defender, HK.pressTackle, 0.22 + this.stat(defender,'defending') / 115) * press)) {
         const slideChance = pressing === 'gegenpress' ? 0.08 : pressing === 'high' ? 0.04 : pressing === 'medium' ? 0.01 : 0.004;
         this.attemptTackle(defender, this.rng.bool(slideChance));
       }
@@ -1433,7 +1452,7 @@ export class ArcadeMatch {
     const behind = (-relativeX * owner.facingX - relativeY * owner.facingY) / Math.max(0.1, len2(relativeX, relativeY)) < -0.2;
     const shielding = behind && len2(owner.vx, owner.vy) < this.maxSpeed(owner, false) * 0.95 ? 0.12 * this.stat(owner,'physical') / 80 : 0;
     const jockeyBonus = (actor.action === 'jockey' ? 0.06 : 0) + (actor.side === 'home' ? ARCADE_MATCH_TUNING.homeComposure * 0.3 : 0);
-    const winChance = clamp(this.hook(actor, 'tackleWin', 0.28 + this.stat(actor,'defending') / 170 - this.stat(owner,'dribbling') / 260 + approach * 0.12 + (sliding ? 0.08 : 0) - shielding + jockeyBonus), 0.12, 0.82);
+    const winChance = clamp(this.hook(actor, HK.tackleWin, 0.28 + this.stat(actor,'defending') / 170 - this.stat(owner,'dribbling') / 260 + approach * 0.12 + (sliding ? 0.08 : 0) - shielding + jockeyBonus), 0.12, 0.82);
     const ballReach = distance(actor, this.ball) <= (sliding ? 1.9 : 1.15) && this.ball.z < .65;
     if (ballReach && this.rng.bool(winChance)) {
       if (!this.legalRestartTouch(actor)) return;
@@ -1568,7 +1587,7 @@ export class ArcadeMatch {
     const shot = this.activeShot;
     if (shot?.checkedKeeper) return;
     if (shot) shot.checkedKeeper = true;
-    const reaction = this.hook(keeper, 'keeperReaction', this.stat(keeper,'goalkeeping') / 100);
+    const reaction = this.hook(keeper, HK.keeperReaction, this.stat(keeper,'goalkeeping') / 100);
     const speed = len2(this.ball.vx, this.ball.vy);
     const reachDistance = distance(keeper, this.ball);
     const blockChance = clamp(0.84 + reaction * 0.24 - speed * 0.0015 - reachDistance * 0.025, 0.45, 0.98);
@@ -1799,6 +1818,7 @@ export class ArcadeMatch {
     if (Math.abs(targetY - FIELD_WIDTH / 2) <= GOAL_WIDTH / 2) this.stats(actor.side).shotsOnTarget++;
     this.stats(actor.side).xG = round(this.stats(actor.side).xG + headerXg, 2);
     this.activeShot = { shooterId: actor.player.id, side: actor.side, xG: headerXg, targetY, checkedKeeper: false };
+    this.registerShotForSignatures(actor, headerXg);
     this.football.queuedAction = null;
     this.events.push({ minute: this.footballMinute, type: 'shot', side: actor.side, playerId: actor.player.id, params: { player: playerName(actor.player), xG: round(headerXg, 2), distance: round(goalDistance, 1) } });
   }
@@ -1848,6 +1868,7 @@ export class ArcadeMatch {
     const ownGoal = !!lastToucher && lastToucher.side !== side;
     const scorer = ownGoal ? undefined : lastToucher;
     if (scorer) {
+      this.recordSignatureGoal(scorer);
       this.contributions[scorer.player.id].goals++;
       this.ratings[scorer.player.id] = clamp(this.ratings[scorer.player.id] + 1.2, 1, 10);
     }
@@ -2182,6 +2203,7 @@ export class ArcadeMatch {
       played: true,
       ...(this.football.extra ? { extraTime: true } : {}),
       ...(this.shootout ? { shootout: structuredClone(this.shootout) } : {}),
+      ...(this.signatureStats.size ? { signatures: [...this.signatureStats.values()].map((entry) => ({ ...entry, xG: round(entry.xG, 2) })) } : {}),
     };
   }
 
@@ -2220,8 +2242,18 @@ export class ArcadeMatch {
   private updatePossessionStats(dt: number): void {
     const owner = this.owner();
     if (owner) {
-      if (this.lastOwnerSide && this.lastOwnerSide !== owner.side) this.possessionGainedTick[owner.side] = this.tick;
+      const previousSide = this.lastOwnerSide;
+      if (previousSide && previousSide !== owner.side) {
+        this.possessionGainedTick[owner.side] = this.tick;
+        if (this.anySignatureEvents) {
+          this.fireSignature('ballWon', owner, null);
+          this.fireSignature('ballLost', null, previousSide);
+        }
+      } else if (this.anySignatureEvents && previousSide === owner.side && owner.player.id !== this.lastOwnerId) {
+        this.fireSignature('passReceived', owner, null);
+      }
       this.lastOwnerSide = owner.side;
+      this.lastOwnerId = owner.player.id;
     }
     if (owner?.side === 'home') this.possessionHomeSeconds += dt;
     else if (owner?.side === 'away') this.possessionAwaySeconds += dt;
@@ -2327,7 +2359,8 @@ export class ArcadeMatch {
   }
 
   private maxSpeed(actor: ArcadeActor, sprint: boolean): number {
-    const base = arcadeSprintSpeed(actor.attrs!.pace);
+    const pace = arcadeSprintSpeed(actor.attrs!.pace);
+    const base = (actor.stats!.hookMask & HOOK_BIT.sprintBurst) !== 0 ? this.hook(actor, HK.sprintBurst, pace) : pace;
     const fitness = actor.stamina < 40 ? 0.82 + actor.stamina * 0.0045 : 1;
     const ownsBall = this.ball.ownerId === actor.player.id;
     const ball = ownsBall ? sprint ? ARCADE_MATCH_TUNING.ballSprintRatio : ARCADE_MATCH_TUNING.ballJogRatio : 1;
@@ -2371,6 +2404,136 @@ export class ArcadeMatch {
     return this.attackDirection('home') === direction ? 'home' : 'away';
   }
 
+  /**
+   * Keeps the resolved attribute view, hook factors and signature state of an actor current. Situations last
+   * for seconds, so each player re-reads them only every sixth tick (100 ms, staggered by slot).
+   */
+  private refreshActorState(actor: ArcadeActor, slot: number, owner: ArcadeActor | undefined): void {
+    // Every change of `actor.player` goes through initAttrs, so the block is always current here.
+    const block = actor.stats!;
+    if (!block.hasMods) {
+      if (actor.attrs !== block.base) actor.attrs = block.base;
+      return;
+    }
+    if (actor.attrs !== undefined && actor.attrs === actor.attrBuffer && (this.tick + slot) % 6 !== 0) return;
+    if (this.sideFlagsTick !== this.tick) {
+      this.sideFlagsTick = this.tick;
+      this.sideFlagsThisTick(owner, this.sideFlagsValue);
+    }
+    let flags = this.actorFlags(actor, this.sideFlagsValue[actor.side === 'home' ? 0 : 1], owner);
+    if (actor.sig) flags = this.updateSignatures(actor, flags);
+    // Only the flags some modifier looks at can change a value, so other changes cost nothing.
+    const changed = ((flags ^ (actor.flags ?? 0)) & block.flagMask) !== 0;
+    actor.flags = flags;
+    if (changed || actor.attrs === undefined || actor.attrs !== actor.attrBuffer) {
+      actor.attrs = refreshAttributes(block, flags, actor.attrBuffer ??= newAttributes(block.base));
+      if (actor.hookAdd) refreshHooks(block, flags, actor.hookAdd, actor.hookMul!);
+    }
+  }
+
+  /** Puts the effect pipeline back exactly as it was, so a resumed match plays on identically. */
+  private restoreEffects(effects: MatchCheckpoint['runtime']['effects']): void {
+    this.sideFlagsTick = -1;
+    if (!effects) return;
+    Object.assign(this.possessionGainedTick, effects.possessionGainedTick);
+    this.lastOwnerSide = effects.lastOwnerSide;
+    this.lastOwnerId = effects.lastOwnerId;
+    this.sharedFlags = effects.sharedFlags;
+    this.sharedFlagsTick = effects.sharedFlagsTick;
+    for (const actor of this.actors) {
+      const saved = effects.actors[actor.player.id];
+      if (!saved) continue;
+      actor.flags = saved.flags;
+      this.initAttrs(actor);
+      actor.sig?.forEach((runtime, index) => { if (saved.sig[index]) Object.assign(runtime, saved.sig[index]); });
+    }
+    this.signatureStats.clear();
+    for (const entry of effects.signatureStats) this.signatureStats.set(`${entry.playerId}|${entry.signatureId}`, structuredClone(entry));
+  }
+
+  /** Wakes and puts to sleep the signatures of an actor; returns the flags with the awake bits added. */
+  private updateSignatures(actor: ArcadeActor, base: number): number {
+    let flags = base;
+    const list = actor.sig!;
+    for (let index = 0; index < list.length; index++) {
+      const runtime = list[index];
+      let awake: boolean;
+      if (runtime.isCondition) {
+        awake = false;
+        const masks = runtime.masks;
+        for (let m = 0; m < masks.length; m++) if ((base & masks[m]) === masks[m]) { awake = true; break; }
+        // A condition may flicker; it counts (and is announced) at most every 15 seconds.
+        if (awake && !runtime.awake && this.tick >= runtime.readyAt) {
+          runtime.readyAt = this.tick + 900;
+          this.wakeSignature(actor, runtime);
+        }
+      } else awake = this.tick < runtime.until;
+      runtime.awake = awake;
+      if (awake) flags |= signatureBit(runtime.slot);
+    }
+    return flags;
+  }
+
+  /** An event happened: wakes the matching signatures of one player (`target`) or of a whole side. */
+  private fireSignature(event: SigEvent, target: ArcadeActor | null, side: Side | null): void {
+    for (const actor of this.actors) {
+      if (!actor.sig || !actor.active) continue;
+      if (target ? actor !== target : actor.side !== side) continue;
+      for (const runtime of actor.sig) {
+        const trigger = runtime.definition.trigger;
+        if (trigger.kind !== 'event' || trigger.event !== event || this.tick < runtime.readyAt) continue;
+        if (trigger.requires && !condMatches(actor.flags ?? 0, trigger.requires)) continue;
+        runtime.until = this.tick + Math.round(trigger.seconds * 60);
+        runtime.readyAt = this.tick + Math.round(trigger.cooldown * 60);
+        this.wakeSignature(actor, runtime);
+      }
+    }
+  }
+
+  private wakeSignature(actor: ArcadeActor, runtime: SignatureRuntime): void {
+    const entry = this.signatureEntry(actor, runtime);
+    entry.activations++;
+    const refill = runtime.definition.restoresStamina;
+    if (refill && !runtime.refilled) {
+      runtime.refilled = true;
+      actor.stamina = Math.min(100, actor.stamina + refill);
+    }
+    if (this.config.mode === 'instant') return;
+    this.events.push({
+      minute: this.footballMinute, type: 'commentary', side: actor.side, playerId: actor.player.id, messageKey: 'match.signature',
+      params: { player: playerName(actor.player), nameDe: runtime.state.name[0], nameEn: runtime.state.name[1] },
+    });
+  }
+
+  private signatureEntry(actor: ArcadeActor, runtime: SignatureRuntime): SignatureReport {
+    const key = `${actor.player.id}|${runtime.state.id}`;
+    let entry = this.signatureStats.get(key);
+    if (!entry) {
+      entry = { playerId: actor.player.id, playerName: playerName(actor.player), side: actor.side, signatureId: runtime.state.id, name: runtime.state.name, activations: 0, shots: 0, xG: 0, goals: 0 };
+      this.signatureStats.set(key, entry);
+    }
+    return entry;
+  }
+
+  /** A shot: credits awake signatures of the shooter and wakes the defenders' reactions. */
+  private registerShotForSignatures(shooter: ArcadeActor, xG: number): void {
+    if (shooter.sig) for (const runtime of shooter.sig) {
+      if (!runtime.awake) continue;
+      const entry = this.signatureEntry(shooter, runtime);
+      entry.shots++;
+      entry.xG += xG;
+    }
+    if (!this.anySignatureEvents) return;
+    const defending = oppositeSide(shooter.side);
+    this.fireSignature('shotAgainst', null, defending);
+    if (xG > 0.3) this.fireSignature('bigChanceAgainst', null, defending);
+  }
+
+  private recordSignatureGoal(scorer: ArcadeActor): void {
+    if (!scorer.sig) return;
+    for (const runtime of scorer.sig) if (runtime.awake) this.signatureEntry(scorer, runtime).goals++;
+  }
+
   private get effectsEnabled(): boolean {
     return this.config.effects !== false;
   }
@@ -2392,18 +2555,34 @@ export class ArcadeMatch {
     actor.attrBuffer = undefined;
     const block = this.statsOf(actor);
     actor.attrs = block.hasMods ? refreshAttributes(block, actor.flags ?? 0, actor.attrBuffer = newAttributes(block.base)) : block.base;
+    if (block.hasHookMods) {
+      actor.hookAdd = new Float64Array(HOOK_COUNT);
+      actor.hookMul = new Float64Array(HOOK_COUNT).fill(1);
+      refreshHooks(block, actor.flags ?? 0, actor.hookAdd, actor.hookMul);
+    } else {
+      actor.hookAdd = undefined;
+      actor.hookMul = undefined;
+    }
+    const runtimes = this.effectsEnabled ? createRuntimes(actor.player.dna) : [];
+    actor.sig = runtimes.length ? runtimes : undefined;
+    if (runtimes.some((runtime) => runtime.definition.trigger.kind === 'event')) this.anySignatureEvents = true;
   }
 
   /** Re-resolves the actor's view for the flags of the moment, plus `extra` for the duration of a dead-ball kick. */
   private applyKickFlags(actor: ArcadeActor, extra: number): void {
     const block = this.statsOf(actor);
-    if (block.hasMods) actor.attrs = refreshAttributes(block, (actor.flags ?? 0) | extra, actor.attrBuffer ??= newAttributes(block.base));
+    if (!block.hasMods) return;
+    const flags = (actor.flags ?? 0) | extra;
+    actor.attrs = refreshAttributes(block, flags, actor.attrBuffer ??= newAttributes(block.base));
+    if (actor.hookAdd) refreshHooks(block, flags, actor.hookAdd, actor.hookMul!);
   }
 
   /** A derived engine value (error rate, chance, rate) after modifiers; a no-op until something targets the hook. */
-  private hook(actor: ArcadeActor, hook: DerivedHook, base: number, extraFlags = 0): number {
-    if (!actor.stats!.hasHookMods) return base;
-    return resolveHook(this.statsOf(actor), hook, base, (actor.flags ?? 0) | this.ambientFlags | extraFlags);
+  private hook(actor: ArcadeActor, hook: number, base: number, extraFlags = 0): number {
+    if (((actor.stats!.hookMask >>> hook) & 1) === 0) return base;
+    if (extraFlags !== 0) return resolveHook(this.statsOf(actor), hookName(hook), base, (actor.flags ?? 0) | this.ambientFlags | extraFlags);
+    // The cache follows the actor's flags (and a dead-ball kick's), so this is a multiply-add.
+    return (base + actor.hookAdd![hook]) * actor.hookMul![hook];
   }
 
   private statsOf(actor: ArcadeActor): StatBlock {
@@ -2417,13 +2596,19 @@ export class ArcadeMatch {
   }
 
   /** Flags that are the same for every player of a side this tick: score, clock, weather, possession. */
-  private sideFlagsThisTick(owner: ArcadeActor | undefined): [number, number] {
-    let shared = 0;
-    if (this.footballMinute >= 75) shared |= Cond.late;
-    if (this.inExtraTime) shared |= Cond.extraTime;
-    if (this.config.weather === 'rain') shared |= Cond.rain;
-    else if (this.config.weather === 'storm') shared |= Cond.storm | Cond.rain;
-    const result: [number, number] = [shared | Cond.home, shared | Cond.away];
+  private sideFlagsThisTick(owner: ArcadeActor | undefined, result: [number, number]): [number, number] {
+    // The clock and the weather change slowly: the shared part is rebuilt once a second.
+    if (this.tick % 60 === 0 || this.sharedFlagsTick < 0) {
+      this.sharedFlagsTick = this.tick;
+      let shared = 0;
+      if (this.footballMinute >= 75) shared |= Cond.late;
+      if (this.inExtraTime) shared |= Cond.extraTime;
+      if (this.config.weather === 'rain') shared |= Cond.rain;
+      else if (this.config.weather === 'storm') shared |= Cond.storm | Cond.rain;
+      this.sharedFlags = shared;
+    }
+    result[0] = this.sharedFlags | Cond.home;
+    result[1] = this.sharedFlags | Cond.away;
     for (let index = 0; index < 2; index++) {
       const side: Side = index === 0 ? 'home' : 'away';
       const own = index === 0 ? this.homeScore : this.awayScore;
