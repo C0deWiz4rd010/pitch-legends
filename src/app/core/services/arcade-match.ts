@@ -1,3 +1,4 @@
+import { hash32 } from '../visual-identity';
 import { Player } from '../../models/player.model';
 import {
   AssistPreset,
@@ -110,6 +111,15 @@ function normaliseCommand(input: InputFrame | MatchCommand): MatchCommand {
  * Deterministic 60 Hz match simulation shared by PLAY, COACH and headless SIM.
  * World values are metres; the renderer is deliberately only a consumer.
  */
+/** What an AI passer adds to the score of a target he thinks may be offside: attackers are sometimes found anyway. */
+const OFFSIDE_RISK_PENALTY = 0.2;
+/** How strongly AI passers avoid crowded passing lanes; higher means safer, shorter passing. */
+const AI_LANE_CAUTION = 1.8;
+/** Scales the execution error of AI passes (below 1 means cleaner passing); human passes keep their full error. */
+const AI_PASS_SKILL = 1;
+/** Interception attempts on a pass in flight happen every this many ticks per defender. */
+const INTERCEPT_EVERY = 5;
+
 export class ArcadeMatch {
   readonly home: Team;
   readonly away: Team;
@@ -1035,7 +1045,7 @@ export class ArcadeMatch {
       const shotValue = goalDistance < shotRange && shootingLane ? this.shotValue(actor) : 0;
       const level = this.aiLevel(actor.side);
       // Phase H balance: a little more willing to shoot (about 11 shots per team instead of 9), see the wider shot dispersion.
-      const shotThreshold = level === 'easy' ? .16 : level === 'hard' ? .10 : .115;
+      const shotThreshold = level === 'easy' ? .16 : level === 'hard' ? .09 : .098;
       const captain = team.tactics.captainId === actor.player.id;
       const patience = team.tactics.tempo === 'slow' ? .16 : team.tactics.tempo === 'fast' ? .40 : .26;
       if (actor.player.positionGroup === 'GK') {
@@ -1076,7 +1086,7 @@ export class ArcadeMatch {
       this.setAction(actor,'receive');
       return;
     }
-    const intent = tacticalIntent(actor, owner, this.ball, this.actors, team, direction);
+    const intent = tacticalIntent(actor, owner, this.ball, this.actors, team, direction, this.tick);
     this.setAction(actor, intent.action);
     actor.intentX = intent.x;
     actor.intentY = intent.y;
@@ -1152,7 +1162,7 @@ export class ArcadeMatch {
     const runner = teammates
       .filter(candidate => candidate.player.positionGroup !== 'GK' && Math.abs(goalX - candidate.x) < 18 && Math.abs(candidate.y - FIELD_WIDTH / 2) < 17)
       .map(candidate => ({ candidate, score: this.passLanePressure(actor, candidate) * 1.4 + Math.abs(candidate.y - FIELD_WIDTH / 2) * 0.05
-        + Math.abs(goalX - candidate.x) * 0.04 - Math.max(0, candidate.vx * direction) * 0.08 + (this.isOffside(candidate, actor) ? 5 : 0) }))
+        + Math.abs(goalX - candidate.x) * 0.04 - Math.max(0, candidate.vx * direction) * 0.08 + (this.isOffside(candidate, actor) ? OFFSIDE_RISK_PENALTY : 0) }))
       .sort((a, b) => a.score - b.score)[0]?.candidate;
     if (!runner) return false;
     const rough = distance(actor, runner);
@@ -1207,7 +1217,7 @@ export class ArcadeMatch {
         const runBonus = through ? Math.max(0, (candidate.vx * this.attackDirection(actor.side) + 1) * 0.12) : 0;
         const forwardGain = (candidate.x - actor.x) * this.attackDirection(actor.side);
         const preferredDistance = this.teamOf(actor.side).tactics.passing === 'direct' ? 25 : this.teamOf(actor.side).tactics.passing === 'short' ? 10 : 17;
-        return { candidate, angle, length, lanePressure, score: angle * (humanPass ? 2.2 : 0.25) + Math.abs(length - (humanPass ? 8 + power * 24 : preferredDistance)) * 0.035 + lanePressure * (humanPass ? 0.45 : 1.8) - runBonus - (humanPass ? 0 : forwardGain * 0.025) + (this.isOffside(candidate, actor) ? 4 : 0) };
+        return { candidate, angle, length, lanePressure, score: angle * (humanPass ? 2.2 : 0.25) + Math.abs(length - (humanPass ? 8 + power * 24 : preferredDistance)) * 0.035 + lanePressure * (humanPass ? 0.45 : AI_LANE_CAUTION) - runBonus - (humanPass ? 0 : forwardGain * 0.025) + (this.isOffside(candidate, actor) ? OFFSIDE_RISK_PENALTY * 0.8 : 0) };
       })
       .sort((a, b) => a.score - b.score);
     const assistedOptions = humanPass
@@ -1234,7 +1244,7 @@ export class ArcadeMatch {
     const manualFactor = humanPass
       ? this.config.assist === 'manual' ? 1.2 : this.config.assist === 'assisted' ? 0.55 : 0.82
       : this.aiLevel(actor.side) === 'easy' ? 0.54 : this.aiLevel(actor.side) === 'hard' ? 0.24 : 0.30;
-    const error = this.hook(actor, HK.passError, (100 - this.stat(actor,'passing')) / 100 * 0.075 + pressure * 0.045 + weakFoot * 0.018 + fatigue * 0.04);
+    const error = this.hook(actor, HK.passError, ((100 - this.stat(actor,'passing')) / 100 * 0.075 + pressure * 0.045 + weakFoot * 0.018 + fatigue * 0.04) * (humanPass ? 1 : AI_PASS_SKILL));
     const angleError = this.rng.gaussian(0, error * manualFactor * this.composure(actor.side));
     const cos = Math.cos(angleError);
     const sin = Math.sin(angleError);
@@ -1701,6 +1711,11 @@ export class ArcadeMatch {
     return false;
   }
 
+  /** A stable per-tick pseudo-random rank used to settle exact ties between players. */
+  private tieOrder(actor: ArcadeActor): number {
+    return hash32(`${this.tick}|${actor.player.id}`);
+  }
+
   private tryBallControl(): void {
     if (this.ball.z > 1.4) { this.tryHeader(); return; }
     const speed = len2(this.ball.vx, this.ball.vy);
@@ -1709,13 +1724,16 @@ export class ArcadeMatch {
     for (const actor of this.actors) {
       if (!actor.active || (this.ball.controlledTouch < 0.14 && actor.player.id === this.ball.lastTouchPlayerId)) continue;
       const intended = actor.player.id === this.intendedReceiverId;
+      // A defender gets a chance at a pass in flight only every few ticks, not on every tick the ball is near.
+      if (!intended && this.lastPasser && !this.lastPasser.received && actor.side !== this.lastPasser.side && (this.tick + actor.player.kitNumber) % INTERCEPT_EVERY !== 0) continue;
       const controlRadius = this.ball.z > 0.75 ? 0.7 : intended ? 1.05 : 0.95;
       // Chest and thigh control up to 1.4 m; very hard balls at that height cannot be killed.
       if (this.ball.z > 0.75 && speed > 17) continue;
       const controlDistance = distance(actor, this.ball);
       if (controlDistance >= controlRadius) continue;
       const score = controlDistance - (intended ? ARCADE_MATCH_TUNING.intendedReceiverControlBias : 0);
-      if (score < candidateScore) {
+      // Equal distances are settled by a fixed pseudo-random order, not by the order of the player list.
+      if (score < candidateScore - 1e-9 || (candidate && Math.abs(score - candidateScore) <= 1e-9 && this.tieOrder(actor) < this.tieOrder(candidate))) {
         candidate = actor;
         candidateScore = score;
       }

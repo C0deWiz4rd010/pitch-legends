@@ -8,7 +8,7 @@ export interface TacticalIntent { x: number; y: number; action: PlayerActionStat
 
 /** Pure team shape: decisions share positional information and obey individual duties. */
 export function tacticalIntent(actor: ArcadeActor, owner: ArcadeActor | undefined, ball: ArcadeBall,
-  actors: readonly ArcadeActor[], team: Team, direction: 1 | -1): TacticalIntent {
+  actors: readonly ArcadeActor[], team: Team, direction: 1 | -1, tick = 0): TacticalIntent {
   const t = team.tactics;
   // Distances below were tuned on 105 × 68 m; on the five-a-side cage they shrink with the pitch.
   // On the full pitch both factors are exactly 1, so the result is unchanged there.
@@ -92,7 +92,7 @@ export function tacticalIntent(actor: ArcadeActor, owner: ArcadeActor | undefine
       else if (opponentDepth > secondDeepest) secondDeepest = opponentDepth;
     }
     const lastLine = Math.max(ballDepth,opponents.length > 1 ? secondDeepest : FIELD_LENGTH);
-    depth=Math.min(depth,Math.max(FIELD_LENGTH/2-.5,lastLine-1.1));
+    depth=Math.min(depth,Math.max(FIELD_LENGTH/2-.5,lastLine-1.1+lineOvershoot(actor,instruction.forwardRuns,instruction.stayInPosition,tick)*sx));
     // Local separation keeps teammates from offering exactly the same pass.
     for (const mate of teammates) if (mate!==actor && mate!==owner && len2(mate.x-actor.x,mate.y-actor.y)<4) y+=(actor.homeY>=mate.homeY?1:-1)*2;
   }
@@ -102,3 +102,18 @@ export function tacticalIntent(actor: ArcadeActor, owner: ArcadeActor | undefine
   }
   return {x:clamp(direction>0?depth:FIELD_LENGTH-depth,1,FIELD_LENGTH-1),y:clamp(y,3,FIELD_WIDTH-3),action};
 }
+
+/**
+ * Attackers who like to run in behind misjudge the offside line now and then: for a second or two they
+ * hover up to a few metres beyond the last defender. The roll is a pure function of player and time, so
+ * matches stay deterministic.
+ */
+function lineOvershoot(actor: ArcadeActor, runs: string, stay: boolean, tick: number): number {
+  if (actor.player.positionGroup !== 'ATT' || stay || runs === 'rarely') return 0;
+  const window = Math.floor(tick / 100);
+  const roll = (Math.imul(window + 1, 2654435761) ^ Math.imul(actor.player.kitNumber + 17, 40503)) >>> 0;
+  const chance = runs === 'often' ? 90 : 80;
+  const bucket = roll % 100;
+  return bucket < chance ? 2 + (bucket / chance) * 4 : 0;
+}
+
