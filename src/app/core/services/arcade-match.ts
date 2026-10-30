@@ -43,6 +43,7 @@ import { actorSnapshot, applyActorSnapshot, ballSnapshot, fnv1aHex, writeBallSna
 import { keeperDiveTarget, keeperPositionIntent } from '../football/keeper-ai';
 import { arrangeRestart, chooseRestartTaker } from '../football/set-pieces';
 import { shootoutConversionChance } from '../football/penalty';
+import { Aim, KickChoice, KickOutcome, aiKeeperDive, aiShooterChoice, kickOutcome, shootoutDecided } from '../football/shootout';
 import { AttributeKey } from '../../models/enums';
 import { Cond, condMatches } from '../rpg/conditions';
 import { SignatureRuntime, ULTIMATE_COST, ULTIMATE_SECONDS, createRuntimes, signatureBit } from '../rpg/signatures';
@@ -119,6 +120,29 @@ const AI_LANE_CAUTION = 1.8;
 const AI_PASS_SKILL = 1;
 /** Interception attempts on a pass in flight happen every this many ticks per defender. */
 const INTERCEPT_EVERY = 5;
+
+/** State of a shoot-out the player takes part in. */
+export interface ShootoutRun {
+  order: Record<Side, ArcadeActor[]>;
+  shootout: PenaltyShootout;
+  goals: Record<Side, number>;
+  round: number;
+  turn: Side;
+  decided: boolean;
+}
+
+/** What the match page asks the player during an interactive shoot-out. */
+export interface ShootoutPrompt {
+  role: 'shoot' | 'dive';
+  shooterSide: Side;
+  round: number;
+  takerName: string;
+  keeperName: string;
+  takerShooting: number;
+  keeperGoalkeeping: number;
+  goals: Record<Side, number>;
+  shootout: PenaltyShootout;
+}
 
 export class ArcadeMatch {
   readonly home: Team;
@@ -203,6 +227,8 @@ export class ArcadeMatch {
   private readonly ultimateUntil: Record<Side, number> = { home: 0, away: 0 };
   private readonly ultimateUser: Record<Side, string | null> = { home: null, away: null };
   private readonly mythicSide: Record<Side, boolean> = { home: false, away: false };
+  /** A shoot-out the player plays kick by kick; null when none is running. */
+  shootoutRun: ShootoutRun | null = null;
   private sideFlagsTick = -1;
   private sharedFlagsTick = -1;
   private sharedFlags = 0;
@@ -344,7 +370,7 @@ export class ArcadeMatch {
   step(dt: number, rawInput: InputFrame | MatchCommand = EMPTY_MATCH_COMMAND): void {
     applyPitch(this.pitch);
     if (!Number.isFinite(dt) || dt <= 0) return;
-    if (this.paused || this.finished || this.phase === 'halftime' || this.phase === 'goalReplay') return;
+    if (this.paused || this.finished || this.phase === 'halftime' || this.phase === 'goalReplay' || this.shootoutRun) return;
     const acceptsHumanInput = this.config.controllerMode === 'human' && this.tick - this.controllerChangedAtTick >= 15;
     const input = acceptsHumanInput ? normaliseCommand(rawInput) : EMPTY_MATCH_COMMAND;
     const safeDt = Math.min(dt, MATCH_TICK);
@@ -402,7 +428,11 @@ export class ArcadeMatch {
     } else if (extra && !this.finished && this.extraPeriodOver(extra.periodStart)) {
       if (extra.period === 1) this.changeEndsInExtraTime();
       else {
-        if (this.homeScore === this.awayScore) this.resolveShootout();
+        if (this.homeScore === this.awayScore) {
+          // A human managing a side takes the kicks himself; everybody else gets the automatic shoot-out.
+          if (this.beginInteractiveShootout()) return;
+          this.resolveShootout();
+        }
         this.finish();
       }
     }
@@ -722,6 +752,7 @@ export class ArcadeMatch {
           }])),
           signatureStats: structuredClone([...this.signatureStats.values()]),
         },
+        shootoutPending: !!this.shootoutRun,
         halftimeReached: this.halftimeReached,
         halftimeRecoveryApplied: this.halftimeRecoveryApplied,
         subsUsed: this.subsUsed,
@@ -793,6 +824,12 @@ export class ArcadeMatch {
     for (const key of Object.keys(this.heatmaps)) delete this.heatmaps[key];
     Object.assign(this.heatmaps, structuredClone(checkpoint.runtime.heatmaps));
     this.rng.restore(checkpoint.rngState);
+    // A reload in the middle of an interactive shoot-out cannot bring the kicks back: it is settled automatically.
+    if (checkpoint.runtime.shootoutPending) {
+      this.shootoutRun = null;
+      this.resolveShootout();
+      this.finish();
+    }
     return this.isFiniteState();
   }
 
@@ -2156,6 +2193,100 @@ export class ArcadeMatch {
    * Penalties after a drawn knockout tie: five each in alternation (decided early when out of reach),
    * then sudden death. Conversion depends on the taker, the "Ice in the Veins" trait and the keeper.
    */
+  /** Penalty takers of a side: best shooters first, the keeper last. */
+  private shootoutOrder(side: Side): ArcadeActor[] {
+    return this.actors
+      .filter(actor => actor.active && actor.side === side)
+      .sort((a, b) => (a.player.positionGroup === 'GK' ? 1 : 0) - (b.player.positionGroup === 'GK' ? 1 : 0)
+        || this.statWith(b, 'shooting', Cond.penalty) - this.statWith(a, 'shooting', Cond.penalty));
+  }
+
+  /**
+   * Starts a shoot-out the managing human plays kick by kick (shoot: aim and power, defend: pick a corner
+   * to dive to). Returns false when the match should resolve it automatically instead.
+   */
+  private beginInteractiveShootout(): boolean {
+    if (this.config.mode !== 'play' || this.config.controllerMode !== 'human' || this.config.interactiveShootout === false) return false;
+    this.shootoutRun = {
+      order: { home: this.shootoutOrder('home'), away: this.shootoutOrder('away') },
+      shootout: { home: [], away: [], takers: { home: [], away: [] }, winner: 'home' },
+      goals: { home: 0, away: 0 },
+      round: 0,
+      turn: 'home',
+      decided: false,
+    };
+    this.paused = true;
+    return true;
+  }
+
+  /** What the player has to decide right now, or null when no interactive shoot-out is running. */
+  get shootoutPrompt(): ShootoutPrompt | null {
+    const run = this.shootoutRun;
+    if (!run || run.decided) return null;
+    const side = run.turn;
+    const list = run.order[side];
+    const taker = list[run.round % Math.max(1, list.length)];
+    const keeper = this.actors.find(actor => actor.active && actor.side === this.opposite(side) && actor.player.positionGroup === 'GK');
+    return {
+      role: side === this.controlledSide ? 'shoot' : 'dive',
+      shooterSide: side,
+      round: run.round + 1,
+      takerName: taker ? playerName(taker.player) : '—',
+      keeperName: keeper ? playerName(keeper.player) : '—',
+      takerShooting: taker ? Math.round(this.statWith(taker, 'shooting', Cond.penalty)) : 50,
+      keeperGoalkeeping: keeper ? Math.round(this.stat(keeper, 'goalkeeping')) : 50,
+      goals: { ...run.goals },
+      shootout: structuredClone(run.shootout),
+    };
+  }
+
+  /**
+   * Plays the next kick. As the shooter the human passes aim and power, as the keeper only `dive`;
+   * the other side is decided by the AI. Returns the outcome, or null when nothing is pending.
+   */
+  playShootoutKick(choice: { aim?: Aim; power?: boolean; dive?: Aim }): (KickOutcome & { side: Side; takerId: string }) | null {
+    const run = this.shootoutRun;
+    const prompt = this.shootoutPrompt;
+    if (!run || !prompt) return null;
+    const side = run.turn;
+    const list = run.order[side];
+    const taker = list[run.round % Math.max(1, list.length)];
+    const keeper = this.actors.find(actor => actor.active && actor.side === this.opposite(side) && actor.player.positionGroup === 'GK');
+    const humanShoots = side === this.controlledSide;
+    const kick: KickChoice = humanShoots ? { aim: choice.aim ?? 0, power: !!choice.power } : aiShooterChoice(this.rng);
+    const dive: Aim = humanShoots ? aiKeeperDive(this.rng) : (choice.dive ?? 0);
+    const bonus = 0;
+    const outcome = taker
+      ? kickOutcome(this.statWith(taker, 'shooting', Cond.penalty), keeper ? this.stat(keeper, 'goalkeeping') : 60, bonus, kick, dive, this.rng)
+      : { scored: false, saved: false, offTarget: true };
+    run.shootout[side].push(outcome.scored);
+    run.shootout.takers[side].push(taker?.player.id ?? '');
+    if (outcome.scored) run.goals[side]++;
+    if (taker) {
+      this.events.push({ minute: 120, type: 'commentary', side, playerId: taker.player.id, messageKey: outcome.scored ? 'match.shootoutScored' : 'match.shootoutMissed', params: { player: playerName(taker.player), home: run.goals.home, away: run.goals.away } });
+    }
+    const taken = { home: run.shootout.home.length, away: run.shootout.away.length };
+    const secondOfRound = side === 'away';
+    if (shootoutDecided(run.goals, taken, run.round, secondOfRound) || run.round >= 29 && secondOfRound) {
+      run.decided = true;
+      this.completeShootout();
+    } else if (secondOfRound) {
+      run.round++;
+      run.turn = 'home';
+    } else run.turn = 'away';
+    return { ...outcome, side, takerId: taker?.player.id ?? '' };
+  }
+
+  private completeShootout(): void {
+    const run = this.shootoutRun;
+    if (!run) return;
+    run.shootout.winner = run.goals.home > run.goals.away ? 'home' : run.goals.home < run.goals.away ? 'away' : 'home';
+    this.shootout = run.shootout;
+    this.events.push({ minute: 120, type: 'commentary', side: run.shootout.winner, playerId: null, messageKey: 'match.shootoutWinner', params: { team: this.teamOf(run.shootout.winner).shortName, home: run.goals.home, away: run.goals.away } });
+    this.shootoutRun = null;
+    this.finish();
+  }
+
   private resolveShootout(): void {
     const order = (side: Side) => this.actors
       .filter(actor => actor.active && actor.side === side)

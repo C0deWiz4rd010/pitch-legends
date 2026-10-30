@@ -99,6 +99,8 @@ export interface MatchConfig {
   effects?: boolean;
   /** Rarity rings in the match: on (default), subtle or off. */
   auras?: 'on' | 'subtle' | 'off';
+  /** Play a drawn knockout tie's penalties yourself (default on in PLAY mode). */
+  interactiveShootout?: boolean;
   /** A match against a rival; quirks such as Derby Hero react to it. */
   derby?: boolean;
   /** A cup or top-of-the-table match for the Big-Game quirk. */
@@ -414,6 +416,8 @@ export interface MatchCheckpoint {
       actors: Record<string, { flags: number; sig: { until: number; readyAt: number; awake: boolean; refilled: boolean }[] }>;
       signatureStats: SignatureReport[];
     };
+    /** The match was waiting for the player's penalties when the checkpoint was written. */
+    shootoutPending?: boolean;
     halftimeReached: boolean;
     halftimeRecoveryApplied: boolean;
     subsUsed: number;

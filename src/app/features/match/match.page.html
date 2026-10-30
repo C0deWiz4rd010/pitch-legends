@@ -440,3 +440,9 @@
   (confirmed)="runConfirmed()"
   (cancelled)="confirmAction.set(null)"
 />
+
+@if (shootoutPrompt(); as prompt) {
+  <app-shootout-panel [prompt]="prompt" [homeName]="arcadeHomeName()" [awayName]="arcadeAwayName()" [last]="shootoutLast()"
+    (shoot)="takeShootoutKick($event)" (dive)="takeShootoutKick({ dive: $event })" />
+}
+

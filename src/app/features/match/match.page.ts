@@ -1,3 +1,5 @@
+import { Aim } from '../../core/football/shootout';
+import { ShootoutOutcomeView, ShootoutPanelComponent } from '../../shared/components/shootout-panel.component';
 import { FocusMeterComponent } from '../../shared/components/focus-meter.component';
 import { ShootoutBoardComponent } from '../../shared/components/shootout-board.component';
 import {
@@ -41,7 +43,7 @@ import { Mentality, PressingIntensity, Width } from '../../models/enums';
 import { ratingColor } from '../../shared/rating-color';
 import { playerName } from '../../core/ratings';
 import { I18nService } from '../../core/services/i18n.service';
-import { ARCADE_MATCH_TUNING, ArcadeMatch, FIELD_LENGTH, MATCH_TICK } from '../../core/services/arcade-match';
+import { ARCADE_MATCH_TUNING, ArcadeMatch, FIELD_LENGTH, MATCH_TICK, ShootoutPrompt } from '../../core/services/arcade-match';
 import { AudioService } from '../../core/services/audio.service';
 import { ControlHelpService } from '../../core/services/control-help.service';
 import { PortraitService } from '../../core/services/portrait.service';
@@ -90,7 +92,7 @@ const EMPTY_MATCH_VIEW: MatchViewState = {
 @Component({
   selector: 'app-match',
   host: { '[class.practice-mode]': 'practice', '[class.live-match]': "phase() === 'match'" },
-  imports: [RouterLink, DecimalPipe, ClubCrestComponent, MiniKitComponent, ManagerPortraitComponent, SubstitutionPanelComponent, ConfirmDialogComponent, HeatmapComponent, ShootoutBoardComponent, FocusMeterComponent],
+  imports: [RouterLink, DecimalPipe, ClubCrestComponent, MiniKitComponent, ManagerPortraitComponent, SubstitutionPanelComponent, ConfirmDialogComponent, HeatmapComponent, ShootoutBoardComponent, FocusMeterComponent, ShootoutPanelComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './match.page.html',
   styleUrls: ['./match.page.scss', './live-match.scss'],
@@ -130,6 +132,9 @@ export class MatchPage implements OnDestroy {
 
   private readonly canvasRef = viewChild<ElementRef<HTMLCanvasElement>>('pitch');
   protected readonly phase = signal<PagePhase>('preview');
+  /** What the player has to decide in an interactive shoot-out, null otherwise. */
+  protected readonly shootoutPrompt = signal<ShootoutPrompt | null>(null);
+  protected readonly shootoutLast = signal<ShootoutOutcomeView | null>(null);
   protected readonly result = signal<MatchResult | null>(null);
   protected readonly revealed = signal<MatchEvent[]>([]);
   protected readonly selectedMode = signal<MatchMode>('play');
@@ -776,7 +781,31 @@ export class MatchPage implements OnDestroy {
       this.finish();
       return;
     }
+    if (this.arcade.shootoutPrompt) {
+      // The match waits for the player's penalties; the panel drives it from here.
+      this.shootoutPrompt.set(this.arcade.shootoutPrompt);
+      return;
+    }
     this.raf = requestAnimationFrame((time) => this.loop(time));
+  }
+
+  protected arcadeHomeName(): string { return this.arcade?.home.shortName ?? ''; }
+  protected arcadeAwayName(): string { return this.arcade?.away.shortName ?? ''; }
+
+  /** One penalty: the player's choice goes into the match, the next prompt (or the result) follows. */
+  protected takeShootoutKick(choice: { aim?: Aim; power?: boolean; dive?: Aim }): void {
+    const arcade = this.arcade;
+    if (!arcade) return;
+    const outcome = arcade.playShootoutKick(choice);
+    if (outcome) {
+      const taker = [...arcade.home.players, ...arcade.away.players].find((player) => player.id === outcome.takerId);
+      this.shootoutLast.set({ scored: outcome.scored, saved: outcome.saved, offTarget: outcome.offTarget, player: taker ? `${taker.firstName} ${taker.lastName}` : '' });
+      this.audio.matchEvent(arcade.events[arcade.events.length - 1]);
+    }
+    if (arcade.finished) {
+      this.shootoutPrompt.set(null);
+      this.finish();
+    } else this.shootoutPrompt.set(arcade.shootoutPrompt);
   }
 
   private managerPerk(teamId: string): { teamId: string; tacticsRank: number } | undefined {
