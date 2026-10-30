@@ -4,6 +4,33 @@ All notable changes to Pitch Legends are recorded here. Releases follow
 [Semantic Versioning](https://semver.org/) and are generated from Conventional
 Commits by Release Please.
 
+## [2.0.0](https://github.com/C0deWiz4rd010/pitch-legends/compare/pitch-legends-v1.11.0...pitch-legends-v2.0.0) (2026-10-30)
+
+
+### Features
+
+* **gameplay:** offside runs, safer interception timing, seeded reception ties ([1a40096](https://github.com/C0deWiz4rd010/pitch-legends/commit/1a400967c45adb6b00856d830fb923e10616d260))
+* **match:** interactive penalty shoot-out with aim, power and keeper guesses ([7caf5f9](https://github.com/C0deWiz4rd010/pitch-legends/commit/7caf5f9fec423b40fd3d1c33914ed5a44b70a942))
+* **rpg:** effect pipeline - traits, talents, form and morale now act in the live match ([76d1df5](https://github.com/C0deWiz4rd010/pitch-legends/commit/76d1df582dc7a80112c94f586d1d724fa4e1039a))
+* **rpg:** mythic ultimate with focus meter, input, AI use, flares and controls entry ([a12106a](https://github.com/C0deWiz4rd010/pitch-legends/commit/a12106a7f1900495c34426ff29eea8ad01bf9845))
+* **rpg:** player DNA - rarity tiers, nicknames, match auras and scouting-gated gems ([3c3e200](https://github.com/C0deWiz4rd010/pitch-legends/commit/3c3e200311876e42af08246d640d4d2b14b49901))
+* **rpg:** quirks and story - 34 quirks with drawbacks, reveals, evolutions, chronicle and bio ([6f68851](https://github.com/C0deWiz4rd010/pitch-legends/commit/6f68851a6262110aaed067901a64474402269e69))
+* **rpg:** signature abilities - 24 triggers, match report tab, checkpoint-safe effect state ([4ccd876](https://github.com/C0deWiz4rd010/pitch-legends/commit/4ccd8768d7425ba25aa912024e907525147df1c3))
+* **rpg:** signature evolutions, branches and rarity ascension; flatten stadium income ([d2355c7](https://github.com/C0deWiz4rd010/pitch-legends/commit/d2355c70f86cced38099de3fa73d4845286a710c))
+* **save:** save v7 migration, tier-based legends rarity, rarity market value, academy spark, volume prefs, RPG design doc ([165e6ac](https://github.com/C0deWiz4rd010/pitch-legends/commit/165e6acdd31ff3cdb65a580185c7874f1b539f45))
+* **training:** training camp 2.0 - drill buffs, mastery, breakthroughs, load control, camp events ([f08da71](https://github.com/C0deWiz4rd010/pitch-legends/commit/f08da71463cb1067dee12b7c4ceda63b9f3f6497))
+* **ui:** player sheet tabs, talent tree, attribute sources, training panel and squad filters ([6a0f418](https://github.com/C0deWiz4rd010/pitch-legends/commit/6a0f418d06998cd7bf9488bb827b5b18ae162980))
+
+
+### Bug Fixes
+
+* phase 0 foundation - pitch-aware 5v5 sizes, worker tactics perk, shared penalty formula ([cee03ad](https://github.com/C0deWiz4rd010/pitch-legends/commit/cee03adcf88075ce652f02869a657bd7c448cbbf))
+
+
+### Miscellaneous Chores
+
+* release 2.0.0 ([9f16099](https://github.com/C0deWiz4rd010/pitch-legends/commit/9f16099bd663ac3b808b5f24a72d05fca78adeda))
+
 ## [1.11.0](https://github.com/C0deWiz4rd010/pitch-legends/compare/pitch-legends-v1.10.0...pitch-legends-v1.11.0) (2026-10-16)
 
 
