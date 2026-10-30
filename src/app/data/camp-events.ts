@@ -29,16 +29,25 @@ export const CAMP_EVENTS: CampEvent[] = [
   {
     id: 'guest-coach',
     title: ['Gasttrainer zu Besuch', 'Guest coach visits'],
-    body: ['Ein Trainer aus {city} bietet an, eine Einheit zu leiten.', 'A coach from {city} offers to run a session.'],
+    body: [
+      'Ein Trainer aus {city} bietet an, eine Einheit zu leiten.',
+      'A coach from {city} offers to run a session.',
+    ],
     options: [
-      { label: ['Annehmen (−5.000)', 'Accept (−5,000)'], effect: { mastery: 6, xp: 20, coins: -5000 } },
+      {
+        label: ['Annehmen (−5.000)', 'Accept (−5,000)'],
+        effect: { mastery: 6, xp: 20, coins: -5000 },
+      },
       { label: ['Höflich ablehnen', 'Politely decline'], effect: { morale: 1 } },
     ],
   },
   {
     id: 'rondo-dispute',
     title: ['Streit beim Rondo', 'Row during the rondo'],
-    body: ['Zwei Spieler geraten aneinander. Wie reagierst du?', 'Two players clash. How do you react?'],
+    body: [
+      'Zwei Spieler geraten aneinander. Wie reagierst du?',
+      'Two players clash. How do you react?',
+    ],
     options: [
       { label: ['Durchgreifen', 'Crack down'], effect: { morale: -3, mastery: 3 } },
       { label: ['Laufen lassen', 'Let it go'], effect: { morale: 2 } },
@@ -65,9 +74,15 @@ export const CAMP_EVENTS: CampEvent[] = [
   {
     id: 'team-dinner',
     title: ['Mannschaftsabend', 'Team dinner'],
-    body: ['Der Kapitän schlägt einen gemeinsamen Abend vor.', 'The captain proposes an evening together.'],
+    body: [
+      'Der Kapitän schlägt einen gemeinsamen Abend vor.',
+      'The captain proposes an evening together.',
+    ],
     options: [
-      { label: ['Organisieren (−3.000)', 'Organise it (−3,000)'], effect: { morale: 5, fitness: 4, coins: -3000 } },
+      {
+        label: ['Organisieren (−3.000)', 'Organise it (−3,000)'],
+        effect: { morale: 5, fitness: 4, coins: -3000 },
+      },
       { label: ['Früh schlafen gehen', 'Early night'], effect: { fitness: 6 } },
     ],
   },
@@ -76,7 +91,10 @@ export const CAMP_EVENTS: CampEvent[] = [
     title: ['Sportwissenschaftler', 'Sports scientist'],
     body: ['Ein Labor bietet Belastungsmessungen an.', 'A lab offers load measurements.'],
     options: [
-      { label: ['Buchen (−8.000)', 'Book it (−8,000)'], effect: { mastery: 4, fitness: 5, coins: -8000 } },
+      {
+        label: ['Buchen (−8.000)', 'Book it (−8,000)'],
+        effect: { mastery: 4, fitness: 5, coins: -8000 },
+      },
       { label: ['Auf Erfahrung vertrauen', 'Trust experience'], effect: { xp: 10 } },
     ],
   },

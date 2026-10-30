@@ -1,4 +1,12 @@
-import { ASCENSION_CAP, ASCENSION_REASONS, AscensionReason, EVOLUTION_STAGES, EvolutionStage, PATH_NAMES, impactPoints } from '../../data/evolutions';
+import {
+  ASCENSION_CAP,
+  ASCENSION_REASONS,
+  AscensionReason,
+  EVOLUTION_STAGES,
+  EvolutionStage,
+  PATH_NAMES,
+  impactPoints,
+} from '../../data/evolutions';
 import { NICKNAMES } from '../../data/nicknames';
 import { AURA_FROM, Rarity, RARITIES, atLeast, rarityRank } from '../../data/rarity';
 import { GameState } from '../../models/game.model';
@@ -28,16 +36,37 @@ export function signatureProgress(state: SignatureState) {
 export function signatureQuest(player: Player, state: SignatureState): SignatureQuest {
   const stage = EVOLUTION_STAGES.find((candidate) => candidate.to === state.level + 1) ?? null;
   const points = impactPoints(state.progress ?? { activations: 0, shots: 0, goals: 0 });
-  if (!stage) return { stage: null, points, target: 0, pointsOk: false, levelOk: false, rarityOk: false, ready: false };
+  if (!stage)
+    return {
+      stage: null,
+      points,
+      target: 0,
+      pointsOk: false,
+      levelOk: false,
+      rarityOk: false,
+      ready: false,
+    };
   const rarity = player.dna?.rarity ?? 'common';
   const pointsOk = points >= stage.points;
   const levelOk = player.level >= stage.playerLevel;
   const rarityOk = atLeast(rarity, stage.minRarity);
-  return { stage, points, target: stage.points, pointsOk, levelOk, rarityOk, ready: pointsOk && levelOk && rarityOk };
+  return {
+    stage,
+    points,
+    target: stage.points,
+    pointsOk,
+    levelOk,
+    rarityOk,
+    ready: pointsOk && levelOk && rarityOk,
+  };
 }
 
 /** Name shown for a signature: the personal variant, or the branch name once stage II is chosen. */
-export function signatureTitle(state: SignatureState, archetype: Player['archetype'], language: 'de' | 'en'): string {
+export function signatureTitle(
+  state: SignatureState,
+  archetype: Player['archetype'],
+  language: 'de' | 'en',
+): string {
   const index = language === 'de' ? 0 : 1;
   const path = state.path ? PATH_NAMES[archetype]?.[state.path] : null;
   return path ? path[index] : state.name[index];
@@ -52,7 +81,12 @@ export interface EvolveResult {
  * Takes the next step of a signature. Stage I to II needs a branch (A or B), II to III keeps it.
  * The choice is final; there is no re-roll.
  */
-export function evolveSignature(player: Player, signatureId: string, path: 'a' | 'b' | null, at: { season: number; week: number }): EvolveResult {
+export function evolveSignature(
+  player: Player,
+  signatureId: string,
+  path: 'a' | 'b' | null,
+  at: { season: number; week: number },
+): EvolveResult {
   const state = player.dna?.signatures?.find((signature) => signature.id === signatureId);
   if (!state) return { ok: false, error: 'unknown-signature' };
   const quest = signatureQuest(player, state);
@@ -62,7 +96,11 @@ export function evolveSignature(player: Player, signatureId: string, path: 'a' |
     state.path = path;
   } else if (path !== null && path !== state.path) return { ok: false, error: 'path-not-allowed' };
   state.level = quest.stage.to;
-  addChronicle(player, { ...at, kind: 'signature', params: { nameDe: state.name[0], nameEn: state.name[1], level: state.level } });
+  addChronicle(player, {
+    ...at,
+    kind: 'signature',
+    params: { nameDe: state.name[0], nameEn: state.name[1], level: state.level },
+  });
   return { ok: true };
 }
 
@@ -88,9 +126,13 @@ export interface Ascension {
 
 /** The standout achievement of a finished season that lifts a player one rarity step, if any. */
 function ascensionReason(player: Player, isTopScorer: boolean): AscensionReason | null {
-  const reasonId = isTopScorer ? 'top-scorer'
-    : player.seasonStats.motmAwards >= 5 ? 'mvp-season'
-      : (player.career?.appearances ?? 0) + player.seasonStats.appearances >= 100 ? 'club-legend' : null;
+  const reasonId = isTopScorer
+    ? 'top-scorer'
+    : player.seasonStats.motmAwards >= 5
+      ? 'mvp-season'
+      : (player.career?.appearances ?? 0) + player.seasonStats.appearances >= 100
+        ? 'club-legend'
+        : null;
   return ASCENSION_REASONS.find((reason) => reason.id === reasonId) ?? null;
 }
 
@@ -98,7 +140,10 @@ function ascensionReason(player: Player, isTopScorer: boolean): AscensionReason 
 function mergeSignatures(player: Player, rarity: Rarity): SignatureState[] {
   const existing = player.dna?.signatures ?? [];
   const wanted = generateSignatures(player, rarity);
-  return [...existing, ...wanted.filter((signature) => !existing.some((own) => own.id === signature.id))];
+  return [
+    ...existing,
+    ...wanted.filter((signature) => !existing.some((own) => own.id === signature.id)),
+  ];
 }
 
 /**
@@ -109,7 +154,8 @@ function mergeSignatures(player: Player, rarity: Rarity): SignatureState[] {
 export function ascendPlayers(game: GameState): Ascension[] {
   const players = game.teams.flatMap((team) => team.players);
   const topGoals = Math.max(0, ...players.map((player) => player.seasonStats.goals));
-  const topScorer = topGoals >= 10 ? players.find((player) => player.seasonStats.goals === topGoals) : undefined;
+  const topScorer =
+    topGoals >= 10 ? players.find((player) => player.seasonStats.goals === topGoals) : undefined;
   const changes: Ascension[] = [];
   for (const player of players) {
     const dna = player.dna;
@@ -123,9 +169,18 @@ export function ascendPlayers(game: GameState): Ascension[] {
     dna.signatures = mergeSignatures(player, to);
     if (!dna.nickname && atLeast(to, AURA_FROM)) {
       const nicknames = NICKNAMES[player.archetype] ?? [];
-      if (nicknames.length) dna.nickname = nicknames[new Rng(hash32(`${player.id}|ascension-nickname`)).int(0, nicknames.length - 1)];
+      if (nicknames.length)
+        dna.nickname =
+          nicknames[
+            new Rng(hash32(`${player.id}|ascension-nickname`)).int(0, nicknames.length - 1)
+          ];
     }
-    addChronicle(player, { season: game.league.season, week: game.league.currentWeek, kind: 'ascension', params: { from, to, reason: reason.id } });
+    addChronicle(player, {
+      season: game.league.season,
+      week: game.league.currentWeek,
+      kind: 'ascension',
+      params: { from, to, reason: reason.id },
+    });
     changes.push({ player, reason, from, to });
   }
   return changes;

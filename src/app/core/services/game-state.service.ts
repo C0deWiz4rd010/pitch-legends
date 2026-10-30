@@ -168,6 +168,20 @@ export class GameStateService {
     if (draft.settings.autoSave) this.scheduleSave(draft);
   }
 
+  /**
+   * Changes only the settings: a toggle or a slider must not copy the whole world (hundreds of players)
+   * the way `mutate` does. Everything else in the state is shared with the previous version, untouched.
+   */
+  patchSettings(fn: (settings: GameState['settings']) => void): void {
+    const current = this.state();
+    if (!current) return;
+    const settings = structuredClone(current.settings);
+    fn(settings);
+    const next: GameState = { ...current, settings, updatedAt: Date.now() };
+    this.state.set(next);
+    if (next.settings.autoSave) this.scheduleSave(next);
+  }
+
   /** Bursts of mutations (season simulation, bulk edits) serialise the career once. */
   private scheduleSave(state: GameState): void {
     this.pendingSave = state;

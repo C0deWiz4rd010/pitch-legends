@@ -1,0 +1,16 @@
+{
+  "total": 46,
+  "files": {
+    "features/challenges/challenges.page.ts": 1,
+    "features/dashboard/dashboard.page.html": 1,
+    "features/finances/finances.page.html": 2,
+    "features/legends/legends.page.html": 5,
+    "features/match/match.page.html": 3,
+    "features/match/player-lab.page.ts": 23,
+    "features/settings/settings.page.html": 1,
+    "features/squad/squad.page.html": 3,
+    "features/start/start.component.html": 1,
+    "features/transfer/transfer.page.html": 5,
+    "shared/components/player-detail.component.html": 1
+  }
+}

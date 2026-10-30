@@ -47,6 +47,9 @@ export const ATTRIBUTE_USE: Record<string, [string, string]> = {
   dribbling: ['Ballkontrolle, Skill-Moves, enge Räume', 'Ball control, skill moves, tight spaces'],
   defending: ['Tacklings, Stellungsspiel, Abfangen', 'Tackles, positioning, interceptions'],
   physical: ['Zweikämpfe, Kopfbälle, Abschirmen', 'Duels, headers, shielding'],
-  stamina: ['Sprintdauer und Leistung in der Schlussphase', 'Sprint duration and late-game sharpness'],
+  stamina: [
+    'Sprintdauer und Leistung in der Schlussphase',
+    'Sprint duration and late-game sharpness',
+  ],
   goalkeeping: ['Paraden, Hechtsprünge, Strafraumbeherrschung', 'Saves, dives, command of the box'],
 };

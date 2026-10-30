@@ -3,7 +3,7 @@ import { computeOverall } from './core/ratings';
 import { Rng } from './core/util';
 import { createNewGame } from './data/generators';
 import { MatchEngineService } from './core/services/match-engine.service';
-import { buildProfile, LiveMatch } from './core/services/match-sim';
+import { buildProfile } from './core/team-profile';
 import { RpgService } from './core/services/rpg.service';
 import { SAVE_VERSION } from './models/game.model';
 import { ArcadeMatch } from './core/services/arcade-match';
@@ -57,11 +57,11 @@ describe('match engine', () => {
     const home = game.teams[1];
     const away = game.teams[0];
     const originalHome = home.tactics.mentality;
-    const live = new LiveMatch(home, away, 1, away.id, 123);
+    const live = new ArcadeMatch(home, away, away.id, 3, 123);
 
     live.setMentality('ultra-attacking');
 
-    expect(live.controlled.id).toBe(away.id);
+    expect(live.controlledTeam.id).toBe(away.id);
     expect(live.away.tactics.mentality).toBe('ultra-attacking');
     expect(live.home.tactics.mentality).toBe(originalHome);
   });

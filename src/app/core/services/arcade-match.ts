@@ -43,7 +43,7 @@ import { actorSnapshot, applyActorSnapshot, ballSnapshot, fnv1aHex, writeBallSna
 import { keeperDiveTarget, keeperPositionIntent } from '../football/keeper-ai';
 import { arrangeRestart, chooseRestartTaker } from '../football/set-pieces';
 import { shootoutConversionChance } from '../football/penalty';
-import { Aim, KickChoice, KickOutcome, aiKeeperDive, aiShooterChoice, kickOutcome, shootoutDecided } from '../football/shootout';
+import { Aim, KickOutcome, ShootoutHost, ShootoutPrompt, ShootoutSession } from '../football/shootout';
 import { AttributeKey } from '../../models/enums';
 import { Cond, condMatches } from '../rpg/conditions';
 import { SignatureRuntime, ULTIMATE_COST, ULTIMATE_SECONDS, createRuntimes, signatureBit } from '../rpg/signatures';
@@ -121,28 +121,7 @@ const AI_PASS_SKILL = 1;
 /** Interception attempts on a pass in flight happen every this many ticks per defender. */
 const INTERCEPT_EVERY = 5;
 
-/** State of a shoot-out the player takes part in. */
-export interface ShootoutRun {
-  order: Record<Side, ArcadeActor[]>;
-  shootout: PenaltyShootout;
-  goals: Record<Side, number>;
-  round: number;
-  turn: Side;
-  decided: boolean;
-}
-
-/** What the match page asks the player during an interactive shoot-out. */
-export interface ShootoutPrompt {
-  role: 'shoot' | 'dive';
-  shooterSide: Side;
-  round: number;
-  takerName: string;
-  keeperName: string;
-  takerShooting: number;
-  keeperGoalkeeping: number;
-  goals: Record<Side, number>;
-  shootout: PenaltyShootout;
-}
+export type { ShootoutPrompt } from '../football/shootout';
 
 export class ArcadeMatch {
   readonly home: Team;
@@ -228,7 +207,7 @@ export class ArcadeMatch {
   private readonly ultimateUser: Record<Side, string | null> = { home: null, away: null };
   private readonly mythicSide: Record<Side, boolean> = { home: false, away: false };
   /** A shoot-out the player plays kick by kick; null when none is running. */
-  shootoutRun: ShootoutRun | null = null;
+  shootoutRun: ShootoutSession | null = null;
   private sideFlagsTick = -1;
   private sharedFlagsTick = -1;
   private sharedFlags = 0;
@@ -2193,12 +2172,22 @@ export class ArcadeMatch {
    * Penalties after a drawn knockout tie: five each in alternation (decided early when out of reach),
    * then sudden death. Conversion depends on the taker, the "Ice in the Veins" trait and the keeper.
    */
-  /** Penalty takers of a side: best shooters first, the keeper last. */
-  private shootoutOrder(side: Side): ArcadeActor[] {
-    return this.actors
-      .filter(actor => actor.active && actor.side === side)
-      .sort((a, b) => (a.player.positionGroup === 'GK' ? 1 : 0) - (b.player.positionGroup === 'GK' ? 1 : 0)
-        || this.statWith(b, 'shooting', Cond.penalty) - this.statWith(a, 'shooting', Cond.penalty));
+  /** Hands a drawn knockout tie to the shoot-out: interactive for a human manager, automatic otherwise. */
+  private shootoutHost(): ShootoutHost {
+    return {
+      controlledSide: this.controlledSide,
+      rng: this.rng,
+      actors: this.actors,
+      events: this.events,
+      shooting: (actor) => this.statWith(actor, 'shooting', Cond.penalty),
+      goalkeeping: (actor) => this.stat(actor, 'goalkeeping'),
+      shortName: (side) => this.teamOf(side).shortName,
+      complete: (shootout) => {
+        this.shootout = shootout;
+        this.shootoutRun = null;
+        this.finish();
+      },
+    };
   }
 
   /**
@@ -2207,37 +2196,14 @@ export class ArcadeMatch {
    */
   private beginInteractiveShootout(): boolean {
     if (this.config.mode !== 'play' || this.config.controllerMode !== 'human' || this.config.interactiveShootout === false) return false;
-    this.shootoutRun = {
-      order: { home: this.shootoutOrder('home'), away: this.shootoutOrder('away') },
-      shootout: { home: [], away: [], takers: { home: [], away: [] }, winner: 'home' },
-      goals: { home: 0, away: 0 },
-      round: 0,
-      turn: 'home',
-      decided: false,
-    };
+    this.shootoutRun = new ShootoutSession(this.shootoutHost());
     this.paused = true;
     return true;
   }
 
   /** What the player has to decide right now, or null when no interactive shoot-out is running. */
   get shootoutPrompt(): ShootoutPrompt | null {
-    const run = this.shootoutRun;
-    if (!run || run.decided) return null;
-    const side = run.turn;
-    const list = run.order[side];
-    const taker = list[run.round % Math.max(1, list.length)];
-    const keeper = this.actors.find(actor => actor.active && actor.side === this.opposite(side) && actor.player.positionGroup === 'GK');
-    return {
-      role: side === this.controlledSide ? 'shoot' : 'dive',
-      shooterSide: side,
-      round: run.round + 1,
-      takerName: taker ? playerName(taker.player) : '—',
-      keeperName: keeper ? playerName(keeper.player) : '—',
-      takerShooting: taker ? Math.round(this.statWith(taker, 'shooting', Cond.penalty)) : 50,
-      keeperGoalkeeping: keeper ? Math.round(this.stat(keeper, 'goalkeeping')) : 50,
-      goals: { ...run.goals },
-      shootout: structuredClone(run.shootout),
-    };
+    return this.shootoutRun?.prompt ?? null;
   }
 
   /**
@@ -2245,78 +2211,12 @@ export class ArcadeMatch {
    * the other side is decided by the AI. Returns the outcome, or null when nothing is pending.
    */
   playShootoutKick(choice: { aim?: Aim; power?: boolean; dive?: Aim }): (KickOutcome & { side: Side; takerId: string }) | null {
-    const run = this.shootoutRun;
-    const prompt = this.shootoutPrompt;
-    if (!run || !prompt) return null;
-    const side = run.turn;
-    const list = run.order[side];
-    const taker = list[run.round % Math.max(1, list.length)];
-    const keeper = this.actors.find(actor => actor.active && actor.side === this.opposite(side) && actor.player.positionGroup === 'GK');
-    const humanShoots = side === this.controlledSide;
-    const kick: KickChoice = humanShoots ? { aim: choice.aim ?? 0, power: !!choice.power } : aiShooterChoice(this.rng);
-    const dive: Aim = humanShoots ? aiKeeperDive(this.rng) : (choice.dive ?? 0);
-    const bonus = 0;
-    const outcome = taker
-      ? kickOutcome(this.statWith(taker, 'shooting', Cond.penalty), keeper ? this.stat(keeper, 'goalkeeping') : 60, bonus, kick, dive, this.rng)
-      : { scored: false, saved: false, offTarget: true };
-    run.shootout[side].push(outcome.scored);
-    run.shootout.takers[side].push(taker?.player.id ?? '');
-    if (outcome.scored) run.goals[side]++;
-    if (taker) {
-      this.events.push({ minute: 120, type: 'commentary', side, playerId: taker.player.id, messageKey: outcome.scored ? 'match.shootoutScored' : 'match.shootoutMissed', params: { player: playerName(taker.player), home: run.goals.home, away: run.goals.away } });
-    }
-    const taken = { home: run.shootout.home.length, away: run.shootout.away.length };
-    const secondOfRound = side === 'away';
-    if (shootoutDecided(run.goals, taken, run.round, secondOfRound) || run.round >= 29 && secondOfRound) {
-      run.decided = true;
-      this.completeShootout();
-    } else if (secondOfRound) {
-      run.round++;
-      run.turn = 'home';
-    } else run.turn = 'away';
-    return { ...outcome, side, takerId: taker?.player.id ?? '' };
+    return this.shootoutRun?.play(choice) ?? null;
   }
 
-  private completeShootout(): void {
-    const run = this.shootoutRun;
-    if (!run) return;
-    run.shootout.winner = run.goals.home > run.goals.away ? 'home' : run.goals.home < run.goals.away ? 'away' : 'home';
-    this.shootout = run.shootout;
-    this.events.push({ minute: 120, type: 'commentary', side: run.shootout.winner, playerId: null, messageKey: 'match.shootoutWinner', params: { team: this.teamOf(run.shootout.winner).shortName, home: run.goals.home, away: run.goals.away } });
-    this.shootoutRun = null;
-    this.finish();
-  }
-
+  /** The automatic shoot-out: every kick is a roll against the taker's and the keeper's ratings. */
   private resolveShootout(): void {
-    const order = (side: Side) => this.actors
-      .filter(actor => actor.active && actor.side === side)
-      .sort((a, b) => (a.player.positionGroup === 'GK' ? 1 : 0) - (b.player.positionGroup === 'GK' ? 1 : 0)
-        || this.statWith(b, 'shooting', Cond.penalty) - this.statWith(a, 'shooting', Cond.penalty));
-    const takers = { home: order('home'), away: order('away') };
-    const keeper = (side: Side) => this.actors.find(actor => actor.active && actor.side === side && actor.player.positionGroup === 'GK');
-    const shootout: PenaltyShootout = { home: [], away: [], takers: { home: [], away: [] }, winner: 'home' };
-    const goals = { home: 0, away: 0 };
-    let decided = false;
-    for (let round = 0; round < 30 && !decided; round++) {
-      for (const side of ['home', 'away'] as const) {
-        const list = takers[side];
-        const taker = list[round % Math.max(1, list.length)];
-        if (!taker) continue;
-        const opponentKeeper = keeper(this.opposite(side));
-        const chance = shootoutConversionChance(this.statWith(taker, 'shooting', Cond.penalty), opponentKeeper ? this.stat(opponentKeeper, 'goalkeeping') : 60);
-        const scored = this.rng.bool(chance);
-        shootout[side].push(scored);
-        shootout.takers[side].push(taker.player.id);
-        if (scored) goals[side]++;
-        this.events.push({ minute: 120, type: 'commentary', side, playerId: taker.player.id, messageKey: scored ? 'match.shootoutScored' : 'match.shootoutMissed', params: { player: playerName(taker.player), home: goals.home, away: goals.away } });
-        // Within the first five each, stop as soon as one side can no longer catch up.
-        if (round < 5 && (goals.home + 5 - shootout.home.length < goals.away || goals.away + 5 - shootout.away.length < goals.home)) { decided = true; break; }
-      }
-      if (!decided && round >= 4 && goals.home !== goals.away) decided = true;
-    }
-    shootout.winner = goals.home > goals.away ? 'home' : 'away';
-    this.shootout = shootout;
-    this.events.push({ minute: 120, type: 'commentary', side: shootout.winner, playerId: null, messageKey: 'match.shootoutWinner', params: { team: this.teamOf(shootout.winner).shortName, home: goals.home, away: goals.away } });
+    this.shootout = new ShootoutSession(this.shootoutHost()).resolveAutomatically();
   }
 
   private enterHalftime(): void {

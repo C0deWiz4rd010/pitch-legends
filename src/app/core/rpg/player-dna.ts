@@ -1,4 +1,12 @@
-import { AURA_FROM, MYTHIC_WORLD_CAP, RARITIES, RARITY_DEFS, Rarity, atLeast, rarityRank } from '../../data/rarity';
+import {
+  AURA_FROM,
+  MYTHIC_WORLD_CAP,
+  RARITIES,
+  RARITY_DEFS,
+  Rarity,
+  atLeast,
+  rarityRank,
+} from '../../data/rarity';
 import { NICKNAMES } from '../../data/nicknames';
 import { GameState } from '../../models/game.model';
 import { Player, PlayerDNA } from '../../models/player.model';
@@ -32,28 +40,60 @@ export interface DnaOptions {
 }
 
 /** Deterministic DNA for a player; never consumes the world generator's random stream. */
-export function generateDna(player: Pick<Player, 'id' | 'archetype' | 'potential'>, options: DnaOptions = {}): PlayerDNA {
+export function generateDna(
+  player: Pick<Player, 'id' | 'archetype' | 'potential'>,
+  options: DnaOptions = {},
+): PlayerDNA {
   const rng = new Rng(dnaSeed(player.id));
   const roll = rng.next();
   const nudge = options.usePotential === false ? 0 : (player.potential - 65) / 35;
   let rarity = rarityForRoll(roll, nudge);
   if (rarity === 'mythic' && options.allowMythic === false) rarity = 'legendary';
   const nicknames = NICKNAMES[player.archetype] ?? [];
-  const nickname = atLeast(rarity, AURA_FROM) && nicknames.length ? nicknames[rng.int(0, nicknames.length - 1)] : null;
-  return { version: DNA_VERSION, rarity, nickname, signatures: generateSignatures(player, rarity), quirks: generateQuirks(player, rarity), chronicle: [] };
+  const nickname =
+    atLeast(rarity, AURA_FROM) && nicknames.length
+      ? nicknames[rng.int(0, nicknames.length - 1)]
+      : null;
+  return {
+    version: DNA_VERSION,
+    rarity,
+    nickname,
+    signatures: generateSignatures(player, rarity),
+    quirks: generateQuirks(player, rarity),
+    chronicle: [],
+  };
 }
 
 /** DNA with a fixed rarity (Legends cards take theirs from the card tier), still deterministic from the id. */
 export function dnaForRarity(player: Pick<Player, 'id' | 'archetype'>, rarity: Rarity): PlayerDNA {
   const rng = new Rng(hash32(`${dnaSeed(player.id)}|forced`));
   const nicknames = NICKNAMES[player.archetype] ?? [];
-  const nickname = atLeast(rarity, AURA_FROM) && nicknames.length ? nicknames[rng.int(0, nicknames.length - 1)] : null;
-  return { version: DNA_VERSION, rarity, nickname, signatures: generateSignatures(player, rarity), quirks: generateQuirks(player, rarity), chronicle: [] };
+  const nickname =
+    atLeast(rarity, AURA_FROM) && nicknames.length
+      ? nicknames[rng.int(0, nicknames.length - 1)]
+      : null;
+  return {
+    version: DNA_VERSION,
+    rarity,
+    nickname,
+    signatures: generateSignatures(player, rarity),
+    quirks: generateQuirks(player, rarity),
+    chronicle: [],
+  };
 }
 
 /** The DNA of a player, or a plain common one for data from before DNA existed and not yet migrated. */
 export function dnaOf(player: Player): PlayerDNA {
-  return player.dna ?? { version: DNA_VERSION, rarity: 'common', nickname: null, signatures: [], quirks: [], chronicle: [] };
+  return (
+    player.dna ?? {
+      version: DNA_VERSION,
+      rarity: 'common',
+      nickname: null,
+      signatures: [],
+      quirks: [],
+      chronicle: [],
+    }
+  );
 }
 
 /** Gives every player without DNA its permanent DNA. Idempotent, so it doubles as the save migration. */
@@ -62,12 +102,21 @@ export function ensureDna(players: Iterable<Player>, mythicTaken = 0): number {
   for (const player of players) {
     if (player.dna) {
       // DNA from before signatures existed keeps its rarity and nickname and gains its signatures.
-      if (!player.dna.signatures) player.dna = { ...player.dna, signatures: generateSignatures(player, player.dna.rarity) };
-      if (!player.dna.quirks) player.dna = { ...player.dna, quirks: generateQuirks(player, player.dna.rarity), chronicle: player.dna.chronicle ?? [] };
+      if (!player.dna.signatures)
+        player.dna = { ...player.dna, signatures: generateSignatures(player, player.dna.rarity) };
+      if (!player.dna.quirks)
+        player.dna = {
+          ...player.dna,
+          quirks: generateQuirks(player, player.dna.rarity),
+          chronicle: player.dna.chronicle ?? [],
+        };
       if (player.dna.version < DNA_VERSION) player.dna = { ...player.dna, version: DNA_VERSION };
       continue;
     }
-    const dna = generateDna(player, { usePotential: false, allowMythic: mythic < MYTHIC_WORLD_CAP });
+    const dna = generateDna(player, {
+      usePotential: false,
+      allowMythic: mythic < MYTHIC_WORLD_CAP,
+    });
     if (dna.rarity === 'mythic') mythic++;
     player.dna = dna;
   }
@@ -75,7 +124,11 @@ export function ensureDna(players: Iterable<Player>, mythicTaken = 0): number {
 }
 
 function everyPlayer(game: GameState): Player[] {
-  return [...game.teams.flatMap((team) => team.players), ...game.transfers.freeAgents, ...(game.academy?.prospects ?? [])];
+  return [
+    ...game.teams.flatMap((team) => team.players),
+    ...game.transfers.freeAgents,
+    ...(game.academy?.prospects ?? []),
+  ];
 }
 
 /** Gives every player of a game its permanent DNA and enforces the mythic cap. Safe to run on every load. */
@@ -93,12 +146,20 @@ export function enforceMythicCap(game: GameState): void {
   const mythics = everyPlayer(game).filter((player) => player.dna?.rarity === 'mythic');
   if (mythics.length <= MYTHIC_WORLD_CAP) return;
   mythics.sort((a, b) => dnaSeed(a.id) - dnaSeed(b.id));
-  for (const player of mythics.slice(MYTHIC_WORLD_CAP)) player.dna = { ...player.dna!, rarity: 'legendary', signatures: generateSignatures(player, 'legendary') };
+  for (const player of mythics.slice(MYTHIC_WORLD_CAP))
+    player.dna = {
+      ...player.dna!,
+      rarity: 'legendary',
+      signatures: generateSignatures(player, 'legendary'),
+    };
 }
 
 /** Rarity of a player is public for the own club and after a scouting report; otherwise it stays a "?". */
 export function rarityKnown(game: GameState, player: Player): boolean {
-  if (game.teams.find((team) => team.id === game.clubId)?.players.some((own) => own.id === player.id)) return true;
+  if (
+    game.teams.find((team) => team.id === game.clubId)?.players.some((own) => own.id === player.id)
+  )
+    return true;
   return game.transfers.reports.some((report) => report.playerId === player.id);
 }
 

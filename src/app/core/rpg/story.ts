@@ -33,7 +33,8 @@ export function chronicleLine(entry: ChronicleEntry, language: 'de' | 'en'): str
     const quirk = typeof params[key] === 'string' ? getQuirk(params[key] as string) : undefined;
     if (quirk) params[key] = quirk.name[index];
   }
-  if (typeof params['nameDe'] === 'string') params['name'] = params[index === 0 ? 'nameDe' : 'nameEn'];
+  if (typeof params['nameDe'] === 'string')
+    params['name'] = params[index === 0 ? 'nameDe' : 'nameEn'];
   if (entry.kind === 'ascension') {
     for (const key of ['from', 'to']) {
       const def = RARITY_DEFS[params[key] as Rarity];
@@ -42,7 +43,8 @@ export function chronicleLine(entry: ChronicleEntry, language: 'de' | 'en'): str
     const reason = ASCENSION_REASONS.find((candidate) => candidate.id === params['reason']);
     if (reason) params['reason'] = reason.text[index];
   }
-  if (typeof params['trait'] === 'string') params['trait'] = getTrait(params['trait'])?.name ?? params['trait'];
+  if (typeof params['trait'] === 'string')
+    params['trait'] = getTrait(params['trait'])?.name ?? params['trait'];
   return fill(CHRONICLE_TEXT[entry.kind][index], params);
 }
 
@@ -67,7 +69,8 @@ export function recordMatchStory(game: GameState, team: Team, result: MatchResul
   for (const player of team.players) {
     if (result.ratings[player.id] === undefined || !player.dna) continue;
     const goals = result.contributions[player.id]?.goals ?? 0;
-    const log = (kind: ChronicleKind, params?: Record<string, string | number>) => addChronicle(player, { ...at, kind, params });
+    const log = (kind: ChronicleKind, params?: Record<string, string | number>) =>
+      addChronicle(player, { ...at, kind, params });
     if (careerTotal(player, 'appearances') === 1) log('debut', { club: team.name });
     if (goals > 0 && careerTotal(player, 'goals') - goals === 0) {
       log('firstGoal', { opponent });
@@ -76,10 +79,17 @@ export function recordMatchStory(game: GameState, team: Team, result: MatchResul
     if (goals >= 3) log('hattrick', { opponent });
     if (result.manOfTheMatchId === player.id) log('motm', { opponent });
     const chronicle = player.dna.chronicle ?? [];
-    const lastHealth = [...chronicle].reverse().find((entry) => entry.kind === 'injury' || entry.kind === 'comeback');
-    if (result.events.some((event) => event.type === 'injury' && event.playerId === player.id)) log('injury', { weeks: player.injuryWeeks });
+    const lastHealth = [...chronicle]
+      .reverse()
+      .find((entry) => entry.kind === 'injury' || entry.kind === 'comeback');
+    if (result.events.some((event) => event.type === 'injury' && event.playerId === player.id))
+      log('injury', { weeks: player.injuryWeeks });
     else if (lastHealth?.kind === 'injury' && player.injuryWeeks === 0) log('comeback');
-    if (player.level % 5 === 0 && !chronicle.some((entry) => entry.kind === 'level' && entry.params?.['level'] === player.level)) log('level', { level: player.level });
+    if (
+      player.level % 5 === 0 &&
+      !chronicle.some((entry) => entry.kind === 'level' && entry.params?.['level'] === player.level)
+    )
+      log('level', { level: player.level });
     for (const quirk of revealByAppearances(player)) {
       log('quirk', { quirk: quirk.id });
       beats.push({ kind: 'quirk', player, quirkId: quirk.id });

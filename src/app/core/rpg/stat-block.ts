@@ -7,7 +7,16 @@ import { computeOverall, positionFamiliarity } from '../ratings';
 import { clamp } from '../util';
 import { condMatches } from './conditions';
 import { ULTIMATE_EFFECTS, scaleEffect, signatureEffects } from './signatures';
-import { DerivedHook, EffectHook, EffectSpec, HOOK_BIT, HOOK_INDEX, ModifierSource, StatModifier, capFor } from './effects';
+import {
+  DerivedHook,
+  EffectHook,
+  EffectSpec,
+  HOOK_BIT,
+  HOOK_INDEX,
+  ModifierSource,
+  StatModifier,
+  capFor,
+} from './effects';
 
 export interface StatContext {
   /** Formation slot the player fills; out-of-position players lose some sharpness. */
@@ -55,8 +64,14 @@ const OFF_PITCH_HOOKS = new Set<string>(['xpGain', 'injuryRisk', 'growthChance']
 /** Fresh attribute record with one fixed shape, so every attribute view the engine reads is monomorphic. */
 export function newAttributes(source?: Record<AttributeKey, number>): Record<AttributeKey, number> {
   return {
-    pace: source?.pace ?? 0, shooting: source?.shooting ?? 0, passing: source?.passing ?? 0, dribbling: source?.dribbling ?? 0,
-    defending: source?.defending ?? 0, physical: source?.physical ?? 0, stamina: source?.stamina ?? 0, goalkeeping: source?.goalkeeping ?? 0,
+    pace: source?.pace ?? 0,
+    shooting: source?.shooting ?? 0,
+    passing: source?.passing ?? 0,
+    dribbling: source?.dribbling ?? 0,
+    defending: source?.defending ?? 0,
+    physical: source?.physical ?? 0,
+    stamina: source?.stamina ?? 0,
+    goalkeeping: source?.goalkeeping ?? 0,
   };
 }
 
@@ -95,7 +110,8 @@ export function buildStatBlock(player: Player, context: StatContext = {}): StatB
   for (const [id, rank] of Object.entries(player.talentRanks ?? {})) {
     const talent = getTalent(id);
     if (!talent || rank <= 0) continue;
-    for (const key of Object.keys(talent.modifiers) as AttributeKey[]) raw[key] += talent.modifiers[key]! * rank;
+    for (const key of Object.keys(talent.modifiers) as AttributeKey[])
+      raw[key] += talent.modifiers[key]! * rank;
     for (const effect of talent.effects ?? []) {
       const scaled = scaleEffect(effect, rank);
       if (isFlatBonus(scaled)) raw[scaled.hook as AttributeKey] += scaled.value;
@@ -108,11 +124,17 @@ export function buildStatBlock(player: Player, context: StatContext = {}): StatB
   for (const id of player.traitIds ?? []) {
     const trait = getTrait(id);
     if (!trait?.effects) continue;
-    for (const effect of trait.effects) if (!isFlatBonus(effect)) (mods[effect.hook] ??= []).push({ ...effect, source: { kind: 'trait', id } });
+    for (const effect of trait.effects)
+      if (!isFlatBonus(effect))
+        (mods[effect.hook] ??= []).push({ ...effect, source: { kind: 'trait', id } });
   }
   for (const buff of player.training?.buffs ?? []) {
     for (const effect of buff.effects) {
-      if (!isFlatBonus(effect)) (mods[effect.hook] ??= []).push({ ...effect, source: { kind: 'training', id: buff.drillId } });
+      if (!isFlatBonus(effect))
+        (mods[effect.hook] ??= []).push({
+          ...effect,
+          source: { kind: 'training', id: buff.drillId },
+        });
     }
   }
   for (const [id, rank] of Object.entries(player.talentRanks ?? {})) {
@@ -120,27 +142,46 @@ export function buildStatBlock(player: Player, context: StatContext = {}): StatB
     if (!talent || rank <= 0) continue;
     for (const effect of talent.effects ?? []) {
       const scaled = scaleEffect(effect, rank);
-      if (!isFlatBonus(scaled)) (mods[scaled.hook] ??= []).push({ ...scaled, source: { kind: 'talent', id } });
+      if (!isFlatBonus(scaled))
+        (mods[scaled.hook] ??= []).push({ ...scaled, source: { kind: 'talent', id } });
     }
   }
   for (const quirk of player.dna?.quirks ?? []) {
     for (const effect of getQuirk(quirk.id)?.effects ?? []) {
-      if (!isFlatBonus(effect)) (mods[effect.hook] ??= []).push({ ...effect, source: { kind: 'quirk', id: quirk.id } });
+      if (!isFlatBonus(effect))
+        (mods[effect.hook] ??= []).push({ ...effect, source: { kind: 'quirk', id: quirk.id } });
     }
   }
   if (player.dna?.rarity === 'mythic') {
-    for (const effect of ULTIMATE_EFFECTS) (mods[effect.hook] ??= []).push({ ...effect, source: { kind: 'signature', id: 'ultimate' } });
+    for (const effect of ULTIMATE_EFFECTS)
+      (mods[effect.hook] ??= []).push({ ...effect, source: { kind: 'signature', id: 'ultimate' } });
   }
   (player.dna?.signatures ?? []).slice(0, 2).forEach((signature, slot) => {
-    for (const effect of signatureEffects(signature, slot as 0 | 1)) (mods[effect.hook] ??= []).push({ ...effect, source: { kind: 'signature', id: signature.id } });
+    for (const effect of signatureEffects(signature, slot as 0 | 1))
+      (mods[effect.hook] ??= []).push({
+        ...effect,
+        source: { kind: 'signature', id: signature.id },
+      });
   });
   return {
-    playerId: player.id, base, mods, state,
+    playerId: player.id,
+    base,
+    mods,
+    state,
     hasMods: Object.keys(mods).length > 0,
     modAttrs: ATTRIBUTE_KEYS.filter((key) => !!mods[key]),
-    hasHookMods: Object.keys(mods).some((hook) => !IS_ATTRIBUTE.has(hook) && !OFF_PITCH_HOOKS.has(hook)),
-    flagMask: Object.values(mods).reduce((mask, list) => (list ?? []).reduce((inner, mod) => inner | (mod.when ?? 0) | (mod.unless ?? 0), mask), 0),
-    hookMask: Object.keys(mods).reduce((mask, hook) => mask | (HOOK_BIT[hook as DerivedHook] ?? 0), 0),
+    hasHookMods: Object.keys(mods).some(
+      (hook) => !IS_ATTRIBUTE.has(hook) && !OFF_PITCH_HOOKS.has(hook),
+    ),
+    flagMask: Object.values(mods).reduce(
+      (mask, list) =>
+        (list ?? []).reduce((inner, mod) => inner | (mod.when ?? 0) | (mod.unless ?? 0), mask),
+      0,
+    ),
+    hookMask: Object.keys(mods).reduce(
+      (mask, hook) => mask | (HOOK_BIT[hook as DerivedHook] ?? 0),
+      0,
+    ),
   };
 }
 
@@ -184,7 +225,12 @@ export function resolveAttribute(block: StatBlock, key: AttributeKey, flags: num
  * Caches the additive and multiplicative part of every modified derived hook for one flag set, so the
  * engine answers a hook with `(base + add) * mul` instead of walking modifier lists on every call.
  */
-export function refreshHooks(block: StatBlock, flags: number, add: Float64Array, mul: Float64Array): void {
+export function refreshHooks(
+  block: StatBlock,
+  flags: number,
+  add: Float64Array,
+  mul: Float64Array,
+): void {
   for (const hook of Object.keys(block.mods) as EffectHook[]) {
     if (IS_ATTRIBUTE.has(hook)) continue;
     const index = HOOK_INDEX[hook as DerivedHook];
@@ -205,34 +251,87 @@ export function refreshHooks(block: StatBlock, flags: number, add: Float64Array,
  * Re-resolves the attributes that have situational modifiers into `into`, a buffer that starts as a
  * copy of the base. The other attributes never change with the flags.
  */
-export function refreshAttributes(block: StatBlock, flags: number, into: Record<AttributeKey, number>): Record<AttributeKey, number> {
+export function refreshAttributes(
+  block: StatBlock,
+  flags: number,
+  into: Record<AttributeKey, number>,
+): Record<AttributeKey, number> {
   for (const key of block.modAttrs) into[key] = resolveAttribute(block, key, flags);
   return into;
 }
 
 /** A derived engine value (an error rate, a chance) after modifiers. */
-export function resolveHook(block: StatBlock, hook: EffectHook, base: number, flags: number): number {
+export function resolveHook(
+  block: StatBlock,
+  hook: EffectHook,
+  base: number,
+  flags: number,
+): number {
   return resolve(block, hook, base, flags);
 }
 
 /** Itemised contributions to an attribute, for the player sheet. */
-export function explainStat(player: Player, key: AttributeKey, flags = 0, context: StatContext = {}): StatPart[] {
+export function explainStat(
+  player: Player,
+  key: AttributeKey,
+  flags = 0,
+  context: StatContext = {},
+): StatPart[] {
   const block = buildStatBlock(player, context);
-  const parts: StatPart[] = [{ source: { kind: 'state', id: 'attribute' }, label: key, value: player.attributes[key], op: 'base', active: true }];
+  const parts: StatPart[] = [
+    {
+      source: { kind: 'state', id: 'attribute' },
+      label: key,
+      value: player.attributes[key],
+      op: 'base',
+      active: true,
+    },
+  ];
   for (const [id, rank] of Object.entries(player.talentRanks ?? {})) {
     const talent = getTalent(id);
     const value = (talent?.modifiers[key] ?? 0) * rank;
-    if (talent && rank > 0 && value) parts.push({ source: { kind: 'talent', id }, label: talent.name, value, op: 'add', active: true });
+    if (talent && rank > 0 && value)
+      parts.push({
+        source: { kind: 'talent', id },
+        label: talent.name,
+        value,
+        op: 'add',
+        active: true,
+      });
   }
   const { morale, form, familiarity } = block.state;
-  parts.push({ source: { kind: 'state', id: 'morale' }, label: 'morale', value: morale, op: 'mul', active: morale !== 1 });
-  parts.push({ source: { kind: 'form', id: 'form' }, label: 'form', value: form, op: 'mul', active: form !== 1 });
-  parts.push({ source: { kind: 'state', id: 'familiarity' }, label: 'familiarity', value: familiarity, op: 'mul', active: familiarity !== 1 });
+  parts.push({
+    source: { kind: 'state', id: 'morale' },
+    label: 'morale',
+    value: morale,
+    op: 'mul',
+    active: morale !== 1,
+  });
+  parts.push({
+    source: { kind: 'form', id: 'form' },
+    label: 'form',
+    value: form,
+    op: 'mul',
+    active: form !== 1,
+  });
+  parts.push({
+    source: { kind: 'state', id: 'familiarity' },
+    label: 'familiarity',
+    value: familiarity,
+    op: 'mul',
+    active: familiarity !== 1,
+  });
   for (const id of player.traitIds ?? []) {
     const trait = getTrait(id);
     for (const effect of trait?.effects ?? []) {
       if (effect.hook !== key) continue;
-      parts.push({ source: { kind: 'trait', id }, label: trait!.name, value: effect.value, op: effect.op, active: condMatches(flags, effect.when, effect.unless) });
+      parts.push({
+        source: { kind: 'trait', id },
+        label: trait!.name,
+        value: effect.value,
+        op: effect.op,
+        active: condMatches(flags, effect.when, effect.unless),
+      });
     }
   }
   return parts;
@@ -250,7 +349,12 @@ export function staticOverall(player: Player, slotPosition?: string): number {
   const attributes = { ...block.base };
   for (const key of ATTRIBUTE_KEYS) {
     for (const mod of block.mods[key] ?? []) {
-      if (mod.op === 'add') attributes[key] = clamp(attributes[key] + mod.value * (mod.when ? SITUATIONAL_WEIGHT : 1), 1, 99);
+      if (mod.op === 'add')
+        attributes[key] = clamp(
+          attributes[key] + mod.value * (mod.when ? SITUATIONAL_WEIGHT : 1),
+          1,
+          99,
+        );
     }
   }
   return computeOverall(attributes, player.positionGroup);
@@ -268,35 +372,77 @@ export interface AttributeSources {
   /** What the match engine starts from. */
   total: number;
   /** Situational effects on this attribute, shown with the condition flags they need. */
-  conditional: { source: ModifierSource; label: [string, string]; value: number; op: 'add' | 'mul'; when: number; unless: number }[];
+  conditional: {
+    source: ModifierSource;
+    label: [string, string];
+    value: number;
+    op: 'add' | 'mul';
+    when: number;
+    unless: number;
+  }[];
 }
 
 /** Where the number of one attribute comes from, for the player sheet. */
-export function attributeSources(player: Player, key: AttributeKey, slotPosition?: string): AttributeSources {
+export function attributeSources(
+  player: Player,
+  key: AttributeKey,
+  slotPosition?: string,
+): AttributeSources {
   const flat = (effects: readonly EffectSpec[] | undefined): number =>
-    (effects ?? []).filter((effect) => effect.hook === key && isFlatBonus(effect)).reduce((sum, effect) => sum + effect.value, 0);
+    (effects ?? [])
+      .filter((effect) => effect.hook === key && isFlatBonus(effect))
+      .reduce((sum, effect) => sum + effect.value, 0);
   let talents = 0;
   for (const [id, rank] of Object.entries(player.talentRanks ?? {})) {
     const talent = getTalent(id);
     if (!talent || rank <= 0) continue;
-    talents += (talent.modifiers[key] ?? 0) * rank + flat((talent.effects ?? []).map((effect) => scaleEffect(effect, rank)));
+    talents +=
+      (talent.modifiers[key] ?? 0) * rank +
+      flat((talent.effects ?? []).map((effect) => scaleEffect(effect, rank)));
   }
   const traits = (player.traitIds ?? []).reduce((sum, id) => sum + flat(getTrait(id)?.effects), 0);
-  const training = (player.training?.buffs ?? []).reduce((sum, buff) => sum + flat(buff.effects), 0);
-  const quirks = (player.dna?.quirks ?? []).reduce((sum, quirk) => sum + flat(getQuirk(quirk.id)?.effects), 0);
+  const training = (player.training?.buffs ?? []).reduce(
+    (sum, buff) => sum + flat(buff.effects),
+    0,
+  );
+  const quirks = (player.dna?.quirks ?? []).reduce(
+    (sum, quirk) => sum + flat(getQuirk(quirk.id)?.effects),
+    0,
+  );
   const block = buildStatBlock(player, { slotPosition });
   const total = block.base[key];
   const base = player.attributes[key];
   const conditional: AttributeSources['conditional'] = [];
   for (const mod of block.mods[key] ?? []) {
-    const same = (name: string | undefined): [string, string] | undefined => (name ? [name, name] : undefined);
-    const label = mod.source.kind === 'trait' ? same(getTrait(mod.source.id)?.name)
-      : mod.source.kind === 'talent' ? same(getTalent(mod.source.id)?.name)
-        : mod.source.kind === 'quirk' ? getQuirk(mod.source.id)?.name
-          : mod.source.kind === 'training' ? same(mod.source.id)
-            : player.dna?.signatures?.find((signature) => signature.id === mod.source.id)?.name;
-    conditional.push({ source: mod.source, label: label ?? [mod.source.id, mod.source.id], value: mod.value, op: mod.op, when: mod.when ?? 0, unless: mod.unless ?? 0 });
+    const same = (name: string | undefined): [string, string] | undefined =>
+      name ? [name, name] : undefined;
+    const label =
+      mod.source.kind === 'trait'
+        ? same(getTrait(mod.source.id)?.name)
+        : mod.source.kind === 'talent'
+          ? same(getTalent(mod.source.id)?.name)
+          : mod.source.kind === 'quirk'
+            ? getQuirk(mod.source.id)?.name
+            : mod.source.kind === 'training'
+              ? same(mod.source.id)
+              : player.dna?.signatures?.find((signature) => signature.id === mod.source.id)?.name;
+    conditional.push({
+      source: mod.source,
+      label: label ?? [mod.source.id, mod.source.id],
+      value: mod.value,
+      op: mod.op,
+      when: mod.when ?? 0,
+      unless: mod.unless ?? 0,
+    });
   }
-  return { base, talents, traits, training, quirks, state: total - (base + talents + traits + training + quirks), total, conditional };
+  return {
+    base,
+    talents,
+    traits,
+    training,
+    quirks,
+    state: total - (base + talents + traits + training + quirks),
+    total,
+    conditional,
+  };
 }
-

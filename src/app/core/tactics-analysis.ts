@@ -1,4 +1,4 @@
-import { buildProfile, PRESS_AGGRO, TEMPO_CHANCE } from './services/match-sim';
+import { buildProfile, PRESS_AGGRO, TEMPO_CHANCE } from './team-profile';
 import { groupForPosition } from './ratings';
 import { Player } from '../models/player.model';
 import { Team } from '../models/team.model';

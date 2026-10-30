@@ -36,10 +36,10 @@ export class SettingsPage {
   protected readonly perkPaths = ['coaching', 'tactics', 'scouting', 'leadership', 'negotiation', 'youthDevelopment'] as const;
 
   protected setDifficulty(d: GameSettings['difficulty']): void {
-    this.gs.mutate((draft) => (draft.settings.difficulty = d));
+    this.gs.patchSettings((settings) => (settings.difficulty = d));
   }
   protected toggleSound(): void {
-    this.gs.mutate((draft) => (draft.settings.soundEnabled = !draft.settings.soundEnabled));
+    this.gs.patchSettings((settings) => (settings.soundEnabled = !settings.soundEnabled));
     this.audio.click();
   }
 
@@ -48,25 +48,25 @@ export class SettingsPage {
   }
 
   protected setDuration(duration: GameSettings['matchDuration']): void {
-    this.gs.mutate((draft) => (draft.settings.matchDuration = duration));
+    this.gs.patchSettings((settings) => (settings.matchDuration = duration));
   }
 
   protected setAssistPreset(preset: GameSettings['assistPreset']): void {
-    this.gs.mutate((draft) => (draft.settings.assistPreset = preset));
+    this.gs.patchSettings((settings) => (settings.assistPreset = preset));
   }
 
   protected setAuras(event: Event): void {
     const value = (event.target as HTMLSelectElement).value;
     const auras = value === 'subtle' || value === 'off' ? value : 'on';
-    this.gs.mutate((draft) => (draft.settings.auras = auras));
+    this.gs.patchSettings((settings) => (settings.auras = auras));
   }
 
   protected toggleCameraShake(): void {
-    this.gs.mutate((draft) => (draft.settings.cameraShake = !draft.settings.cameraShake));
+    this.gs.patchSettings((settings) => (settings.cameraShake = !settings.cameraShake));
   }
 
   protected toggleReducedMotion(): void {
-    this.gs.mutate((draft) => (draft.settings.reducedMotion = !draft.settings.reducedMotion));
+    this.gs.patchSettings((settings) => (settings.reducedMotion = !settings.reducedMotion));
   }
 
   protected setVolume(kind: 'musicVolume' | 'sfxVolume' | 'crowdVolume', event: Event): void {
@@ -81,7 +81,7 @@ export class SettingsPage {
     this.message.set(this.i18n.t(unlocked ? 'settings.perkUnlocked' : 'settings.noSkillPoint'));
   }
   protected toggleAutosave(): void {
-    this.gs.mutate((draft) => (draft.settings.autoSave = !draft.settings.autoSave));
+    this.gs.patchSettings((settings) => (settings.autoSave = !settings.autoSave));
   }
 
   protected async saveNow(): Promise<void> {

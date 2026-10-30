@@ -34,6 +34,16 @@ const MATCH_ROUTE = /^\/(?:match|play)(?:[/?#]|$)/;
           </div>
         </div>
       }
+      @if (store.externalChange()) {
+        <div class="notice danger" role="alert">
+          <strong>{{ text('ANDERER TAB', 'ANOTHER TAB') }}</strong>
+          <span>{{ text('Der Spielstand wurde in einem anderen Tab geändert. Speichert dieser Tab weiter, überschreibt er den anderen. Lade neu, um den neuesten Stand zu holen.', 'The save was changed in another tab. If this tab keeps saving it overwrites the other one. Reload to get the latest state.') }}</span>
+          <div class="actions">
+            <button type="button" class="btn btn--primary btn--sm" (click)="reload()">{{ text('NEU LADEN', 'RELOAD') }}</button>
+            <button type="button" class="btn btn--ghost btn--sm" (click)="store.externalChange.set(false)">{{ text('DIESEN TAB BEHALTEN', 'KEEP THIS TAB') }}</button>
+          </div>
+        </div>
+      }
       @if (showUpdate()) {
         <div class="notice info" role="status">
           <strong>{{ text('NEUE VERSION', 'NEW VERSION') }}</strong>

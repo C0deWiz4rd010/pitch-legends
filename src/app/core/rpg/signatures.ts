@@ -15,12 +15,20 @@ export function signaturePower(rarity: Rarity, tuning = 1): number {
 }
 
 /** The signatures a player of this tier carries: Common the passive one, Rare/Epic the triggered one, both from Legendary. */
-export function generateSignatures(player: Pick<Player, 'id' | 'archetype'>, rarity: Rarity): SignatureState[] {
+export function generateSignatures(
+  player: Pick<Player, 'id' | 'archetype'>,
+  rarity: Rarity,
+): SignatureState[] {
   const rng = new Rng(hash32(`${player.id}|signature-v1`));
   const options = signaturesFor(player.archetype);
   const passive = options.find((definition) => definition.minRarity === 'common');
   const triggered = options.find((definition) => definition.minRarity === 'rare');
-  const wanted = rarity === 'common' ? [passive] : rarity === 'rare' || rarity === 'epic' ? [triggered] : [passive, triggered];
+  const wanted =
+    rarity === 'common'
+      ? [passive]
+      : rarity === 'rare' || rarity === 'epic'
+        ? [triggered]
+        : [passive, triggered];
   const chosen = wanted.filter((definition): definition is SignatureDef => !!definition);
   return chosen.map((definition) => ({
     id: definition.id,
@@ -33,7 +41,10 @@ export function generateSignatures(player: Pick<Player, 'id' | 'archetype'>, rar
 
 /** Scales an effect around its neutral point: +6 becomes +6·power, ×0.7 becomes ×(1 − 0.3·power). */
 export function scaleEffect(spec: EffectSpec, factor: number): EffectSpec {
-  return { ...spec, value: spec.op === 'add' ? spec.value * factor : 1 + (spec.value - 1) * factor };
+  return {
+    ...spec,
+    value: spec.op === 'add' ? spec.value * factor : 1 + (spec.value - 1) * factor,
+  };
 }
 
 /** The effects of a signature in slot 0 or 1, scaled and bound to that slot's awake flag. */
@@ -75,13 +86,26 @@ export function createRuntimes(dna: PlayerDNA | undefined): SignatureRuntime[] {
   const runtimes: SignatureRuntime[] = [];
   (dna?.signatures ?? []).forEach((state, index) => {
     const definition = getSignature(state.id);
-    if (definition && index < 2) runtimes.push({
-      slot: index as 0 | 1, definition, state, until: 0, readyAt: 0, awake: false, refilled: false,
-      seconds: definition.trigger.kind === 'event' ? definition.trigger.seconds * (state.path === 'b' ? 1.5 : 1) : 0,
-      cooldown: definition.trigger.kind === 'event' ? definition.trigger.cooldown * (state.path === 'b' ? 0.7 : 1) : 0,
-      isCondition: definition.trigger.kind === 'condition',
-      masks: definition.trigger.kind === 'condition' ? definition.trigger.any : [],
-    });
+    if (definition && index < 2)
+      runtimes.push({
+        slot: index as 0 | 1,
+        definition,
+        state,
+        until: 0,
+        readyAt: 0,
+        awake: false,
+        refilled: false,
+        seconds:
+          definition.trigger.kind === 'event'
+            ? definition.trigger.seconds * (state.path === 'b' ? 1.5 : 1)
+            : 0,
+        cooldown:
+          definition.trigger.kind === 'event'
+            ? definition.trigger.cooldown * (state.path === 'b' ? 0.7 : 1)
+            : 0,
+        isCondition: definition.trigger.kind === 'condition',
+        masks: definition.trigger.kind === 'condition' ? definition.trigger.any : [],
+      });
   });
   return runtimes;
 }
@@ -106,4 +130,3 @@ export const ULTIMATE_EFFECTS: EffectSpec[] = [
   { hook: 'tackleWin', op: 'add', value: 0.06, when: Cond.ultimate },
   { hook: 'pressTackle', op: 'mul', value: 1.15, when: Cond.ultimate },
 ];
-

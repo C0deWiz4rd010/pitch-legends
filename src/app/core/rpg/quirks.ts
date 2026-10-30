@@ -30,11 +30,16 @@ export function careerTotal(player: Player, stat: QuirkStat): number {
   const career = player.career;
   const season = player.seasonStats;
   switch (stat) {
-    case 'goals': return (career?.goals ?? 0) + season.goals;
-    case 'assists': return (career?.assists ?? 0) + season.assists;
-    case 'appearances': return (career?.appearances ?? 0) + season.appearances;
-    case 'cleanSheets': return (career?.cleanSheets ?? 0) + season.cleanSheets;
-    case 'motm': return (career?.motmAwards ?? 0) + season.motmAwards;
+    case 'goals':
+      return (career?.goals ?? 0) + season.goals;
+    case 'assists':
+      return (career?.assists ?? 0) + season.assists;
+    case 'appearances':
+      return (career?.appearances ?? 0) + season.appearances;
+    case 'cleanSheets':
+      return (career?.cleanSheets ?? 0) + season.cleanSheets;
+    case 'motm':
+      return (career?.motmAwards ?? 0) + season.motmAwards;
   }
 }
 
@@ -83,16 +88,27 @@ export const INHERIT_CHANCE = 0.1;
  * A senior passes one of his revealed, inheritable quirks to a junior with a free slot. The junior
  * learns it hidden, like every quirk. Returns the quirk id or null.
  */
-export function inheritQuirk(seniors: readonly Player[], junior: Player, seed: string): string | null {
+export function inheritQuirk(
+  seniors: readonly Player[],
+  junior: Player,
+  seed: string,
+): string | null {
   const dna = junior.dna;
   if (!dna) return null;
   const quirks = (dna.quirks ??= []);
   if (quirks.length >= quirkSlots(dna.rarity)) return null;
   const rng = new Rng(hash32(`${seed}|${junior.id}|inherit`));
   if (!rng.bool(INHERIT_CHANCE)) return null;
-  const options = seniors.flatMap((senior) => (senior.dna?.quirks ?? [])
-    .filter((quirk) => quirk.revealed && getQuirk(quirk.id)?.inheritable && !quirks.some((own) => own.id === quirk.id))
-    .map((quirk) => quirk.id));
+  const options = seniors.flatMap((senior) =>
+    (senior.dna?.quirks ?? [])
+      .filter(
+        (quirk) =>
+          quirk.revealed &&
+          getQuirk(quirk.id)?.inheritable &&
+          !quirks.some((own) => own.id === quirk.id),
+      )
+      .map((quirk) => quirk.id),
+  );
   if (!options.length) return null;
   const id = options[rng.int(0, options.length - 1)];
   quirks.push({ id, revealed: false });

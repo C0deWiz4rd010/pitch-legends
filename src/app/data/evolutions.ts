@@ -19,7 +19,11 @@ export const EVOLUTION_STAGES: EvolutionStage[] = [
 ];
 
 /** Impact points of one match line of a signature. */
-export function impactPoints(progress: { activations: number; shots: number; goals: number }): number {
+export function impactPoints(progress: {
+  activations: number;
+  shots: number;
+  goals: number;
+}): number {
   return progress.activations + progress.shots + progress.goals * 3;
 }
 
@@ -43,8 +47,14 @@ export const PATH_NAMES: Record<PlayerArchetype, { a: [string, string]; b: [stri
 };
 
 export const PATH_TEXT = {
-  a: ['Pfad A: Die Wirkung ist 25 % stärker.', 'Path A: the effects are 25 % stronger.'] as [string, string],
-  b: ['Pfad B: Bleibt länger aktiv (+50 %) und kehrt früher zurück (−30 % Abklingzeit); Situations-Signaturen werden 10 % stärker.', 'Path B: stays awake longer (+50 %) and returns sooner (−30 % cooldown); situational signatures get 10 % stronger.'] as [string, string],
+  a: ['Pfad A: Die Wirkung ist 25 % stärker.', 'Path A: the effects are 25 % stronger.'] as [
+    string,
+    string,
+  ],
+  b: [
+    'Pfad B: Bleibt länger aktiv (+50 %) und kehrt früher zurück (−30 % Abklingzeit); Situations-Signaturen werden 10 % stärker.',
+    'Path B: stays awake longer (+50 %) and returns sooner (−30 % cooldown); situational signatures get 10 % stronger.',
+  ] as [string, string],
 };
 
 /** One rarity step per career, earned by a standout achievement at the end of a season. */
@@ -55,8 +65,17 @@ export interface AscensionReason {
 
 export const ASCENSION_REASONS: AscensionReason[] = [
   { id: 'top-scorer', text: ['Torschützenkönig der Liga', 'Top scorer of the league'] },
-  { id: 'mvp-season', text: ['Fünfmal Spieler des Spiels in einer Saison', 'Five man-of-the-match awards in one season'] },
-  { id: 'club-legend', text: ['100 Pflichtspiele für den Verein', '100 competitive appearances for the club'] },
+  {
+    id: 'mvp-season',
+    text: [
+      'Fünfmal Spieler des Spiels in einer Saison',
+      'Five man-of-the-match awards in one season',
+    ],
+  },
+  {
+    id: 'club-legend',
+    text: ['100 Pflichtspiele für den Verein', '100 competitive appearances for the club'],
+  },
 ];
 
 /** Mythic cannot be reached by ascension; only the world roll creates it. */

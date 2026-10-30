@@ -2,35 +2,92 @@ import { AttributeKey } from '../../models/enums';
 
 /** Derived values the match engine asks the pipeline about, besides the eight attributes. */
 export type DerivedHook =
-  | 'shotError' | 'shotPower' | 'curve' | 'passError' | 'throughLead' | 'firstTouch'
-  | 'acceleration' | 'sprintBurst' | 'tackleWin' | 'pressTackle' | 'shielding' | 'aerial'
-  | 'keeperReaction' | 'keeperReach' | 'staminaDrain' | 'staminaRecovery' | 'composure'
-  | 'xpGain' | 'injuryRisk' | 'growthChance';
+  | 'shotError'
+  | 'shotPower'
+  | 'curve'
+  | 'passError'
+  | 'throughLead'
+  | 'firstTouch'
+  | 'acceleration'
+  | 'sprintBurst'
+  | 'tackleWin'
+  | 'pressTackle'
+  | 'shielding'
+  | 'aerial'
+  | 'keeperReaction'
+  | 'keeperReach'
+  | 'staminaDrain'
+  | 'staminaRecovery'
+  | 'composure'
+  | 'xpGain'
+  | 'injuryRisk'
+  | 'growthChance';
 
 export type EffectHook = AttributeKey | DerivedHook;
 
 const DERIVED_HOOKS: DerivedHook[] = [
-  'shotError', 'shotPower', 'curve', 'passError', 'throughLead', 'firstTouch', 'acceleration', 'sprintBurst', 'tackleWin', 'pressTackle',
-  'shielding', 'aerial', 'keeperReaction', 'keeperReach', 'staminaDrain', 'staminaRecovery', 'composure', 'xpGain', 'injuryRisk', 'growthChance',
+  'shotError',
+  'shotPower',
+  'curve',
+  'passError',
+  'throughLead',
+  'firstTouch',
+  'acceleration',
+  'sprintBurst',
+  'tackleWin',
+  'pressTackle',
+  'shielding',
+  'aerial',
+  'keeperReaction',
+  'keeperReach',
+  'staminaDrain',
+  'staminaRecovery',
+  'composure',
+  'xpGain',
+  'injuryRisk',
+  'growthChance',
 ];
 
 export const HOOK_COUNT = DERIVED_HOOKS.length;
 
 /** Numeric ids of the derived hooks as a plain literal, so engine calls are cheap array lookups. */
 export const HK = {
-  shotError: 0, shotPower: 1, curve: 2, passError: 3, throughLead: 4, firstTouch: 5, acceleration: 6, sprintBurst: 7, tackleWin: 8, pressTackle: 9,
-  shielding: 10, aerial: 11, keeperReaction: 12, keeperReach: 13, staminaDrain: 14, staminaRecovery: 15, composure: 16, xpGain: 17, injuryRisk: 18, growthChance: 19,
+  shotError: 0,
+  shotPower: 1,
+  curve: 2,
+  passError: 3,
+  throughLead: 4,
+  firstTouch: 5,
+  acceleration: 6,
+  sprintBurst: 7,
+  tackleWin: 8,
+  pressTackle: 9,
+  shielding: 10,
+  aerial: 11,
+  keeperReaction: 12,
+  keeperReach: 13,
+  staminaDrain: 14,
+  staminaRecovery: 15,
+  composure: 16,
+  xpGain: 17,
+  injuryRisk: 18,
+  growthChance: 19,
 } as const;
 
 export function hookName(index: number): DerivedHook {
   return DERIVED_HOOKS[index];
 }
-export const HOOK_INDEX = Object.fromEntries(DERIVED_HOOKS.map((hook, index) => [hook, index])) as Record<DerivedHook, number>;
+export const HOOK_INDEX = Object.fromEntries(
+  DERIVED_HOOKS.map((hook, index) => [hook, index]),
+) as Record<DerivedHook, number>;
 
 /** One bit per derived hook: lets the engine skip a hook with a single AND when a player has no modifier for it. */
-export const HOOK_BIT = Object.fromEntries(DERIVED_HOOKS.map((hook, index) => [hook, 1 << index])) as Record<DerivedHook, number>;
+export const HOOK_BIT = Object.fromEntries(
+  DERIVED_HOOKS.map((hook, index) => [hook, 1 << index]),
+) as Record<DerivedHook, number>;
 
-export type ModifierSourceKind = 'trait' | 'talent' | 'signature' | 'quirk' | 'state' | 'training' | 'form';
+export type ModifierSourceKind =
+  'trait' | 'talent' | 'signature' | 'quirk' | 'state' | 'training' | 'form';
 
 export interface ModifierSource {
   kind: ModifierSourceKind;

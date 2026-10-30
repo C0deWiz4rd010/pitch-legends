@@ -11,7 +11,9 @@
     "test:e2e": "playwright test",
     "balance:check": "esbuild tools/balance-check.ts --bundle --platform=node --format=esm --outfile=tmp/balance-check.mjs && node tmp/balance-check.mjs 500",
     "version:check": "node tools/check-version.mjs",
-    "styles:check": "node tools/check-styles.mjs"
+    "styles:check": "node tools/check-styles.mjs",
+    "i18n:check": "node tools/check-i18n.mjs",
+    "format:check": "prettier --check \"src/app/core/rpg/*.ts\" \"src/app/data/{rarity,nicknames,quirks,signatures,evolutions,story,camp-events,training-drills,cond-labels,talents}.ts\" \"src/app/core/football/{shootout,penalty}.ts\" \"src/app/core/team-profile.ts\" \"src/app/shared/components/{player-sheet/*,rarity-gem.component,focus-meter.component,shootout-panel.component}.ts\" \"tools/check-i18n.mjs\""
   },
   "private": true,
   "packageManager": "npm@11.4.2",

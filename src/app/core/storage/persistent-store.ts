@@ -82,8 +82,31 @@ export class PersistentStore {
   private readonly pending = new Map<string, { value: string | null; batch: number }>();
   private batchCounter = 0;
 
+  /** Tells the other tabs of this browser when a career was written, so two tabs do not overwrite each other unnoticed. */
+  private readonly channel: BroadcastChannel | null = typeof BroadcastChannel === 'undefined' ? null : new BroadcastChannel('pitch-legends-store');
+  private readonly tabId = Math.random().toString(36).slice(2);
+
   constructor() {
     if (typeof window !== 'undefined') window.addEventListener('pagehide', () => this.persistPendingSync());
+    if (this.channel) {
+      this.channel.onmessage = (event: MessageEvent<{ from?: string; key?: string }>) => {
+        const message = event.data;
+        if (message?.from && message.from !== this.tabId && typeof message.key === 'string' && message.key.startsWith('pitch-legends:save:')) this.externalChange.set(true);
+      };
+    }
+  }
+
+  /**
+   * True once another tab has written the career after this tab loaded it. Whichever tab writes last
+   * wins, so the shell warns instead of letting progress vanish silently.
+   */
+  readonly externalChange = signal(false);
+
+  private announce(operations: StoreOperation[]): void {
+    if (!this.channel) return;
+    for (const { key, value } of operations) {
+      if (value !== null && key.startsWith('pitch-legends:save:')) this.channel.postMessage({ from: this.tabId, key });
+    }
   }
 
   readonly backend = signal<StorageBackend>('localstorage');
@@ -136,6 +159,7 @@ export class PersistentStore {
    */
   batch(operations: StoreOperation[]): Promise<SaveResult> {
     if (!operations.length) return Promise.resolve({ ok: true });
+    this.announce(operations);
     if (!this.db) return Promise.resolve(this.report(operations, this.writeLocal(operations)));
     for (const { key, value } of operations) {
       if (value === null) this.cache.delete(key);

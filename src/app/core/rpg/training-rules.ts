@@ -4,8 +4,16 @@ import { Player, PlayerTrainingState } from '../../models/player.model';
 import { clamp } from '../util';
 
 /** Load of one session in arbitrary units; intense work from rest is deliberately a risk. */
-export const INTENSITY_LOAD: Record<TrainingIntensity, number> = { light: 1, normal: 2, intense: 3.5 };
-export const INTENSITY_MASTERY: Record<TrainingIntensity, number> = { light: 0.8, normal: 1, intense: 1.25 };
+export const INTENSITY_LOAD: Record<TrainingIntensity, number> = {
+  light: 1,
+  normal: 2,
+  intense: 3.5,
+};
+export const INTENSITY_MASTERY: Record<TrainingIntensity, number> = {
+  light: 0.8,
+  normal: 1,
+  intense: 1.25,
+};
 export const GRADE_MULTIPLIER: Record<TrainingGrade, number> = { S: 1.5, A: 1.25, B: 1, C: 0.8 };
 
 /** Mastery points a normal session earns before multipliers. */
@@ -13,13 +21,22 @@ export const BASE_MASTERY = 8;
 export const MASTERY_MILESTONES = [25, 50] as const;
 /** The trait unlocked for free at 100 mastery, one per attribute. */
 export const MASTERY_TRAIT: Record<AttributeKey, string> = {
-  pace: 'speedster', shooting: 'clinical', passing: 'playmaker', dribbling: 'maestro',
-  defending: 'wall', physical: 'rock', stamina: 'engine', goalkeeping: 'safehands',
+  pace: 'speedster',
+  shooting: 'clinical',
+  passing: 'playmaker',
+  dribbling: 'maestro',
+  defending: 'wall',
+  physical: 'rock',
+  stamina: 'engine',
+  goalkeeping: 'safehands',
 };
 
 /** Attribute a position group lives from; camp events grow it. */
 export const CORE_ATTRIBUTE: Record<PositionGroup, AttributeKey> = {
-  GK: 'goalkeeping', DEF: 'defending', MID: 'passing', ATT: 'shooting',
+  GK: 'goalkeeping',
+  DEF: 'defending',
+  MID: 'passing',
+  ATT: 'shooting',
 };
 
 export type LoadZone = 'green' | 'yellow' | 'red';
@@ -31,7 +48,11 @@ export function ensureTraining(player: Player): PlayerTrainingState {
 }
 
 /** Load a session adds to a player (video analysis and recovery cost nothing). */
-export function sessionLoad(intensity: TrainingIntensity, scope: TrainingScope, drillLoad = 1): number {
+export function sessionLoad(
+  intensity: TrainingIntensity,
+  scope: TrainingScope,
+  drillLoad = 1,
+): number {
   return INTENSITY_LOAD[intensity] * (scope === 'unit' ? 0.75 : 1) * drillLoad;
 }
 
@@ -70,22 +91,30 @@ export interface MasteryOutcome {
 }
 
 /** Adds mastery and reports a crossed milestone. The caller pays out the reward. */
-export function addMastery(player: Player, attribute: AttributeKey, amount: number): MasteryOutcome {
+export function addMastery(
+  player: Player,
+  attribute: AttributeKey,
+  amount: number,
+): MasteryOutcome {
   const state = ensureTraining(player);
   const before = state.mastery[attribute] ?? 0;
   const value = clamp(before + Math.max(0, Math.round(amount)), 0, 100);
   state.mastery[attribute] = value;
   const outcome: MasteryOutcome = { gained: value - before, value };
-  for (const milestone of MASTERY_MILESTONES) if (before < milestone && value >= milestone) outcome.milestone = milestone;
+  for (const milestone of MASTERY_MILESTONES)
+    if (before < milestone && value >= milestone) outcome.milestone = milestone;
   const trait = MASTERY_TRAIT[attribute];
-  if (before < 100 && value >= 100 && !player.traitIds.includes(trait)) outcome.traitUnlocked = trait;
+  if (before < 100 && value >= 100 && !player.traitIds.includes(trait))
+    outcome.traitUnlocked = trait;
   return outcome;
 }
 
 /** A senior (29+, level 12+) and a junior (21 or younger) in one unit session: the junior learns faster. */
 export function mentoringJuniors(players: readonly Player[]): Set<string> {
   const hasSenior = players.some((player) => player.age >= 29 && player.level >= 12);
-  return new Set(hasSenior ? players.filter((player) => player.age <= 21).map((player) => player.id) : []);
+  return new Set(
+    hasSenior ? players.filter((player) => player.age <= 21).map((player) => player.id) : [],
+  );
 }
 
 export const MENTORING_XP = 1.2;
@@ -110,8 +139,11 @@ const CORE_FOCUS: Record<PositionGroup, AttributeKey[]> = {
 export function estimateTraining(player: Player): PlayerTrainingState {
   const mastery: Partial<Record<AttributeKey, number>> = {};
   for (const key of CORE_FOCUS[player.positionGroup]) {
-    mastery[key] = clamp(Math.round(player.level * 2 + Math.max(0, player.attributes[key] - 55) * 0.8), 0, 60);
+    mastery[key] = clamp(
+      Math.round(player.level * 2 + Math.max(0, player.attributes[key] - 55) * 0.8),
+      0,
+      60,
+    );
   }
   return { mastery, load: [...DEFAULT_LOAD], weekLoad: 0, buffs: [] };
 }
-

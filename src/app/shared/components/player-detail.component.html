@@ -25,30 +25,30 @@
 
       <div class="meta">
         <div class="meta-cell">
-          <span class="muted">Potential</span>
+          <span class="muted">{{ i18n.pick('Potenzial', 'Potential') }}</span>
           <strong>{{ p.potential }}</strong>
         </div>
         <div class="meta-cell">
-          <span class="muted">Morale</span>
+          <span class="muted">{{ i18n.pick('Moral', 'Morale') }}</span>
           <strong>{{ moraleIcon(p.morale) }} {{ p.morale }}</strong>
         </div>
         <div class="meta-cell">
-          <span class="muted">Fitness</span>
+          <span class="muted">{{ i18n.pick('Fitness', 'Fitness') }}</span>
           <strong>{{ p.fitness }}%</strong>
         </div>
         <div class="meta-cell">
-          <span class="muted">Value</span>
+          <span class="muted">{{ i18n.pick('Marktwert', 'Value') }}</span>
           <strong class="gold">{{ (p.marketValue / 1000) | number: '1.0-0' }}k</strong>
         </div>
       </div>
 
       <div class="xp">
         <div class="xp-top">
-          <span>Level {{ p.level }}</span>
-          <span class="sp">SP {{ p.skillPoints }} skill points</span>
+          <span>{{ i18n.pick('Level', 'Level') }} {{ p.level }}</span>
+          <span class="sp">SP {{ p.skillPoints }} {{ i18n.pick('Skillpunkte', 'skill points') }}</span>
         </div>
         <div class="xp-track"><div class="xp-fill" [style.width.%]="xpPercent()"></div></div>
-        <span class="muted xp-label">{{ p.xp }} / {{ p.xpToNext }} XP to next level</span>
+        <span class="muted xp-label">{{ p.xp }} / {{ p.xpToNext }} {{ i18n.pick('XP bis zum nächsten Level', 'XP to next level') }}</span>
       </div>
 
       <div class="tabs" role="tablist" [attr.aria-label]="i18n.pick('Spielerakte', 'Player sheet')">
@@ -64,7 +64,7 @@
           <app-talent-tree [player]="p" (unlock)="unlockTalent($event)" />
           <p class="muted sp-hint">SP {{ p.skillPoints }}</p>
           <div class="traits">
-            <p class="eyebrow">Traits</p>
+            <p class="eyebrow">{{ i18n.pick('Eigenschaften', 'Traits') }}</p>
             <div class="trait-list">
               @for (t of ownedTraits(); track t.id) {
                 <div class="trait owned" [title]="t.description">ON {{ t.name }}</div>
@@ -155,7 +155,7 @@
             </div>
 
             <div class="attrs">
-              <p class="eyebrow">Attributes — spend skill points to push your stats</p>
+              <p class="eyebrow">{{ i18n.pick('Attribute: Skillpunkte verteilen', 'Attributes — spend skill points to push your stats') }}</p>
               @for (key of attrKeys; track key) {
                 <div class="attr-row">
                   <span class="attr-name">{{ labels[key] }}</span>
@@ -198,8 +198,8 @@
 
           <div class="development">
             <div>
-              <p class="eyebrow">Development plan</p>
-              <span class="muted">Focused drills gain extra XP and attribute-growth chance.</span>
+              <p class="eyebrow">{{ i18n.pick('Entwicklungsplan', 'Development plan') }}</p>
+              <span class="muted">{{ i18n.pick('Passende Übungen geben mehr XP und höhere Wachstumschance.', 'Focused drills gain extra XP and attribute-growth chance.') }}</span>
             </div>
             <div class="plan-picker">
               @for (plan of developmentPlans; track plan) {
@@ -210,18 +210,18 @@
 
           <div class="personal-goal">
             <div>
-              <p class="eyebrow">Personal quest</p>
+              <p class="eyebrow">{{ i18n.pick('Persönliches Ziel', 'Personal quest') }}</p>
               <strong>{{ p.personalGoal.type }}: {{ p.personalGoal.progress }} / {{ p.personalGoal.target }}</strong>
             </div>
             <span class="chip" [class.done]="p.personalGoal.completed">{{ p.personalGoal.completed ? 'COMPLETE' : '+' + p.personalGoal.rewardXp + ' XP' }}</span>
           </div>
 
           <div class="season">
-            <p class="eyebrow">This season</p>
+            <p class="eyebrow">{{ i18n.pick('Diese Saison', 'This season') }}</p>
             <div class="season-grid">
-              <span>G {{ p.seasonStats.goals }} goals</span>
-              <span>A {{ p.seasonStats.assists }} assists</span>
-              <span>AP {{ p.seasonStats.appearances }} apps</span>
+              <span>{{ i18n.pick('T', 'G') }} {{ p.seasonStats.goals }} {{ i18n.pick('Tore', 'goals') }}</span>
+              <span>{{ i18n.pick('V', 'A') }} {{ p.seasonStats.assists }} {{ i18n.pick('Vorlagen', 'assists') }}</span>
+              <span>{{ i18n.pick('E', 'AP') }} {{ p.seasonStats.appearances }} {{ i18n.pick('Einsätze', 'apps') }}</span>
               <span>CS {{ p.seasonStats.cleanSheets }}</span>
               <span>YC {{ p.seasonStats.yellowCards }}</span>
               <span>M {{ p.seasonStats.motmAwards }} MOTM</span>

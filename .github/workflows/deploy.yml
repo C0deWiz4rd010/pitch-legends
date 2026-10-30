@@ -53,6 +53,12 @@ jobs:
       - name: Check minimum text size
         run: npm run styles:check
 
+      - name: Template text check
+        run: npm run i18n:check
+
+      - name: Format check (RPG modules)
+        run: npm run format:check
+
       - name: Type-check application and tests
         run: npm run typecheck
 

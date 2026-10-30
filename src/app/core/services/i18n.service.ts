@@ -21,7 +21,7 @@ export class I18nService {
   }
 
   setLocale(locale: 'de' | 'en'): void {
-    if (this.gs.game()) this.gs.mutate((draft) => (draft.settings.locale = locale));
+    if (this.gs.game()) this.gs.patchSettings((settings) => (settings.locale = locale));
     else this.startLocale.set(locale);
   }
 

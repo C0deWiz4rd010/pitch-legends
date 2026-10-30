@@ -45,7 +45,7 @@ export class AudioService {
     } catch { return {}; }
   }
   toggleSound():void {
-    if(this.gs.game()) this.gs.mutate(game=>{game.settings.soundEnabled=!game.settings.soundEnabled;});
+    if(this.gs.game()) this.gs.patchSettings(settings=>{settings.soundEnabled=!settings.soundEnabled;});
     else this.standalone.update(settings=>({...settings,soundEnabled:!settings.soundEnabled}));
     this.updateCrowdGain();
   }
