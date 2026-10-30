@@ -577,3 +577,22 @@ Offen: Der Vorher-/Nachher-Bildschirm der Evolution ist weiter der Karten-Dialog
 
 Offen: Der Funke zeigt nur Rare und Epic+ an, es gibt keine eigene Scouting-Stufe für Akademie-Talente; die Legends-Seltenheit ist an die Kartenstufe gebunden (kein Aufstieg einzelner Karten).
 
+
+## Phase 9 – Gameplay-Punkte und Tech-Debt (Legends Reborn, 30.10.2026)
+
+- **Abseits:** KI-Angreifer laufen gezielt an die Abseitslinie (`lineOvershoot` in `tactical-intent.ts`, 2–6 m in 100-Tick-Fenstern). Ergebnis: 1,77 Abseits pro Match (Ziel 1,5–3, vorher 0,06).
+- **Passquote und Ballannahme:** Abfangversuche eines Verteidigers sind auf jeden fünften Tick begrenzt (`INTERCEPT_EVERY`), Gleichstände bei der Ballannahme entscheidet ein Seed-Hash (`tieOrder`) statt der Listenreihenfolge. Passquote 69,2 % (Korridor 65–88 %).
+- **Interaktives Elfmeterschießen:** Mensch schießt mit Richtung und Kraft, verteidigt mit Sprungrichtung (`shootout-panel`), die KI nutzt dieselben Funktionen; Checkpoints und Replays bleiben gültig. Die Logik liegt in `ShootoutSession` (`core/football/shootout.ts`), `ArcadeMatch` delegiert nur.
+- **Mythic-Ultimate:** Fokus-Meter, Taste F / Gamepad 8 / Touch-Button, KI-Heuristik, Blitze, Stinger.
+- **Tech-Debt:** Legacy-`match-sim.ts` entfernt (`buildProfile` in `core/team-profile.ts`); `GameStateService.patchSettings` klont nur die Einstellungen; Multi-Tab-Warnung über BroadcastChannel (`PersistentStore.externalChange`, Hinweis „ANDERER TAB“); `npm run i18n:check` (Baseline `tools/i18n-baseline.json`, in der CI) und `npm run format:check`.
+- **Reichtum der KI-Vereine:** bereits in Phase 6 vorgezogen (Stadionrendite degressiv).
+- Abschluss-Balance (500 Matches): 2,42 Tore, 11,1 Schüsse pro Team, 25,6 % Remis, 42,6 % Heimsiege, 483 ms pro Match (Grenze 560). Tests: 343, Build, Stil-, i18n- und Format-Check grün.
+
+Offen: `arcade-match.ts` ist nur teilweise zerlegt (Elfmeterschießen ausgelagert, die Aktionsmodule `pass/shoot/tackle/dribble` nicht); die i18n-Umstellung auf Schlüssel ist nicht abgeschlossen, der Check verhindert aber neue hartkodierte Texte (46 Altbestände); Web Locks fehlen (nur Warnung, keine Sperre).
+
+## Phase 10 – QA und Release 2.0 (Legends Reborn, 30.10.2026)
+
+- Steuerungs-Handbuch enthält die Signature-/Ultimate-Taste (`data/control-bindings.ts`).
+- Abschluss-Balance und Tests siehe Phase 9; der Zehn-Saisons-Lauf (`career-longrun.spec.ts`) ist Teil der grünen Suite.
+- **Nicht durchführbar in dieser Umgebung:** Messungen auf echten Geräten (Pixel 6a, iPhone 12) und die Playwright-E2E-Läufe (Browser-Download nicht freigegeben, `npx playwright install` nötig). Diese Punkte bleiben vor dem Tag zu erledigen.
+- **Release:** Nichts wurde gepusht oder getaggt. Für den Major-Bump per Release Please ist ein Commit mit Footer `Release-As: 2.0.0` nötig; das passiert erst nach Freigabe.

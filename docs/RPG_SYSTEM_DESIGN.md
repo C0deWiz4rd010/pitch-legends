@@ -128,3 +128,10 @@ Chronik (höchstens 40 Zeilen) für Debüt, erstes Tor, Hattrick, Spieler des Sp
 - Matchzeit (500 Matches, `balance:check`): Messungen siehe Log; Ziel war etwa +10 % gegenüber dem Stand vor Phase 1 (damals 440–450 ms). Das Zeitlimit im Skript steht bei 560 ms.
 - Balance-Korridore: 2,2–3,4 Tore, 65–88 % Passquote, 20–32 % Remis, 42–52 % Heimsiege.
 - Tests: Vitest-Specs `rpg-effects`, `training-v3`, `player-dna`, `signatures`, `quirks-story`, `evolution`, `rpg-sheet`, `save-v7` sowie der Zehn-Saisons-Test.
+
+## 12. Nachtrag Phase 9
+
+- **Ultimate (Mythic):** Fokus 0–100 füllt sich durch gute Aktionen; bei 100 löst Taste F / Gamepad 8 / Touch-Button die Ultimate aus (6 s, `ULTIMATE_EFFECTS`), die KI nutzt sie per Heuristik. Eingabe läuft über den `TickInputBuffer`, daher replay-sicher.
+- **Elfmeterschießen:** `ShootoutSession` (`core/football/shootout.ts`) mit `kickOutcome` (Richtung, Kraft, Sprungrichtung; Signaturen und Quirks wie Eisherz wirken über den `penalty`-Zustand). Automatischer Pfad für SIM/COACH, interaktiver für PLAY.
+- **Abseits und Pässe:** `lineOvershoot` (Läufe hinter die Kette), `INTERCEPT_EVERY` und seedbasierte Ballannahme.
+- **Infrastruktur:** `patchSettings` (Teil-Clone), Multi-Tab-Warnung, `i18n:check` und `format:check`.
