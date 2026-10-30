@@ -229,7 +229,9 @@
           </div>
           <div class="touch-actions">
             @for (button of touchButtons; track button.action) {
+              @if (button.action !== 'ultimate' || matchView().hasUltimate) {
               <button [class]="button.css" [attr.aria-label]="i18n.pick(button.de, button.en)" (pointerdown)="setTouchAction(button.action,true)" (pointerup)="setTouchAction(button.action,false)" (pointercancel)="setTouchAction(button.action,false)">{{ button.label }}</button>
+              }
             }
           </div>
         </div>
@@ -274,6 +276,7 @@
     <aside class="card ticker">
       <p class="eyebrow">{{ i18n.pick('SPIELGESCHEHEN', 'MATCH EVENTS') }}</p>
       <div class="momentum" aria-hidden="true"><i [style.width.%]="momentumHome()"></i></div>
+      @if (matchView().hasUltimate) { <app-focus-meter [focus]="matchView().focus" /> }
       <div class="events" aria-live="polite">
         @for (event of tickerEvents(); track $index) {
           <div class="event" [class.goal]="event.type === 'goal'" [class.card-event]="event.type === 'yellow' || event.type === 'red'">

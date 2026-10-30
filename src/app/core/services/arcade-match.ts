@@ -45,7 +45,7 @@ import { arrangeRestart, chooseRestartTaker } from '../football/set-pieces';
 import { shootoutConversionChance } from '../football/penalty';
 import { AttributeKey } from '../../models/enums';
 import { Cond, condMatches } from '../rpg/conditions';
-import { SignatureRuntime, createRuntimes, signatureBit } from '../rpg/signatures';
+import { SignatureRuntime, ULTIMATE_COST, ULTIMATE_SECONDS, createRuntimes, signatureBit } from '../rpg/signatures';
 import { SigEvent } from '../../data/signatures';
 import { HK, HOOK_BIT, HOOK_COUNT, hookName } from '../rpg/effects';
 import { StatBlock, buildStatBlock, newAttributes, rawStatBlock, refreshAttributes, refreshHooks, resolveAttribute, resolveHook } from '../rpg/stat-block';
@@ -198,6 +198,11 @@ export class ArcadeMatch {
   private ambientFlags = 0;
   private lastOwnerSide: Side | null = null;
   private lastOwnerId: string | null = null;
+  /** Focus meter per side (0-100): the Mythic ultimate of a side needs it full. */
+  readonly focus: Record<Side, number> = { home: 0, away: 0 };
+  private readonly ultimateUntil: Record<Side, number> = { home: 0, away: 0 };
+  private readonly ultimateUser: Record<Side, string | null> = { home: null, away: null };
+  private readonly mythicSide: Record<Side, boolean> = { home: false, away: false };
   private sideFlagsTick = -1;
   private sharedFlagsTick = -1;
   private sharedFlags = 0;
@@ -352,6 +357,10 @@ export class ArcadeMatch {
     }
 
     this.elapsed += safeDt;
+    if (this.mythicSide.home) this.addFocus('home', 0.08 * safeDt);
+    if (this.mythicSide.away) this.addFocus('away', 0.08 * safeDt);
+    if (input.ultimate && !this.previousInput.ultimate) this.triggerUltimate(this.controlledSide);
+    if ((this.mythicSide.home || this.mythicSide.away) && this.tick % 20 === 0) this.aiUltimate();
     this.handleSelection(input);
     const ownerBeforeMovement = this.owner();
     const supportPresser = input.skill && ownerBeforeMovement && ownerBeforeMovement.side !== this.controlledSide
@@ -704,6 +713,9 @@ export class ArcadeMatch {
           lastOwnerId: this.lastOwnerId,
           sharedFlags: this.sharedFlags,
           sharedFlagsTick: this.sharedFlagsTick,
+          focus: { ...this.focus },
+          ultimateUntil: { ...this.ultimateUntil },
+          ultimateUser: { ...this.ultimateUser },
           actors: Object.fromEntries(this.actors.map((actor) => [actor.player.id, {
             flags: actor.flags ?? 0,
             sig: (actor.sig ?? []).map((runtime) => ({ until: runtime.until, readyAt: runtime.readyAt, awake: runtime.awake, refilled: runtime.refilled })),
@@ -1607,6 +1619,7 @@ export class ArcadeMatch {
     const catchBall = distance(keeper, this.ball) < 1.15 && this.rng.bool(clamp(0.45 + reaction * 0.5 - difficulty, 0.15, 0.92));
     if (shot && shot.side !== keeper.side) {
       this.stats(keeper.side).saves++;
+      this.addFocus(keeper.side, 4);
       this.ratings[keeper.player.id] = clamp((this.ratings[keeper.player.id] ?? 6.5) + 0.18 + shot.xG * 0.25, 1, 10);
       this.events.push({ minute: this.footballMinute, type: 'save', side: keeper.side, playerId: keeper.player.id, params: { keeper: playerName(keeper.player) } });
     }
@@ -1771,10 +1784,12 @@ export class ArcadeMatch {
           this.lastPasser.received = true;
           this.passCompletions[candidate.side]++;
           this.stats(candidate.side).passesCompleted++;
+          this.addFocus(candidate.side, 0.5);
           this.ratings[this.lastPasser.id] = clamp((this.ratings[this.lastPasser.id] ?? 6.5) + 0.025, 1, 10);
         } else if (candidate.side !== this.lastPasser.side) {
           this.lastPasser = null;
           this.stats(candidate.side).interceptions++;
+          this.addFocus(candidate.side, 3);
         }
       }
       this.pendingOffsideTargetId = null;
@@ -1880,6 +1895,7 @@ export class ArcadeMatch {
     }
     if (side === 'home') this.homeScore++;
     else this.awayScore++;
+    this.addFocus(side, 8);
     this.addStoppage(0.7);
     const lastToucher = this.actors.find((actor) => actor.player.id === this.ball.lastTouchPlayerId);
     // A deflection or clearance into the own net is an own goal: no goal credit, a rating penalty.
@@ -2458,6 +2474,9 @@ export class ArcadeMatch {
     this.lastOwnerId = effects.lastOwnerId;
     this.sharedFlags = effects.sharedFlags;
     this.sharedFlagsTick = effects.sharedFlagsTick;
+    if (effects.focus) Object.assign(this.focus, effects.focus);
+    if (effects.ultimateUntil) Object.assign(this.ultimateUntil, effects.ultimateUntil);
+    if (effects.ultimateUser) Object.assign(this.ultimateUser, effects.ultimateUser);
     for (const actor of this.actors) {
       const saved = effects.actors[actor.player.id];
       if (!saved) continue;
@@ -2469,14 +2488,71 @@ export class ArcadeMatch {
     for (const entry of effects.signatureStats) this.signatureStats.set(`${entry.playerId}|${entry.signatureId}`, structuredClone(entry));
   }
 
+  /** Adds to a side's focus meter; only sides with a Mythic player on the pitch collect it. */
+  private addFocus(side: Side, amount: number): void {
+    if (!this.mythicSide[side] || !this.effectsEnabled) return;
+    this.focus[side] = Math.min(ULTIMATE_COST, this.focus[side] + amount);
+  }
+
+  /** The Mythic player of a side who carries the ultimate (the best one if there are several). */
+  private mythicUser(side: Side): ArcadeActor | undefined {
+    let best: ArcadeActor | undefined;
+    for (const actor of this.actors) {
+      if (!actor.active || actor.side !== side || actor.player.dna?.rarity !== 'mythic' || !actor.sig) continue;
+      if (!best || actor.player.overall > best.player.overall) best = actor;
+    }
+    return best;
+  }
+
+  canTriggerUltimate(side: Side): boolean {
+    return this.effectsEnabled && this.focus[side] >= ULTIMATE_COST && this.tick >= this.ultimateUntil[side] && !!this.mythicUser(side);
+  }
+
+  hasUltimate(side: Side): boolean {
+    return this.effectsEnabled && this.mythicSide[side];
+  }
+
+  /** Spends the full focus meter: both signatures of the Mythic player run for six seconds with a bonus on top. */
+  triggerUltimate(side: Side): boolean {
+    if (!this.canTriggerUltimate(side)) return false;
+    const user = this.mythicUser(side)!;
+    this.focus[side] = 0;
+    this.ultimateUntil[side] = this.tick + ULTIMATE_SECONDS * 60;
+    this.ultimateUser[side] = user.player.id;
+    const entry = this.signatureStats.get(`${user.player.id}|ultimate`) ?? { playerId: user.player.id, playerName: playerName(user.player), side, signatureId: 'ultimate', name: ['Ultimate', 'Ultimate'] as [string, string], activations: 0, shots: 0, xG: 0, goals: 0 };
+    entry.activations++;
+    this.signatureStats.set(`${user.player.id}|ultimate`, entry);
+    if (this.config.mode !== 'instant') {
+      this.events.push({ minute: this.footballMinute, type: 'commentary', side, playerId: user.player.id, messageKey: 'match.ultimate', params: { player: playerName(user.player) } });
+    }
+    return true;
+  }
+
+  /** AI sides fire the ultimate when it counts: the Mythic player attacking in the opposing half, or a deep defence under pressure. */
+  private aiUltimate(): void {
+    const owner = this.owner();
+    for (const side of ['home', 'away'] as const) {
+      if (!this.mythicSide[side] || (side === this.controlledSide && this.config.controllerMode === 'human')) continue;
+      if (!this.canTriggerUltimate(side)) continue;
+      const user = this.mythicUser(side)!;
+      const fromOwnGoal = this.attackDirection(side) > 0 ? this.ball.x : FIELD_LENGTH - this.ball.x;
+      const attacking = owner === user && fromOwnGoal > FIELD_LENGTH * 0.55;
+      const defending = owner !== undefined && owner.side !== side && fromOwnGoal < FIELD_LENGTH * 0.3;
+      if (attacking || defending) this.triggerUltimate(side);
+    }
+  }
+
   /** Wakes and puts to sleep the signatures of an actor; returns the flags with the awake bits added. */
   private updateSignatures(actor: ArcadeActor, base: number): number {
     let flags = base;
     const list = actor.sig!;
+    const ultimate = this.ultimateUntil[actor.side] > this.tick && this.ultimateUser[actor.side] === actor.player.id;
+    if (ultimate) flags |= Cond.ultimate;
     for (let index = 0; index < list.length; index++) {
       const runtime = list[index];
       let awake: boolean;
-      if (runtime.isCondition) {
+      if (ultimate) awake = true;
+      else if (runtime.isCondition) {
         awake = false;
         const masks = runtime.masks;
         for (let m = 0; m < masks.length; m++) if ((base & masks[m]) === masks[m]) { awake = true; break; }
@@ -2535,6 +2611,7 @@ export class ArcadeMatch {
 
   /** A shot: credits awake signatures of the shooter and wakes the defenders' reactions. */
   private registerShotForSignatures(shooter: ArcadeActor, xG: number): void {
+    this.addFocus(shooter.side, 2);
     if (shooter.sig) for (const runtime of shooter.sig) {
       if (!runtime.awake) continue;
       const entry = this.signatureEntry(shooter, runtime);
@@ -2584,6 +2661,8 @@ export class ArcadeMatch {
     const runtimes = this.effectsEnabled ? createRuntimes(actor.player.dna) : [];
     actor.sig = runtimes.length ? runtimes : undefined;
     if (runtimes.some((runtime) => runtime.definition.trigger.kind === 'event')) this.anySignatureEvents = true;
+    this.mythicSide.home = this.actors.some((candidate) => candidate.active && candidate.side === 'home' && candidate.player.dna?.rarity === 'mythic');
+    this.mythicSide.away = this.actors.some((candidate) => candidate.active && candidate.side === 'away' && candidate.player.dna?.rarity === 'mythic');
   }
 
   /** Re-resolves the actor's view for the flags of the moment, plus `extra` for the duration of a dead-ball kick. */

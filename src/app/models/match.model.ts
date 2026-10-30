@@ -158,6 +158,8 @@ export interface InputFrame {
   keeperRush?: boolean;
   /** Contain the ball carrier: stay goal-side, face the ball, move with restraint. */
   jockey?: boolean;
+  /** Fire the Mythic ultimate of the team (needs a full focus meter). */
+  ultimate?: boolean;
   tacticX?: number;
   tacticY?: number;
   pause?: boolean;
@@ -183,6 +185,7 @@ export const EMPTY_MATCH_COMMAND: MatchCommand = {
   switchPlayer: false,
   keeperRush: false,
   jockey: false,
+  ultimate: false,
   tacticX: 0,
   tacticY: 0,
   pause: false,
@@ -340,6 +343,9 @@ export interface MatchViewState {
   /** Minutes already played beyond 45/90. */
   stoppageMinute: number;
   extraTime: boolean;
+  /** Focus meter of the controlled side (0-100), and whether it has a Mythic player to use it. */
+  focus: number;
+  hasUltimate: boolean;
 }
 
 export interface MatchCheckpoint {
@@ -402,6 +408,9 @@ export interface MatchCheckpoint {
       lastOwnerId: string | null;
       sharedFlags: number;
       sharedFlagsTick: number;
+      focus?: Record<Side, number>;
+      ultimateUntil?: Record<Side, number>;
+      ultimateUser?: Record<Side, string | null>;
       actors: Record<string, { flags: number; sig: { until: number; readyAt: number; awake: boolean; refilled: boolean }[] }>;
       signatureStats: SignatureReport[];
     };

@@ -70,6 +70,11 @@ export const CONTROL_BINDINGS: readonly ControlBinding[] = [
     keyboard: [{ label: 'O' }], gamepad: [{ label: 'LT' }], touch: [{ label: 'LT', tone: 'blue' }],
   },
   {
+    action: 'ultimate', chapter: 'attack', title: { de: 'Ultimate (Mythic)', en: 'Ultimate (Mythic)' },
+    description: { de: 'F/Select löst die Ultimate deines Mythic-Spielers aus, sobald das Fokus-Meter voll ist: sechs Sekunden lang laufen beide Signaturen zugleich, dazu Tempo, saubere Pässe und Schüsse und härtere Tacklings. Das Meter füllt sich durch gelungene Pässe, Balleroberungen, Schüsse, Paraden und Tore.', en: 'F/Select fires the ultimate of your Mythic player once the focus meter is full: for six seconds both signatures run at once, plus pace, clean passing and shooting and harder tackling. The meter fills through completed passes, ball wins, shots, saves and goals.' },
+    keyboard: [{ label: 'F' }], gamepad: [{ label: 'SELECT' }], touch: [{ label: 'ULT', tone: 'purple' }],
+  },
+  {
     action: 'keeper', chapter: 'defend', title: { de: 'Torwart', en: 'Goalkeeper' },
     description: { de: 'K/Y halten ruft den Torwart heraus. Er fängt oder wehrt erreichbare Bälle ab, sammelt gefangene Bälle und eröffnet selbstständig. Die automatische Spielerwahl springt nicht auf den Torwart.', en: 'Hold K/Y near your own goal to rush the keeper. The keeper catches or parries reachable balls, gathers catches and distributes automatically. Automatic player switching does not select the goalkeeper.' },
     keyboard: [{ label: 'K', asset: `${ASSET}key-k.png` }], gamepad: [{ label: 'Y', asset: `${ASSET}gamepad-y.png` }], touch: [{ label: 'Y', tone: 'yellow' }],
@@ -99,6 +104,7 @@ export const CONTROL_INPUT_MAP = {
   skill: { keyboard: ['KeyI'], gamepadButton: 5 },
   switch: { keyboard: ['Space'], gamepadButton: 4 },
   jockey: { keyboard: ['KeyO'], gamepadButton: 6 },
+  ultimate: { keyboard: ['KeyF'], gamepadButton: 8 },
 } as const;
 
 export const MOVEMENT_KEYS = {

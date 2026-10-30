@@ -416,3 +416,5 @@ canvas { display: block; width: 100%; height: 100%; image-rendering: auto; touch
 .sig-row span { justify-self: end; color: var(--muted); font-size: 11px; }
 .sig-row small { grid-column: 1 / -1; color: var(--muted); font-size: 10px; }
 
+.touch-actions .ult { left: 0; top: -40px; width: 46px; border-radius: 0; background: #7a2d9c; }
+

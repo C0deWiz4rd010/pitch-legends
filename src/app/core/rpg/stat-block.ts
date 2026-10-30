@@ -6,7 +6,7 @@ import { getTrait } from '../../data/traits';
 import { computeOverall, positionFamiliarity } from '../ratings';
 import { clamp } from '../util';
 import { condMatches } from './conditions';
-import { scaleEffect, signatureEffects } from './signatures';
+import { ULTIMATE_EFFECTS, scaleEffect, signatureEffects } from './signatures';
 import { DerivedHook, EffectHook, EffectSpec, HOOK_BIT, HOOK_INDEX, ModifierSource, StatModifier, capFor } from './effects';
 
 export interface StatContext {
@@ -127,6 +127,9 @@ export function buildStatBlock(player: Player, context: StatContext = {}): StatB
     for (const effect of getQuirk(quirk.id)?.effects ?? []) {
       if (!isFlatBonus(effect)) (mods[effect.hook] ??= []).push({ ...effect, source: { kind: 'quirk', id: quirk.id } });
     }
+  }
+  if (player.dna?.rarity === 'mythic') {
+    for (const effect of ULTIMATE_EFFECTS) (mods[effect.hook] ??= []).push({ ...effect, source: { kind: 'signature', id: 'ultimate' } });
   }
   (player.dna?.signatures ?? []).slice(0, 2).forEach((signature, slot) => {
     for (const effect of signatureEffects(signature, slot as 0 | 1)) (mods[effect.hook] ??= []).push({ ...effect, source: { kind: 'signature', id: signature.id } });

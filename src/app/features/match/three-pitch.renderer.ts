@@ -90,6 +90,9 @@ export class ThreePitchRenderer {
   private readonly auraRarity = new Map<string, Rarity>();
   /** Players whose signature is awake this frame; their ring flares. */
   private readonly awakeIds = new Set<string>();
+  private previousAwake = new Set<string>();
+  /** Expanding rings where a Legendary or Mythic signature just woke up. */
+  private readonly flares: { id: string; age: number; color: string }[] = [];
   private readonly arrow: THREE.Mesh;
   private readonly power: THREE.Mesh<THREE.RingGeometry, THREE.MeshBasicMaterial>;
   private readonly ball: THREE.Mesh<THREE.BufferGeometry, THREE.MeshStandardMaterial>;
@@ -361,6 +364,11 @@ export class ThreePitchRenderer {
     const auraMode = this.quality === 'low' || this.software ? 'off' : match.config.auras ?? 'on';
     this.awakeIds.clear();
     if (auraMode !== 'off') for (const actor of match.actors) if (actor.sig) for (const runtime of actor.sig) if (runtime.awake) { this.awakeIds.add(actor.player.id); break; }
+    for (const id of this.awakeIds) {
+      const rarity = this.auraRarity.get(id);
+      if (!this.previousAwake.has(id) && (rarity === 'legendary' || rarity === 'mythic') && this.flares.length < 8) this.flares.push({ id, age: 0, color: RARITY_DEFS[rarity].aura });
+    }
+    this.previousAwake = new Set(this.awakeIds);
     this.aura.material.opacity = auraMode === 'subtle' ? 0.38 : 0.75;
     for (const model of this.models.values()) model.mesh.visible = false;
     for (const player of state.players) {
@@ -413,6 +421,20 @@ export class ThreePitchRenderer {
         this.power.material.color.setHSL((1 - power) * 0.29, 0.90, 0.65);
         this.power.material.opacity = 0.4 + power * 0.55;
       }
+    }
+    for (let flare = this.flares.length - 1; flare >= 0; flare--) {
+      const entry = this.flares[flare];
+      entry.age += dt;
+      const model = this.models.get(entry.id);
+      if (entry.age > 0.8 || !model || auraIndex >= 32) { if (entry.age > 0.8 || !model) this.flares.splice(flare, 1); continue; }
+      const size = 1.4 + entry.age * 5.5;
+      this.matrixDummy.position.copy(model.mesh.position).setY(0.024);
+      this.matrixDummy.rotation.set(-Math.PI / 2, 0, 0);
+      this.matrixDummy.scale.set(size, size, 1);
+      this.matrixDummy.updateMatrix();
+      this.aura.setMatrixAt(auraIndex, this.matrixDummy.matrix);
+      this.auraColor.set(entry.color).multiplyScalar(Math.max(0, 1 - entry.age / 0.8));
+      this.aura.setColorAt(auraIndex++, this.auraColor);
     }
     this.shadow.count = index;
     this.aura.count = auraIndex;

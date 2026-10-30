@@ -74,6 +74,11 @@ export class AudioService {
   signature():void {
     [659,880,1175].forEach((frequency,index)=>this.tone(frequency,.16,'triangle',.05,frequency*1.01,'sfxVolume',index*.05));
   }
+  /** A longer, fuller rise for the Mythic ultimate. */
+  ultimate():void {
+    [392,523,659,784,1047].forEach((frequency,index)=>this.tone(frequency,.22,'triangle',.07,frequency*1.02,'sfxVolume',index*.06));
+    this.noise(.3,.12,2200);
+  }
   error():void {this.tone(150,.16,'sawtooth',.10,90);}
   contact(contact:FootballContact, speed:number):void {
     if(contact.tick<=this.lastContactTick) return;
@@ -90,6 +95,7 @@ export class AudioService {
   matchEvent(event:MatchEvent):void {
     if(event.type==='goal') this.goal();
     else if(event.messageKey==='match.signature') this.signature();
+    else if(event.messageKey==='match.ultimate') this.ultimate();
     else if(event.messageKey==='match.offside') this.doubleWhistle();
     else if(event.type==='foul'||event.type==='yellow'||event.type==='red') {
       this.whistle();

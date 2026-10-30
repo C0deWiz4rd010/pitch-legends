@@ -36,6 +36,8 @@ export const Cond = {
   night: 1 << 23,
   /** Clear weather (neither rain nor storm). */
   clear: 1 << 24,
+  /** The Mythic ultimate of the player is running. */
+  ultimate: 1 << 25,
 } as const;
 
 export type CondFlag = (typeof Cond)[keyof typeof Cond];

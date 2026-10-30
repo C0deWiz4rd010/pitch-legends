@@ -1,7 +1,7 @@
 import { MatchCommand } from '../../models/match.model';
 
-export type BufferedButton = 'pass' | 'through' | 'lob' | 'shoot' | 'skill' | 'switchPlayer' | 'sprint' | 'jockey';
-const BUTTONS: readonly BufferedButton[] = ['pass', 'through', 'lob', 'shoot', 'skill', 'switchPlayer', 'sprint', 'jockey'];
+export type BufferedButton = 'pass' | 'through' | 'lob' | 'shoot' | 'skill' | 'switchPlayer' | 'sprint' | 'jockey' | 'ultimate';
+const BUTTONS: readonly BufferedButton[] = ['pass', 'through', 'lob', 'shoot', 'skill', 'switchPlayer', 'sprint', 'jockey', 'ultimate'];
 
 /** Events survive render frames with no simulation tick, including a whole tap between two frames. */
 export class TickInputBuffer {

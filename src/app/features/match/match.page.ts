@@ -1,3 +1,4 @@
+import { FocusMeterComponent } from '../../shared/components/focus-meter.component';
 import { ShootoutBoardComponent } from '../../shared/components/shootout-board.component';
 import {
   ChangeDetectionStrategy,
@@ -66,7 +67,7 @@ import { CHALLENGES, ChallengeController, ChallengeHud, ChallengeOutcome, loadCh
 import type { ThreePitchRenderer } from './three-pitch.renderer';
 
 type PagePhase = 'preview' | 'intro' | 'simulating' | 'match' | 'halftime' | 'result';
-type TouchAction = 'sprint' | 'pass' | 'through' | 'lob' | 'shoot' | 'skill' | 'switch' | 'jockey';
+type TouchAction = 'sprint' | 'pass' | 'through' | 'lob' | 'shoot' | 'skill' | 'switch' | 'jockey' | 'ultimate';
 
 const EMPTY_MATCH_VIEW: MatchViewState = {
   footballMinute: 0,
@@ -82,12 +83,14 @@ const EMPTY_MATCH_VIEW: MatchViewState = {
   stoppage: 0,
   stoppageMinute: 0,
   extraTime: false,
+  focus: 0,
+  hasUltimate: false,
 };
 
 @Component({
   selector: 'app-match',
   host: { '[class.practice-mode]': 'practice', '[class.live-match]': "phase() === 'match'" },
-  imports: [RouterLink, DecimalPipe, ClubCrestComponent, MiniKitComponent, ManagerPortraitComponent, SubstitutionPanelComponent, ConfirmDialogComponent, HeatmapComponent, ShootoutBoardComponent],
+  imports: [RouterLink, DecimalPipe, ClubCrestComponent, MiniKitComponent, ManagerPortraitComponent, SubstitutionPanelComponent, ConfirmDialogComponent, HeatmapComponent, ShootoutBoardComponent, FocusMeterComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './match.page.html',
   styleUrls: ['./match.page.scss', './live-match.scss'],
@@ -182,6 +185,7 @@ export class MatchPage implements OnDestroy {
     { action: 'pass', css: 'a', label: 'A', de: 'Pass oder Tackling', en: 'Pass or tackle' },
     { action: 'sprint', css: 'rt', label: 'RT', de: 'Sprint', en: 'Sprint' },
     { action: 'jockey', css: 'lt', label: 'LT', de: 'Stellen', en: 'Jockey' },
+    { action: 'ultimate', css: 'ult', label: 'ULT', de: 'Ultimate', en: 'Ultimate' },
   ];
   protected readonly touchX = signal(0);
   protected readonly touchY = signal(0);
@@ -194,6 +198,7 @@ export class MatchPage implements OnDestroy {
     skill: false,
     switch: false,
     jockey: false,
+    ultimate: false,
   });
 
   private arcade: ArcadeMatch | null = null;
@@ -845,6 +850,8 @@ export class MatchPage implements OnDestroy {
       stoppage: this.arcade.stoppageMinute > 0 || this.arcade.footballMinute >= (this.arcade.half === 1 ? 45 : 90) ? this.arcade.announcedStoppage : 0,
       stoppageMinute: this.arcade.stoppageMinute,
       extraTime: this.arcade.inExtraTime,
+      focus: Math.round(this.arcade.focus[this.arcade.controlledSide]),
+      hasUltimate: this.arcade.hasUltimate(this.arcade.controlledSide),
     };
   }
 
@@ -1149,6 +1156,7 @@ export class MatchPage implements OnDestroy {
       switchPlayer: pressed('switch'),
       keeperRush: pressed('through'),
       jockey: pressed('jockey'),
+      ultimate: pressed('ultimate'),
       tacticX: 0,
       tacticY: 0,
       pause: false,
@@ -1200,7 +1208,7 @@ export class MatchPage implements OnDestroy {
     this.pendingPassAttempt = -1;
     this.touchX.set(0);
     this.touchY.set(0);
-    this.touchActions.set({ sprint: false, pass: false, through: false, lob: false, shoot: false, skill: false, switch: false, jockey: false });
+    this.touchActions.set({ sprint: false, pass: false, through: false, lob: false, shoot: false, skill: false, switch: false, jockey: false, ultimate: false });
   }
 
   private async enterImmersiveMode(force: boolean): Promise<void> {

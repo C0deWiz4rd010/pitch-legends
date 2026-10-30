@@ -89,3 +89,21 @@ export function createRuntimes(dna: PlayerDNA | undefined): SignatureRuntime[] {
 export function signatureBit(slot: 0 | 1): number {
   return slot === 0 ? Cond.signature : Cond.signature2;
 }
+
+/** Seconds a Mythic ultimate lasts, and the focus it costs. */
+export const ULTIMATE_SECONDS = 6;
+export const ULTIMATE_COST = 100;
+
+/**
+ * What the ultimate adds on top of both signatures running at once: a short burst of pace, clean
+ * passing and shooting and harder tackling. Only Mythic players carry it.
+ */
+export const ULTIMATE_EFFECTS: EffectSpec[] = [
+  { hook: 'acceleration', op: 'mul', value: 1.12, when: Cond.ultimate },
+  { hook: 'sprintBurst', op: 'mul', value: 1.08, when: Cond.ultimate },
+  { hook: 'passError', op: 'mul', value: 0.8, when: Cond.ultimate },
+  { hook: 'shotError', op: 'mul', value: 0.8, when: Cond.ultimate },
+  { hook: 'tackleWin', op: 'add', value: 0.06, when: Cond.ultimate },
+  { hook: 'pressTackle', op: 'mul', value: 1.15, when: Cond.ultimate },
+];
+
