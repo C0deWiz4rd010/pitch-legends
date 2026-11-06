@@ -36,6 +36,8 @@ import { Rng, clamp } from '../util';
 import { hash32 } from '../visual-identity';
 import { RpgService } from './rpg.service';
 import { applyInjury, createInjury, isPlayerAvailable } from '../injury-engine';
+import { TRAIT_EFFECTS, hasManagerTrait, managerAttribute } from '../career/manager-effects';
+import { STAFF_EFFECT_SCALE, specialtyTilt, staffEffect, staffFactor, staffMember } from '../career/staff';
 
 export { TRAINING_DRILLS };
 export type { TrainingDrill };
@@ -287,7 +289,7 @@ export class TrainingService {
     const baseXp = this.baseXp(state, player, drill, plan, mentored);
     const cost = this.fitnessCost(drill, plan.scope, plan.intensity);
     const ratio = acuteChronicRatio(player, sessionLoad(plan.intensity, plan.scope, drill.fitnessCost ?? 1));
-    const growth = this.growthChance(player, drill.focus, team.facilities.trainingGround, plan, state.manager.attributes.youthDevelopment);
+    const growth = this.growthChance(player, drill.focus, team.facilities.trainingGround, plan, managerAttribute(state.manager, 'youthDevelopment'), this.staffGrowth(state, player));
     return {
       playerId: player.id,
       xpMin: Math.round(baseXp * 0.85),
@@ -331,7 +333,7 @@ export class TrainingService {
     let attributeGained: AttributeKey | null = null;
     let breakthrough = false;
     const attribute = drill.focus;
-    const growth = this.growthChance(player, attribute, team.facilities.trainingGround, plan, state.manager.attributes.youthDevelopment);
+    const growth = this.growthChance(player, attribute, team.facilities.trainingGround, plan, managerAttribute(state.manager, 'youthDevelopment'), this.staffGrowth(state, player));
     const canGrow = player.attributes[attribute] < 99 && player.overall < player.potential + 2;
     if (canGrow && rng.bool(growth)) {
       breakthrough = rng.bool(this.breakthroughChance(player, team.facilities.trainingGround));
@@ -394,16 +396,26 @@ export class TrainingService {
   private baseXp(state: GameState, player: Player, drill: TrainingDrill, plan: TrainingSessionPlan, mentored: boolean): number {
     const team = state.teams.find((candidate) => candidate.id === state.clubId)!;
     const coachingRank = state.manager.perks.coaching ?? 0;
-    const coachingAbility = 1 + (state.manager.attributes.coaching - 55) / 500;
+    const coachingAbility = 1 + (managerAttribute(state.manager, 'coaching') - 55) / 500;
+    // The assistant coach and a developer's eye add a little for everyone; the assistant's field counts a quarter more.
+    const assistant = staffMember(state, 'assistant');
+    const backroom = 1 + staffFactor(assistant) * STAFF_EFFECT_SCALE.assistantXp * specialtyTilt(assistant, drill.focus) + (hasManagerTrait(state.manager, 'developer') ? TRAIT_EFFECTS.developerTrainingXp : 0);
     if (drill.focus === 'recovery') return 0;
     const planMultiplier = this.planMultiplier(player, drill.focus);
     const personalityMultiplier = player.personality === 'professional' ? 1.08 : player.personality === 'volatile' ? 0.94 : 1;
-    return 30 * (1 + team.facilities.trainingGround * 0.18) * coachingAbility * (1 + coachingRank * 0.04) * planMultiplier *
+    return 30 * (1 + team.facilities.trainingGround * 0.18) * coachingAbility * backroom * (1 + coachingRank * 0.04) * planMultiplier *
       personalityMultiplier * INTENSITY_XP[plan.intensity] * (plan.scope === 'unit' ? 0.55 : 1) * GRADE_MULTIPLIER[plan.grade ?? 'B'] * (mentored ? MENTORING_XP : 1);
   }
 
-  private growthChance(player: Player, focus: AttributeKey, facility: number, plan: TrainingSessionPlan, youthDevelopment: number): number {
-    const chance = 0.18 + facility * 0.06 + Math.max(-.03, Math.min(.08, (youthDevelopment - 55) / 400)) + (this.planMultiplier(player, focus) > 1 ? 0.08 : 0);
+  /** The goalkeeping coach helps keepers, the youth coach the under-22s. */
+  private staffGrowth(state: GameState, player: Player): number {
+    const keeper = player.positionGroup === 'GK' ? staffEffect(state, 'goalkeeping') * STAFF_EFFECT_SCALE.goalkeepingGrowth : 0;
+    const youth = player.age <= 21 ? staffEffect(state, 'youth') * 0.05 : 0;
+    return keeper + youth;
+  }
+
+  private growthChance(player: Player, focus: AttributeKey, facility: number, plan: TrainingSessionPlan, youthDevelopment: number, staffBonus = 0): number {
+    const chance = 0.18 + facility * 0.06 + Math.max(-.03, Math.min(.08, (youthDevelopment - 55) / 400)) + staffBonus + (this.planMultiplier(player, focus) > 1 ? 0.08 : 0);
     const grade: TrainingGrade = plan.grade ?? 'B';
     return Math.min(0.72, chance * (plan.scope === 'unit' ? 0.65 : 1) * (grade === 'B' ? 1 : GRADE_MULTIPLIER[grade]));
   }

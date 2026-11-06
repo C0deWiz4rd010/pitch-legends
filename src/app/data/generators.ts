@@ -9,6 +9,8 @@ import {
 } from '../models/player.model';
 import { Team } from '../models/team.model';
 import { League, Fixture } from '../models/league.model';
+import { emptyDressingRoom } from '../models/dressing-room.model';
+import { emptyStaffState } from '../models/staff.model';
 import { GameState, ManagerProfile, SAVE_VERSION, TacticalPhilosophy, defaultSettings, emptyTrainingWeek } from '../models/game.model';
 import { emptyTransferState } from '../models/transfer.model';
 import { defaultFacilities } from '../models/team.model';
@@ -460,6 +462,8 @@ export function createNewGame(opts: NewGameOptions): GameState {
     board: { confidence: 60, warnedSeason: null, expectedPosition: 6, jobOffer: null },
     scouting: [],
     academy: { season: 1, prospects: [] },
+    staff: emptyStaffState(),
+    dressingRoom: emptyDressingRoom(),
   };
   game.objectives = generateSeasonObjectives(game);
   game.board.expectedPosition = game.objectives.find((objective) => objective.type === 'league-position')?.target ?? 6;

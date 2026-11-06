@@ -31,6 +31,9 @@ import { applyBoardDelta, boardMatchDelta, cupRoundNumber, generateSeasonObjecti
 import { quickSimulate, teamStrength } from '../career/quick-sim';
 import { processScoutAssignments } from '../career/scouting';
 import { archiveEntry, buildSeasonReview } from '../career/season-review';
+import { applyMatchToRoom, moraleBaseline, weeklyRoom } from '../career/dressing-room';
+import { TRAIT_EFFECTS, hasManagerTrait } from '../career/manager-effects';
+import { STAFF_EFFECT_SCALE, payStaff, staffEffect } from '../career/staff';
 
 const NEWS_LIMIT = 150;
 
@@ -331,9 +334,12 @@ export class SeasonService {
     club.reputation = clamp(club.reputation + (won ? 1 : drew ? 0 : -0.5), 20, 100);
     const leadership = draft.manager.perks.leadership ?? 0;
     this.rpg.awardManagerXp(draft.manager, Math.round((won ? 90 : drew ? 55 : 35) * (1 + leadership * 0.06)));
+    // A motivator lifts the squad after a win, a calm manager softens a defeat.
+    const traitMorale = won ? (hasManagerTrait(draft.manager, 'motivator') ? TRAIT_EFFECTS.motivatorWinMorale : 0) : drew ? 0 : (hasManagerTrait(draft.manager, 'calm') ? TRAIT_EFFECTS.calmLossRelief : 0);
     for (const player of club.players) {
-      player.morale = clamp(player.morale + leadership * (won ? 1 : 0.4), 0, 100);
+      player.morale = clamp(player.morale + leadership * (won ? 1 : 0.4) + traitMorale, 0, 100);
     }
+    applyMatchToRoom(draft, won ? 'win' : drew ? 'draw' : 'loss');
     if (competition === 'cup') return;
     const opp = isHome ? away : home;
     this.pushNews(draft, won ? 'trophy' : drew ? 'handshake' : 'whistle', 'news.match.title', won ? 'news.match.win' : drew ? 'news.match.draw' : 'news.match.loss', {
@@ -381,14 +387,22 @@ export class SeasonService {
   private weeklyUpkeep(draft: GameState): void {
     for (const team of draft.teams) {
       ensureFinance(team, draft.league.season);
-      const recovery = 12 + team.facilities.medicalCenter * 4;
+      // The managed club has a backroom team and a dressing room; every other club keeps the flat rules.
+      const own = team.id === draft.clubId;
+      const recovery = 12 + team.facilities.medicalCenter * 4 + (own ? Math.round(staffEffect(draft, 'fitness') * STAFF_EFFECT_SCALE.fitnessRecovery) : 0);
+      const medical = team.facilities.medicalCenter + (own ? Math.round(staffEffect(draft, 'physio') * STAFF_EFFECT_SCALE.physioLevels) : 0);
+      const baseline = own ? moraleBaseline(draft.dressingRoom) : 70;
+      const physio = own ? staffEffect(draft, 'physio') : 0;
       for (const p of team.players) {
         if (!isPlayerAvailable(p)) {
-          advanceInjury(p, draft.league.season, draft.league.currentWeek, team.facilities.medicalCenter);
+          const injury = p.medical.activeInjury;
+          // The physio sometimes saves a week of a longer injury.
+          if (injury && physio > 0 && injury.remainingWeeks > 1 && hash32(`${p.id}|physio|${draft.league.season}|${draft.league.currentWeek}`) % 100 < physio * 35) injury.remainingWeeks--;
+          advanceInjury(p, draft.league.season, draft.league.currentWeek, medical);
         } else {
           p.fitness = clamp(p.fitness + recovery, 0, 100);
         }
-        p.morale = clamp(p.morale + Math.sign(70 - p.morale) * 2, 15, 100);
+        p.morale = clamp(p.morale + Math.sign(baseline - p.morale) * 2, 15, 100);
         decayForm(p);
         if (p.contractWeeks > 0) {
           p.contractWeeks--;
@@ -403,12 +417,25 @@ export class SeasonService {
       book(draft, team, 'sponsor', weeklySponsor(team, tier));
       book(draft, team, 'upkeep', weeklyUpkeep(team));
       book(draft, team, 'wages', weeklyWageBill(draft, team.id));
+      if (own) {
+        payStaff(draft);
+        this.roomWeek(draft);
+      }
       team.finance.balance.push(team.coins);
     }
     if (draft.board.confidence < 30 && draft.board.warnedSeason !== draft.league.season) {
       draft.board.warnedSeason = draft.league.season;
       this.pushNews(draft, 'warning', 'news.board.warning.title', 'news.board.warning.body', { confidence: Math.round(draft.board.confidence) });
     }
+  }
+
+  /** A week in the dressing room: grievances, requests, spirit and the news about them. */
+  private roomWeek(draft: GameState): void {
+    const report = weeklyRoom(draft);
+    for (const player of report.newRequests) this.pushNews(draft, 'warning', 'news.room.request.title', 'news.room.request.body', { player: playerName(player) });
+    const en = draft.settings.locale === 'en';
+    if (report.event) this.pushNews(draft, 'whistle', 'news.room.event.title', 'news.room.event.body', { event: en ? report.event.title[1] : report.event.title[0] });
+    if (report.expired) this.pushNews(draft, 'warning', 'news.room.expired.title', 'news.room.expired.body', { event: en ? report.expired.title[1] : report.expired.title[0] });
   }
 
   /** Streaks, derbies and big wins of the player's club. */

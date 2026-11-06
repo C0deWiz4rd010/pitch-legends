@@ -6,6 +6,8 @@ import { AttributeKey } from './enums';
 import { ManagerVisualIdentity } from './visual.model';
 import { WorldState } from './world.model';
 import { AcademyState, BoardState, CupState, ScoutAssignment, SeasonArchive } from './career.model';
+import { DressingRoomState } from './dressing-room.model';
+import { StaffState } from './staff.model';
 
 export type Difficulty = 'easy' | 'normal' | 'hard';
 export type Locale = 'de' | 'en';
@@ -172,7 +174,7 @@ export function defaultSettings(): GameSettings {
   };
 }
 
-export const SAVE_VERSION = 7;
+export const SAVE_VERSION = 8;
 
 export interface GameState {
   version: number;
@@ -198,4 +200,8 @@ export interface GameState {
   board: BoardState;
   scouting: ScoutAssignment[];
   academy: AcademyState;
+  /** Version 8: the backroom team of the managed club. */
+  staff?: StaffState;
+  /** Version 8: team spirit, grievances and events of the managed club's dressing room. */
+  dressingRoom?: DressingRoomState;
 }

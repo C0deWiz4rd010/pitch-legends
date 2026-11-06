@@ -25,6 +25,8 @@ import { hash32 } from '../visual-identity';
 import { clamp } from '../util';
 import { GameStateService } from './game-state.service';
 import { record } from '../career/finance';
+import { managerAttribute } from '../career/manager-effects';
+import { staffEffect } from '../career/staff';
 
 export { MAX_SQUAD_SIZE } from '../transfer-engine';
 
@@ -140,8 +142,8 @@ export class TransferService {
         return;
       }
       const scoutingRank = draft.manager.perks.scouting ?? 0;
-      const scoutingAbility = Math.max(0, draft.manager.attributes.scouting - 55);
-      const cost = Math.max(500, SCOUT_COST - scoutingRank * 400 - scoutingAbility * 35);
+      const scoutingAbility = Math.max(0, managerAttribute(draft.manager, 'scouting') - 55);
+      const cost = Math.max(500, SCOUT_COST - scoutingRank * 400 - scoutingAbility * 35 - Math.round(staffEffect(draft, 'scout') * 600));
       if (club.coins < cost) {
         result = { ok: false, reason: 'Nicht genug Budget für den Scoutbericht.' };
         return;

@@ -2,6 +2,8 @@ import { autoFillLineup, generatePlayer } from '../../data/generators';
 import { PlayerCareerStats } from '../../models/career.model';
 import { AttributeKey, Position } from '../../models/enums';
 import { GameState } from '../../models/game.model';
+import { youthWorkBonus } from './manager-effects';
+import { staffEffect } from './staff';
 import { Player, emptySeasonStats } from '../../models/player.model';
 import { Team } from '../../models/team.model';
 import { createPersonalGoal } from '../rpg/personal-goal';
@@ -165,7 +167,9 @@ function aiYouthIntake(game: GameState, team: Team, rng: Rng): void {
 /** A 16-18 year old whose quality follows the academy level and the club's standing. */
 export function prospectFor(game: GameState, team: Team, rng: Rng, index: number, position?: Position): Player {
   const academy = team.facilities.youthAcademy;
-  const overall = clamp(Math.round(45 + academy * 3 + team.reputation * 0.08 + rng.gaussian(0, 4)), 44, 74);
+  // The managed club's coach and youth coach lift the intake; the roll itself stays the same for everyone.
+  const edge = team.id === game.clubId ? youthWorkBonus(game.manager, staffEffect(game, 'youth')) : 0;
+  const overall = clamp(Math.round(45 + academy * 3 + team.reputation * 0.08 + rng.gaussian(0, 4)) + edge, 44, 74 + edge);
   const used = new Set(team.players.map((player) => player.kitNumber));
   let kit = rng.int(24, 60);
   while (used.has(kit)) kit = kit >= 99 ? 24 : kit + 1;
@@ -173,7 +177,7 @@ export function prospectFor(game: GameState, team: Team, rng: Rng, index: number
   prospect.id = `youth-${hash32(`${game.world.seed}|${team.id}|${game.league.season}|${index}|${rng.int(0, 1e6)}`).toString(36)}`;
   prospect.visuals = createPlayerVisualIdentity(prospect.id);
   prospect.age = rng.int(16, 18);
-  prospect.potential = clamp(Math.max(prospect.potential, prospect.overall + 7 + academy * 2), prospect.overall, 99);
+  prospect.potential = clamp(Math.max(prospect.potential, prospect.overall + 7 + academy * 2) + edge, prospect.overall, 99);
   prospect.marketValue = marketValueFor(prospect.overall, prospect.age, prospect.potential);
   prospect.salary = weeklySalaryFor(prospect);
   prospect.contractWeeks = 156;
@@ -185,7 +189,7 @@ export function academyIntake(game: GameState): Player[] {
   const club = game.teams.find((team) => team.id === game.clubId);
   if (!club) return [];
   const rng = new Rng(hash32(`${game.world.seed}|academy|${game.league.season}`));
-  const count = 2 + Math.floor(club.facilities.youthAcademy / 2);
+  const count = 2 + Math.floor(club.facilities.youthAcademy / 2) + (youthWorkBonus(game.manager, staffEffect(game, 'youth')) >= 3 ? 1 : 0);
   return Array.from({ length: count }, (_, index) => prospectFor(game, club, rng, index));
 }
 

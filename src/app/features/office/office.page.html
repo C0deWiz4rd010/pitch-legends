@@ -1,0 +1,119 @@
+<section class="office fade-up">
+  <header class="page-head">
+    <span>{{ gs.playerTeam()?.name }}</span>
+    <h1>{{ text('TRAINERBÜRO', 'MANAGER OFFICE') }}</h1>
+  </header>
+
+  @if (message()) {
+    <p class="toast" role="status">{{ message() }}</p>
+  }
+
+  @if (manager(); as m) {
+    <article class="card coach">
+      <div class="coach-id">
+        <app-manager-portrait [manager]="m" [size]="72" />
+        <span class="level-badge">LV {{ m.level }}</span>
+        <div>
+          <h2>{{ gs.game()?.managerName }}</h2>
+          <p class="muted">{{ m.xp }} / {{ m.xpToNext }} XP · {{ m.skillPoints }} {{ text('Skillpunkte', 'skill points') }}</p>
+          <div class="bar" role="img" [attr.aria-label]="text('Erfahrung', 'Experience')"><i [style.width.%]="xpShare()"></i></div>
+        </div>
+      </div>
+      <div class="traits">
+        @for (trait of traits(); track trait.id) {
+          <p><b>{{ trait.label }}</b><small>{{ trait.effect }}</small></p>
+        }
+      </div>
+    </article>
+
+    <article class="card">
+      <h2>{{ text('PERK-BAUM', 'PERK TREE') }} <small>{{ text('Jeder Rang gibt', 'Each rank adds') }} +{{ perkStep }} {{ text('auf das Attribut', 'to the attribute') }}</small></h2>
+      <div class="perk-grid">
+        @for (attribute of attributes(); track attribute.key) {
+          <button class="perk" [disabled]="!m.skillPoints || attribute.maxed" (click)="unlockPerk(attribute.key)">
+            <strong>{{ attribute.label }} <b>{{ attribute.value }}</b></strong>
+            <span>{{ attribute.effect }}</span>
+            <small>{{ text('Basis', 'Base') }} {{ attribute.base }} · {{ text('Rang', 'Rank') }} {{ attribute.rank }}/5</small>
+          </button>
+        }
+      </div>
+    </article>
+  }
+
+  <div class="grid">
+    <article class="card">
+      <h2>{{ text('TEAMGEIST', 'TEAM SPIRIT') }}</h2>
+      <p class="spirit"><b>{{ spirit() }}</b><span>{{ spiritLabel() }}</span></p>
+      <div class="bar wide" role="img" [attr.aria-label]="text('Teamgeist', 'Team spirit')"><i [class.low]="spirit() < 40" [style.width.%]="spirit()"></i></div>
+      <p class="muted">{{ text('Moral, Kapitän, Charaktere, Führung und offene Klagen bestimmen, wohin sich der Geist bewegt. Er verschiebt, auf welchem Niveau sich die Moral der Mannschaft einpendelt.', 'Morale, captain, characters, leadership and open grievances decide where the spirit heads. It shifts the level the squad\'s morale settles at.') }}</p>
+      @if (requests() > 0) {
+        <p class="hint warn" role="status">{{ requests() }} {{ text('Spieler wollen gehen. Sprich mit ihnen oder gib ihnen Einsatzzeit.', 'players want to leave. Talk to them or give them minutes.') }}</p>
+      }
+    </article>
+
+    <article class="card">
+      <h2>{{ text('KABINENEREIGNIS', 'DRESSING-ROOM EVENT') }}</h2>
+      @if (event(); as e) {
+        @if (e.state.choice === null) {
+          <h3>{{ e.title }}</h3>
+          <p>{{ e.body }}</p>
+          <div class="options">
+            @for (option of e.options; track $index) {
+              <button class="btn" [disabled]="!option.affordable" (click)="answer($index === 0 ? 0 : 1)">{{ option.label }}</button>
+            }
+          </div>
+        } @else {
+          <p class="muted">{{ text('Beantwortet. Das nächste Ereignis kommt von selbst.', 'Answered. The next one will come on its own.') }}</p>
+        }
+      } @else {
+        <p class="muted">{{ text('Gerade ist es ruhig in der Kabine.', 'It is quiet in the dressing room right now.') }}</p>
+      }
+    </article>
+  </div>
+
+  <article class="card">
+    <h2>{{ text('ROLLEN UND EINSATZZEIT', 'ROLES AND PLAYING TIME') }}</h2>
+    <p class="muted">{{ text('Jeder erwartet Spiele passend zu seiner Rolle. Wer lange weniger als die Hälfte davon bekommt, wird unzufrieden.', 'Everyone expects matches that fit his role. Whoever gets less than half of that for long becomes unhappy.') }}</p>
+    <div class="table" role="table">
+      @for (row of squad(); track row.id) {
+        <div class="row" role="row" [class.unhappy]="row.unhappy" [class.asks]="row.requested">
+          <span class="name">{{ row.name }} <small>{{ row.overall }}</small></span>
+          <span>{{ row.role }}</span>
+          <span [class.neg]="row.shortOfTime">{{ row.played }} % / {{ row.expected }} %</span>
+          <span>
+            @if (row.requested) { <b class="neg">{{ text('Wechselwunsch', 'Wants out') }}</b> }
+            @else if (row.unhappy) { <b class="warn">{{ text('Unzufrieden', 'Unhappy') }} · {{ row.unhappyWeeks }} {{ text('Wo.', 'wk') }}</b> }
+          </span>
+          <span>
+            @if (row.canTalk) { <button class="btn small" (click)="talk(row.id)">{{ text('Gespräch', 'Talk') }}</button> }
+          </span>
+        </div>
+      }
+    </div>
+  </article>
+
+  <article class="card">
+    <h2>{{ text('PERSONAL', 'STAFF') }} <small>{{ text('Kosten pro Woche', 'Weekly cost') }} {{ formatCoins(weeklyCost()) }}</small></h2>
+    <p class="muted">{{ text('Jeder Posten hilft mit seiner Wertung ab 50. Die Ablöse sind', 'Every post helps by his rating above 50. The signing fee is') }} {{ signingWeeks }} {{ text('Wochengehälter.', 'weekly salaries.') }}</p>
+    <div class="staff-grid">
+      @for (slot of staff(); track slot.role) {
+        <section class="slot">
+          <h3>{{ slot.label }}</h3>
+          <small>{{ slot.effect }}</small>
+          @if (slot.member; as member) {
+            <p class="current"><b>{{ member.name }}</b> {{ member.rating }} · {{ member.specialty }} · {{ formatCoins(member.salary) }}/{{ text('W', 'wk') }} · {{ text('Wirkung', 'Effect') }} {{ member.help }} %</p>
+            <button class="btn small" (click)="dismiss(slot.role)">{{ text('Entlassen', 'Release') }}</button>
+          } @else {
+            <p class="muted">{{ text('Unbesetzt', 'Vacant') }}</p>
+          }
+          @for (candidate of slot.candidates; track candidate.id) {
+            <div class="candidate">
+              <span>{{ candidate.name }} <b>{{ candidate.rating }}</b> <small>{{ candidate.specialty }} · {{ formatCoins(candidate.salary) }}/{{ text('W', 'wk') }}</small></span>
+              <button class="btn small" [disabled]="!candidate.affordable" (click)="hire(candidate.id)">{{ text('Verpflichten', 'Sign') }} {{ formatCoins(candidate.fee) }}</button>
+            </div>
+          }
+        </section>
+      }
+    </div>
+  </article>
+</section>

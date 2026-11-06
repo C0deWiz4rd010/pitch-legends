@@ -1,0 +1,56 @@
+:host { display: block; }
+.office { display: flex; flex-direction: column; gap: 14px; }
+.page-head span { color: var(--accent-2); font: 11px var(--font-display); }
+.page-head h1 { margin: 6px 0 0; font: 22px var(--font-display); }
+.toast { margin: 0; padding: 10px 14px; border: 1px solid var(--accent); color: var(--accent); font-weight: 600; font-size: 14px; }
+.card { padding: 16px; border: 2px solid var(--border); background: var(--ink-900); box-shadow: 4px 4px 0 var(--ink-shadow); display: flex; flex-direction: column; gap: 10px; }
+.card h2 { margin: 4px 0 4px; font: 12px var(--font-display); color: var(--accent-3); }
+.card h2 small { color: var(--text-mute); font: 11px var(--font-body, inherit); margin-left: 8px; }
+.card h3 { margin: 0; font-size: 14px; }
+.card p { margin: 0; }
+.muted { color: var(--text-mute); font-size: 12px; }
+.neg { color: var(--danger); }
+.warn { color: var(--warn); }
+.hint { padding: 8px 10px; border: 1px solid var(--warn); font-size: 13px; }
+.grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; }
+.coach { display: grid; grid-template-columns: minmax(220px, 1fr) 2fr; gap: 18px; }
+.coach-id { display: flex; align-items: center; gap: 14px; }
+.coach-id h2 { font-size: 16px; color: var(--text); }
+.level-badge { width: 54px; height: 54px; display: grid; place-items: center; border: 2px solid var(--accent-3); color: var(--accent-3); box-shadow: 4px 4px 0 var(--accent-shadow); flex: none; }
+.traits { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; align-content: start; }
+.traits p { padding: 10px; border: 1px solid var(--border); background: var(--bg-800); display: flex; flex-direction: column; gap: 3px; }
+.traits small { color: var(--text-dim); font-size: 11px; }
+.bar { height: 8px; background: var(--ink-950); border: 1px solid var(--border); margin-top: 6px; min-width: 120px; }
+.bar i { display: block; height: 100%; background: var(--accent); }
+.bar i.low { background: var(--danger); }
+.bar.wide { height: 12px; }
+.perk-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.perk { display: flex; flex-direction: column; gap: 4px; text-align: left; padding: 10px; border: 2px solid var(--border); background: var(--bg-800); color: var(--text); cursor: pointer; }
+.perk strong { display: flex; justify-content: space-between; }
+.perk span { color: var(--text-dim); font-size: 11px; }
+.perk small { color: var(--accent); font-size: 10px; }
+.perk:not(:disabled):hover { border-color: var(--accent); }
+.perk:disabled { opacity: .75; cursor: not-allowed; }
+.spirit { display: flex; align-items: baseline; gap: 10px; }
+.spirit b { font: 26px var(--font-display); }
+.options { display: flex; gap: 8px; flex-wrap: wrap; }
+.btn { padding: 8px 12px; border: 2px solid var(--border); background: var(--bg-800); color: var(--text); cursor: pointer; font-size: 13px; }
+.btn.small { padding: 4px 8px; font-size: 11px; }
+.btn:not(:disabled):hover { border-color: var(--accent); }
+.btn:disabled { opacity: .55; cursor: not-allowed; }
+.table { display: flex; flex-direction: column; max-height: 420px; overflow: auto; }
+.row { display: grid; grid-template-columns: 1.6fr 1fr 1fr 1.3fr auto; gap: 8px; align-items: center; padding: 5px 6px; border-bottom: 1px solid var(--border); font-size: 12px; }
+.row small { color: var(--text-mute); margin-left: 4px; }
+.row.unhappy { background: rgba(255, 190, 70, 0.07); }
+.row.asks { box-shadow: inset 3px 0 0 var(--danger); }
+.staff-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.slot { padding: 10px; border: 1px solid var(--border); background: var(--bg-800); display: flex; flex-direction: column; gap: 6px; }
+.slot small { color: var(--text-dim); font-size: 11px; }
+.current { font-size: 12px; }
+.candidate { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 4px 0; border-top: 1px dashed var(--border); font-size: 12px; }
+@media (max-width: 900px) {
+  .grid, .coach, .staff-grid { grid-template-columns: 1fr; }
+  .perk-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .row { grid-template-columns: 1.4fr 1fr 1fr; }
+  .row > :nth-child(n + 4) { grid-column: span 3; }
+}

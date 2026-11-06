@@ -26,10 +26,10 @@ describe('Save version 7', () => {
   beforeEach(() => { localStorage.clear(); TestBed.configureTestingModule({}); });
 
   it('is the current version and still reads versions 5 and 6', () => {
-    expect(SAVE_VERSION).toBe(7);
+    expect(SAVE_VERSION).toBe(8);
     const service = TestBed.inject(SaveService);
-    expect(service.parseImport(legacySave(6)).version).toBe(7);
-    expect(service.parseImport(legacySave(5)).version).toBe(7);
+    expect(service.parseImport(legacySave(6)).version).toBe(SAVE_VERSION);
+    expect(service.parseImport(legacySave(5)).version).toBe(SAVE_VERSION);
   });
 
   it('gives every player DNA and the managed club an estimated training state', () => {

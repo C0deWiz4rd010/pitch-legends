@@ -5,6 +5,8 @@ import { Player } from '../../models/player.model';
 import { clamp } from '../util';
 import { hash32 } from '../visual-identity';
 import { book } from './finance';
+import { TRAIT_EFFECTS, hasManagerTrait } from './manager-effects';
+import { STAFF_EFFECT_SCALE, staffEffect } from './staff';
 
 export const SCOUT_ASSIGNMENT_COST = 15_000;
 export const SCOUT_ASSIGNMENT_WEEKS = 3;
@@ -66,7 +68,7 @@ export function startScoutAssignment(game: GameState, regionId: string, position
     positionGroup,
     season: game.league.season,
     startedWeek: game.league.currentWeek,
-    readyWeek: game.league.currentWeek + Math.max(1, SCOUT_ASSIGNMENT_WEEKS - Math.floor(perks / 2)),
+    readyWeek: game.league.currentWeek + Math.max(1, SCOUT_ASSIGNMENT_WEEKS - Math.floor(perks / 2) - (hasManagerTrait(game.manager, 'analyst') ? TRAIT_EFFECTS.analystScoutWeeks : 0) - Math.round(staffEffect(game, 'scout') * STAFF_EFFECT_SCALE.scoutWeeks)),
     delivered: false,
     playerIds: [],
   });

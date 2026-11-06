@@ -10,6 +10,8 @@ import { ManagerProfile } from '../../models/game.model';
 import { createSecondDivision } from '../../data/generators';
 import { emptyTeamFinance } from '../../models/career.model';
 import { createCup } from '../career/cup';
+import { emptyDressingRoom } from '../../models/dressing-room.model';
+import { emptyStaffState } from '../../models/staff.model';
 
 export const CAREER_KEY = 'pitch-legends:save:v6';
 const V5_STORAGE_KEY = 'pitch-legends:save:v5';
@@ -141,7 +143,7 @@ export class SaveService {
   }
 
   private upgrade(parsed: GameState): GameState {
-    const game = this.migrateToV7(this.migrateToV6(this.migrateToV5(parsed)));
+    const game = this.migrateToV8(this.migrateToV7(this.migrateToV6(this.migrateToV5(parsed))));
     game.settings = { ...defaultSettings(), ...game.settings };
     game.trainingWeek = this.normaliseTrainingWeek(game.trainingWeek);
     ensureGameDna(game);
@@ -243,6 +245,26 @@ export class SaveService {
     const own = game.teams.find((team) => team.id === game.clubId);
     for (const player of own?.players ?? []) if (!player.training) player.training = estimateTraining(player);
     game.trainingWeek.eventChoice ??= null;
+    game.version = 7;
+    return game;
+  }
+
+  /**
+   * Version 8: trainer and club. The backroom team starts empty, the dressing room starts with a spirit that
+   * matches the squad's morale, and manager attributes are clamped into range. Existing values are kept, so
+   * running it again changes nothing.
+   */
+  private migrateToV8(game: GameState): GameState {
+    game.staff ??= emptyStaffState();
+    if (!game.dressingRoom) {
+      const room = emptyDressingRoom();
+      const own = game.teams.find((team) => team.id === game.clubId);
+      if (own?.players.length) room.spirit = Math.round(Math.min(100, Math.max(0, 30 + (own.players.reduce((sum, player) => sum + player.morale, 0) / own.players.length) * 0.55 + 4)));
+      game.dressingRoom = room;
+    }
+    for (const key of Object.keys(game.manager.attributes) as (keyof GameState['manager']['attributes'])[]) {
+      game.manager.attributes[key] = Math.min(99, Math.max(1, Math.round(game.manager.attributes[key] ?? 55)));
+    }
     game.version = SAVE_VERSION;
     return game;
   }
@@ -287,7 +309,7 @@ export class SaveService {
   private validateBase(value: unknown): value is GameState {
     if (!value || typeof value !== 'object') return false;
     const g = value as Partial<GameState>;
-    if (![4, 5, 6, SAVE_VERSION].includes(g.version ?? -1) || typeof g.clubId !== 'string') return false;
+    if (![4, 5, 6, 7, SAVE_VERSION].includes(g.version ?? -1) || typeof g.clubId !== 'string') return false;
     if (!Array.isArray(g.teams) || !g.teams.length || !g.league || !Array.isArray(g.league.fixtures)) return false;
     if (!g.settings || !['de', 'en'].includes(g.settings.locale) || ![3, 5, 8].includes(g.settings.matchDuration)) return false;
     if (!g.manager || !g.trainingWeek || !Array.isArray(g.objectives) || !g.transfers) return false;

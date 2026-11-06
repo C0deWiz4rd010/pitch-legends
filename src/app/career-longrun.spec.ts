@@ -31,6 +31,9 @@ interface SeasonSnapshot {
   aiSkillPoints: number;
   medianIncome: number;
   medianExpenses: number;
+  /** The managed club's team spirit and open transfer requests at the turn of the season. */
+  spirit: number;
+  openRequests: number;
 }
 
 const median = (values: number[]) => values.sort((a, b) => a - b)[Math.floor(values.length / 2)] ?? 0;
@@ -57,6 +60,8 @@ function snapshot(state: GameState, transfers = 0): SeasonSnapshot {
     aiSkillPoints: Math.round(state.teams.filter((team) => team.id !== state.clubId).flatMap((team) => team.players).reduce((sum, player, _, all) => sum + player.skillPoints / all.length, 0) * 10) / 10,
     medianIncome: median(previous.map((totals) => INCOME_KINDS.reduce((sum, kind) => sum + totals![kind], 0))),
     medianExpenses: median(previous.map((totals) => EXPENSE_KINDS.reduce((sum, kind) => sum + totals![kind], 0))),
+    spirit: Math.round(state.dressingRoom?.spirit ?? 0),
+    openRequests: state.dressingRoom?.requests.length ?? 0,
   };
 }
 
@@ -80,6 +85,8 @@ describe('Career long run: ten seasons without a human', () => {
     game.settings.autoSave = false;
     gs.importState(game);
     const history: SeasonSnapshot[] = [snapshot(gs.game()!)];
+    // The dressing room is watched every week: spirit stays in range, requests stay rare and capped.
+    let spiritLow = 100, spiritHigh = 0, mostOpen = 0, requestsMade = 0, requestKey = '0|-99';
     for (let year = 1; year <= 10; year++) {
       for (let guard = 0; guard < 60 && !gs.seasonOver(); guard++) {
         gs.mutate((draft) => {
@@ -87,6 +94,12 @@ describe('Career long run: ten seasons without a human', () => {
         });
         const result = season.simulatePlayerMatch()!;
         expect(await season.commitWeek(result)).toBe(true);
+        const room = gs.game()!.dressingRoom!;
+        spiritLow = Math.min(spiritLow, room.spirit);
+        spiritHigh = Math.max(spiritHigh, room.spirit);
+        mostOpen = Math.max(mostOpen, room.requests.length);
+        const key = `${room.lastRequestSeason}|${room.lastRequestWeek}`;
+        if (key !== requestKey) { requestsMade++; requestKey = key; }
       }
       expect(gs.seasonOver()).toBe(true);
       const finished = gs.game()!;
@@ -119,6 +132,12 @@ describe('Career long run: ten seasons without a human', () => {
       // Computer-built players spend what they earn; before, their points piled up unused for years.
       expect(entry.aiSkillPoints).toBeLessThan(14);
     }
+    console.log(`Dressing room over ten seasons: spirit ${spiritLow.toFixed(0)}..${spiritHigh.toFixed(0)}, most open requests ${mostOpen}, requests made ${requestsMade}`);
+    expect(spiritLow).toBeGreaterThan(25);
+    expect(spiritHigh).toBeLessThanOrEqual(100);
+    expect(mostOpen).toBeLessThanOrEqual(3);
+    // Requests are rare: well under three a season on average, and never in clusters.
+    expect(requestsMade).toBeLessThanOrEqual(30);
     // No rating inflation or collapse over a decade.
     const last = history[history.length - 1];
     expect(Math.abs(last.meanOverall - first.meanOverall)).toBeLessThanOrEqual(6);

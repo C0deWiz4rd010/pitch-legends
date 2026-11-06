@@ -42,6 +42,7 @@ export class App {
     { path: 'squad', labelKey: 'nav.squad', icon: '♟' },
     { path: 'tactics', labelKey: 'nav.tactics', icon: '◇' },
     { path: 'training', labelKey: 'nav.training', icon: '↑' },
+    { path: 'office', labelKey: 'nav.office', icon: '☰' },
     { path: 'match', labelKey: 'nav.match', icon: '●' },
     { path: 'transfer', labelKey: 'nav.transfers', icon: '↔' },
     { path: 'league', labelKey: 'nav.league', icon: '▤' },

@@ -17,6 +17,7 @@ import { createPlayerVisualIdentity, hash32 } from './visual-identity';
 import { marketValueFor, playerName, weeklySalaryFor } from './ratings';
 import { clamp, Rng } from './util';
 import { record } from './career/finance';
+import { TRAIT_EFFECTS, hasManagerTrait, managerAttribute } from './career/manager-effects';
 
 export const MIN_SQUAD_SIZE = 16;
 export const MAX_SQUAD_SIZE = 26;
@@ -243,7 +244,7 @@ export function submitPlayerContract(game: GameState, negotiationId: string, pro
   const roleWeight = { prospect: 0.86, rotation: 0.94, starter: 1, star: 1.1 }[proposal.squadRole];
   const expectedRoleWeight = { prospect: 0.86, rotation: 0.94, starter: 1, star: 1.1 }[expected.squadRole];
   const effective = proposal.salary * roleWeight + proposal.signingBonus / Math.max(52, proposal.weeks);
-  const managerEdge = Math.max(0, (game.manager.attributes.negotiation - 55) / 1000) + (game.manager.perks.negotiation ?? 0) * .01;
+  const managerEdge = Math.max(0, (managerAttribute(game.manager, 'negotiation') - 55) / 1000) + (game.manager.perks.negotiation ?? 0) * .01 + (hasManagerTrait(game.manager, 'negotiator') ? TRAIT_EFFECTS.negotiatorEdge : 0);
   const required = (expected.salary * expectedRoleWeight + expected.signingBonus / expected.weeks) * Math.max(.9, 1 - managerEdge);
   negotiation.contract = { ...proposal, salary: Math.max(0, Math.round(proposal.salary / 50) * 50), signingBonus: Math.max(0, Math.round(proposal.signingBonus / 500) * 500) };
   if (effective >= required) return executeNegotiation(game, negotiation);
