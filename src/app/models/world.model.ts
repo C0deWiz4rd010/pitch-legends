@@ -42,6 +42,8 @@ export interface ClubRivalry {
   teamBId: string;
   intensity: 1 | 2 | 3;
   reason: 'derby' | 'historic' | 'title';
+  /** Version 8: how hot the rivalry is, 0 to 100 (see core/career/rivalry.ts); `intensity` follows it. */
+  heat?: number;
 }
 
 export interface TravelEffect {

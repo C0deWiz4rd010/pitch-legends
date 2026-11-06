@@ -1,4 +1,4 @@
-import { applySignatureProgress, ascendPlayers } from '../rpg/evolution';
+import { applySignatureProgress, ascendPlayers, autoEvolveSignatures } from '../rpg/evolution';
 import { autoSpend } from '../rpg/auto-build';
 import { decayForm, recordMatchForm } from '../rpg/form';
 import { Player } from '../../models/player.model';
@@ -31,7 +31,14 @@ import { applyBoardDelta, boardMatchDelta, cupRoundNumber, generateSeasonObjecti
 import { quickSimulate, teamStrength } from '../career/quick-sim';
 import { processScoutAssignments } from '../career/scouting';
 import { archiveEntry, buildSeasonReview } from '../career/season-review';
-import { applyMatchToRoom, moraleBaseline, weeklyRoom } from '../career/dressing-room';
+import { applyMatchToRoom, ensureRoom, moraleBaseline, weeklyRoom } from '../career/dressing-room';
+import { weeklyPress } from '../career/press-conference';
+import { coolRivalries, derbyHeat, derbySpirit, gateFactor, heatOf, rivalryBetween, warmRivalry } from '../career/rivalry';
+import { paySupplier, syncEquipment } from '../career/supplier';
+import { coolLinks, duoPartners, recordTogether } from '../rpg/partners';
+import { emptyDressingRoom } from '../../models/dressing-room.model';
+import { emptyStaffState } from '../../models/staff.model';
+import { emptyPress } from '../../models/club-life.model';
 import { TRAIT_EFFECTS, hasManagerTrait } from '../career/manager-effects';
 import { STAFF_EFFECT_SCALE, payStaff, staffEffect } from '../career/staff';
 
@@ -235,10 +242,15 @@ export class SeasonService {
     const levelUps: { player: Player; level: number }[] = [];
     const homeGrowth = this.applyToTeam(home, result, result.homeScore, result.awayScore, draft.league.season, rng, home.id === draft.clubId, levelUps);
     const awayGrowth = this.applyToTeam(away, result, result.awayScore, result.homeScore, draft.league.season, rng, away.id === draft.clubId, levelUps);
+    // Every club's signatures collect their tallies; the computer clubs evolve them at the turn of the season.
+    if (!isPlayerMatch) { applySignatureProgress(home, result); applySignatureProgress(away, result); }
     // A level gained by one of the managed club's players is worth a line in the news.
     for (const up of levelUps) this.pushNews(draft, 'star', 'news.levelup.title', 'news.levelup.body', { player: playerName(up.player), level: up.level });
+    // A derby draws a bigger crowd the hotter the rivalry is, and every derby changes the heat.
+    const rivalry = rivalryBetween(draft, home.id, away.id);
+    if (rivalry && home.rivalTeamIds.includes(away.id)) warmRivalry(draft, home.id, away.id, derbyHeat(result.homeScore, result.awayScore));
     if (competition === 'league') {
-      book(draft, home, 'gate', gateIncome(home, tierOfTeam(draft, home.id)));
+      book(draft, home, 'gate', gateIncome(home, tierOfTeam(draft, home.id)) * gateFactor(rivalry));
       book(draft, home, 'prizes', matchPrize(result.homeScore, result.awayScore, tierOfTeam(draft, home.id)));
       book(draft, away, 'prizes', matchPrize(result.awayScore, result.homeScore, tierOfTeam(draft, away.id)));
     }
@@ -340,6 +352,7 @@ export class SeasonService {
       player.morale = clamp(player.morale + leadership * (won ? 1 : 0.4) + traitMorale, 0, 100);
     }
     applyMatchToRoom(draft, won ? 'win' : drew ? 'draw' : 'loss');
+    this.recordChemistry(draft, club);
     if (competition === 'cup') return;
     const opp = isHome ? away : home;
     this.pushNews(draft, won ? 'trophy' : drew ? 'handshake' : 'whistle', 'news.match.title', won ? 'news.match.win' : drew ? 'news.match.draw' : 'news.match.loss', {
@@ -419,7 +432,15 @@ export class SeasonService {
       book(draft, team, 'wages', weeklyWageBill(draft, team.id));
       if (own) {
         payStaff(draft);
+        paySupplier(draft);
+        syncEquipment(draft);
+        coolRivalries(draft, false);
         this.roomWeek(draft);
+        const conference = weeklyPress(draft);
+        if (conference) {
+          const opponent = draft.teams.find((candidate) => candidate.id === conference.opponentId);
+          this.pushNews(draft, 'flag', 'news.press.title', 'news.press.body', { opponent: opponent?.name ?? '—' });
+        }
       }
       team.finance.balance.push(team.coins);
     }
@@ -427,6 +448,18 @@ export class SeasonService {
       draft.board.warnedSeason = draft.league.season;
       this.pushNews(draft, 'warning', 'news.board.warning.title', 'news.board.warning.body', { confidence: Math.round(draft.board.confidence) });
     }
+  }
+
+  /** The eleven who started play another match together: their bonds grow, and the partners of the squad are drawn again. */
+  private recordChemistry(draft: GameState, club: Team): void {
+    const starters = club.formation.slots.map((slot) => slot.playerId).filter((id): id is string => !!id);
+    draft.chemistry ??= { links: {} };
+    recordTogether(draft.chemistry.links, starters);
+    this.assignPartners(draft, club);
+  }
+
+  private assignPartners(draft: GameState, club: Team): void {
+    club.partners = Object.fromEntries([...duoPartners(club.players, draft.chemistry?.links ?? {})].map(([id, link]) => [id, { partnerId: link.partnerId, strength: link.strength }]));
   }
 
   /** A week in the dressing room: grievances, requests, spirit and the news about them. */
@@ -442,6 +475,12 @@ export class SeasonService {
   private matchStories(draft: GameState, result: MatchResult, own: Team, opponent: Team, goalsFor: number, goalsAgainst: number): void {
     if (own.rivalTeamIds.includes(opponent.id)) {
       this.pushNews(draft, 'derby', 'news.derby.title', goalsFor > goalsAgainst ? 'news.derby.win' : goalsFor < goalsAgainst ? 'news.derby.loss' : 'news.derby.draw', { opponent: opponent.name, score: `${result.homeScore}:${result.awayScore}` });
+      // The hotter the rivalry, the more a derby moves the dressing room; a boiling one is worth its own line.
+      const rivalry = rivalryBetween(draft, own.id, opponent.id);
+      const heat = rivalry ? heatOf(rivalry) : 0;
+      const room = ensureRoom(draft);
+      room.spirit = Math.max(0, Math.min(100, room.spirit + derbySpirit(heat, goalsFor > goalsAgainst ? 'win' : goalsFor < goalsAgainst ? 'loss' : 'draw')));
+      if (heat >= 70) this.pushNews(draft, 'derby', 'news.derby.title', 'news.derby.heat', { opponent: opponent.name });
     }
     if (goalsFor - goalsAgainst >= 4) this.pushNews(draft, 'record', 'news.bigwin.title', 'news.bigwin.body', { opponent: opponent.name, score: `${goalsFor}:${goalsAgainst}` });
     const outcomes = draft.results.filter((entry) => entry.homeTeamId === draft.clubId || entry.awayTeamId === draft.clubId).map((entry) => {
@@ -550,6 +589,23 @@ export class SeasonService {
         aiInvest(draft, team, weeklyWageBill(draft, team.id));
         autoFillLineup(team);
       }
+      if (draft.clubId !== oldClubId) {
+        // A new club brings a new backroom team, dressing room, supplier, press and bonds.
+        draft.staff = emptyStaffState();
+        draft.dressingRoom = emptyDressingRoom();
+        draft.chemistry = { links: {} };
+        draft.press = emptyPress();
+        delete draft.supplier;
+      } else if (draft.chemistry) {
+        const present = new Set((draft.teams.find((team) => team.id === draft.clubId)?.players ?? []).map((player) => player.id));
+        draft.chemistry.links = coolLinks(draft.chemistry.links, present);
+      }
+      const ownClub = draft.teams.find((team) => team.id === draft.clubId);
+      if (ownClub) this.assignPartners(draft, ownClub);
+      syncEquipment(draft);
+      ensureRoom(draft);
+      coolRivalries(draft, true);
+      for (const team of draft.teams) if (team.id !== draft.clubId) autoEvolveSignatures(team, { season: draft.league.season, week: draft.league.currentWeek });
       draft.academy = { season, prospects: academyIntake(draft) };
       draft.cup = createCup({
         teams: draft.teams, leagues: allLeagues(draft), season, seed: draft.world.seed, totalWeeks: draft.league.totalWeeks,

@@ -25,29 +25,30 @@ export function socialRole(player: Pick<Player, 'id' | 'personality'>): SocialRo
   }
 }
 
-export const SOCIAL_LABEL: Record<SocialRole, { name: [string, string]; text: [string, string] }> = {
-  'team-player': {
-    name: ['Teamplayer', 'Team player'],
-    text: [
-      'Hebt die Stimmung und macht Egoisten erträglicher.',
-      'Lifts the mood and makes egoists easier to live with.',
-    ],
-  },
-  egoist: {
-    name: ['Egoist', 'Egoist'],
-    text: [
-      'Denkt zuerst an sich; kostet Teamgeist, solange die Teamplayer fehlen.',
-      'Thinks of himself first; costs team spirit unless team players hold the room together.',
-    ],
-  },
-  loner: {
-    name: ['Einzelgänger', 'Loner'],
-    text: [
-      'Bleibt für sich: kostet etwas Teamgeist und wird kein Duo-Partner.',
-      'Keeps to himself: costs a little spirit and never becomes a duo partner.',
-    ],
-  },
-};
+export const SOCIAL_LABEL: Record<SocialRole, { name: [string, string]; text: [string, string] }> =
+  {
+    'team-player': {
+      name: ['Teamplayer', 'Team player'],
+      text: [
+        'Hebt die Stimmung und macht Egoisten erträglicher.',
+        'Lifts the mood and makes egoists easier to live with.',
+      ],
+    },
+    egoist: {
+      name: ['Egoist', 'Egoist'],
+      text: [
+        'Denkt zuerst an sich; kostet Teamgeist, solange die Teamplayer fehlen.',
+        'Thinks of himself first; costs team spirit unless team players hold the room together.',
+      ],
+    },
+    loner: {
+      name: ['Einzelgänger', 'Loner'],
+      text: [
+        'Bleibt für sich: kostet etwas Teamgeist und wird kein Duo-Partner.',
+        'Keeps to himself: costs a little spirit and never becomes a duo partner.',
+      ],
+    },
+  };
 
 /** Team players needed to hold egoists in check. */
 export const GLUE_PLAYERS = 3;

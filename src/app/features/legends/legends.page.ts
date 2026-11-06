@@ -13,13 +13,15 @@ import { LEGENDS_FORMATIONS, positionFit } from '../../core/legends/squad';
 import { PackResult } from '../../core/legends/legends-engine';
 import { CardTier, LegendsCard, LegendsTask, PackId } from '../../models/legends.model';
 import { LegendsCardComponent } from '../../shared/components/legends-card.component';
+import { PlayerDetailComponent } from '../../shared/components/player-detail.component';
+import { Player } from '../../models/player.model';
 import { groupForPosition } from '../../core/ratings';
 
 type LegendsTab = 'hub' | 'team' | 'packs' | 'collection' | 'tasks' | 'draft';
 
 @Component({
   selector: 'app-legends',
-  imports: [FormsModule, RouterLink, LegendsCardComponent],
+  imports: [FormsModule, RouterLink, LegendsCardComponent, PlayerDetailComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './legends.page.html',
   styleUrl: './legends.page.scss',
@@ -102,6 +104,8 @@ export class LegendsPage {
   }
 
   protected text(de: string, en: string): string { return this.i18n.pick(de, en); }
+  /** The Legends card whose player sheet is open (read only). */
+  protected readonly sheetPlayer = signal<Player | null>(null);
   protected tierLabel(tier: CardTier): string { return this.text(TIER_LABELS[tier].de, TIER_LABELS[tier].en); }
   protected packName(id: PackId): string { return this.text(PACKS[id].de, PACKS[id].en); }
   protected percent(value: number): string { return `${Math.round(value * 1000) / 10} %`; }

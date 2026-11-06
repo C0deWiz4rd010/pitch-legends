@@ -1,7 +1,9 @@
 /**
  * Match actions a talent can unlock. The ids are the contract with the match engine: the engine may ask
- * `canUse(statBlock, id)` (core/rpg/stat-block.ts) before it offers or performs the action. Until it does, the
- * unlock is shown in the player sheet and stored in the stat block, but nothing on the pitch changes.
+ * `canUse(statBlock, id)` (core/rpg/stat-block.ts) before it offers or performs the action. Wired so far: `power-header`
+ * (harder headers at goal), `kaiser-slide` (a longer, surer slide), `trivela-pass` (cleaner passes under pressure) and
+ * `step-over` (skill moves beat a defender more often). The other ids are shown in the player sheet and kept in the stat
+ * block, but nothing on the pitch changes for them yet.
  */
 export const ACTION_IDS = [
   'trivela-pass',

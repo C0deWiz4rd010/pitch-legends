@@ -5,7 +5,7 @@
 
       <div class="head">
         <div class="player-visuals">
-          <app-player-portrait [player]="p" [team]="$any(gs.playerTeam())" [size]="86" />
+          <app-player-portrait [player]="p" [team]="$any(sheetTeam())" [size]="86" />
           @if (currentKit(); as kit) { <app-player-paper-doll [player]="p" [kit]="kit" [size]="84" /> }
         </div>
         <div class="rating big" [style.background]="ratingColor(p.overall)">{{ p.overall }}</div>
@@ -56,17 +56,64 @@
       </div>
 
       <div class="tabs" role="tablist" [attr.aria-label]="i18n.pick('Spielerakte', 'Player sheet')">
-        @for (entry of tabs; track entry.key) {
+        @for (entry of visibleTabs(); track entry.key) {
           <button type="button" role="tab" [id]="'sheet-tab-' + entry.key" [attr.aria-selected]="tab() === entry.key" [attr.aria-controls]="'sheet-panel'"
                   [attr.tabindex]="tab() === entry.key ? 0 : -1" [class.active]="tab() === entry.key" (click)="tab.set(entry.key)" (keydown)="moveTab($event, entry.key)">{{ i18n.pick(entry.de, entry.en) }}</button>
         }
       </div>
+
+      @if (ceremony(); as c) {
+        <div class="ceremony" role="dialog" aria-modal="true" [attr.aria-label]="i18n.pick('Evolution', 'Evolution')">
+          <p class="eyebrow">{{ i18n.pick('EVOLUTION', 'EVOLUTION') }} · {{ c.player }}</p>
+          <div class="ceremony-row">
+            <article class="before"><small>{{ i18n.pick('Vorher', 'Before') }}</small><b>{{ c.from.name }}</b><span>{{ i18n.pick('Stufe', 'Stage') }} {{ stageLabels[c.from.level - 1] }} · {{ c.from.power }} %</span></article>
+            <span class="arrow" aria-hidden="true">➜</span>
+            <article class="after"><small>{{ i18n.pick('Nachher', 'After') }}</small><b>{{ c.to.name }}</b><span>{{ i18n.pick('Stufe', 'Stage') }} {{ stageLabels[c.to.level - 1] }} · {{ c.to.power }} %</span></article>
+          </div>
+          <p class="muted">{{ c.text }}</p>
+          <button type="button" class="btn btn--primary btn--sm" (click)="ceremony.set(null)">{{ i18n.pick('Weiter', 'Continue') }}</button>
+        </div>
+      }
 
       <div id="sheet-panel" role="tabpanel" [attr.aria-labelledby]="'sheet-tab-' + tab()">
         @switch (tab()) {
           @case ('talents') {
           <app-talent-tree [player]="p" (unlock)="unlockTalent($event)" />
           <p class="muted sp-hint">SP {{ p.skillPoints }}</p>
+          @if (editable() && respecInfo(); as respecState) {
+            <div class="extras">
+              <p class="eyebrow">{{ i18n.pick('Neuer Weg', 'A new path') }}</p>
+              <p class="muted">{{ i18n.pick('Ein Gespräch gibt alle Talentpunkte zurück, einmal pro Saison und Spieler.', 'A talk gives all talent points back, once per player and season.') }}</p>
+              <button type="button" class="btn btn--ghost btn--sm" [disabled]="respecState.state !== 'ok'" (click)="respec()">{{ i18n.pick('Gespräch führen', 'Hold the talk') }} · {{ respecState.cost }}</button>
+              @if (sheetMessage()) { <p class="muted" role="status">{{ sheetMessage() }}</p> }
+            </div>
+          }
+          @if (editable() && boots(); as equipment) {
+            <div class="extras">
+              <p class="eyebrow">{{ i18n.pick('Schuhe', 'Boots') }} · {{ i18n.pick(equipment.supplier.name[0], equipment.supplier.name[1]) }}</p>
+              <div class="boot-list">
+                @for (boot of bootTypes; track boot.id) {
+                  <button type="button" class="trait" [class.owned]="equipment.def.id === boot.id" (click)="chooseBoot(boot.id)" [title]="i18n.pick(boot.gain[0] + ' · ' + boot.loss[0], boot.gain[1] + ' · ' + boot.loss[1])">
+                    {{ i18n.pick(boot.name[0], boot.name[1]) }}
+                  </button>
+                }
+              </div>
+              <p class="muted">+ {{ i18n.pick(equipment.def.gain[0], equipment.def.gain[1]) }} · − {{ i18n.pick(equipment.def.loss[0], equipment.def.loss[1]) }}</p>
+              <p class="eyebrow">{{ i18n.pick('Optik (ohne Wirkung)', 'Look (no effect)') }}</p>
+              <div class="boot-list">
+                @for (look of bootLooks; track look.id) {
+                  <button type="button" class="trait look" [class.owned]="equipment.look === look.id" [style.border-color]="look.color" (click)="chooseLook(look.id)">{{ i18n.pick(look.name[0], look.name[1]) }}</button>
+                }
+              </div>
+            </div>
+          }
+          @if (social() || partner()) {
+            <div class="extras">
+              <p class="eyebrow">{{ i18n.pick('In der Kabine', 'In the dressing room') }}</p>
+              @if (social(); as role) { <p><b>{{ i18n.pick(role.name[0], role.name[1]) }}</b> <span class="muted">{{ i18n.pick(role.text[0], role.text[1]) }}</span></p> }
+              @if (partner(); as duo) { <p><b>{{ i18n.pick('Duo-Partner', 'Duo partner') }}</b> {{ duo.name }} <span class="muted">{{ duo.strength }} %</span></p> }
+            </div>
+          }
           <div class="traits">
             <p class="eyebrow">{{ i18n.pick('Eigenschaften', 'Traits') }}</p>
             <div class="trait-list">
@@ -130,7 +177,20 @@
                 <b>{{ quirk.name }}</b>
                 @if (quirk.revealed) {
                   <p class="plus">＋ {{ quirk.plus }}</p>
-                  <p class="minus">− {{ quirk.minus }}</p>
+                  @if (quirk.tamed) { <p class="plus">✓ {{ i18n.pick('Schwäche im Griff', 'Drawback under control') }}</p> }
+                  @else { <p class="minus">− {{ quirk.minus }}</p> }
+                  @if (quirk.tame; as tame) {
+                    <div class="quest">
+                      <div class="bar" role="progressbar" [attr.aria-valuenow]="tame.mastery" [attr.aria-valuemax]="tame.target"><i [style.width.%]="tame.percent"></i></div>
+                      <small>{{ i18n.pick('Schwäche abtrainieren', 'Train the drawback away') }}: {{ tame.label }} {{ tame.mastery }} / {{ tame.target }}</small>
+                    </div>
+                  }
+                  @if (quirk.quest; as quest) {
+                    <div class="quest">
+                      <div class="bar" role="progressbar" [attr.aria-valuenow]="quest.progress" [attr.aria-valuemax]="quest.target"><i [style.width.%]="quest.percent"></i></div>
+                      <small>{{ i18n.pick('Wird zu', 'Grows into') }} „{{ quest.to }}“: {{ quest.progress }} / {{ quest.target }}</small>
+                    </div>
+                  }
                 } @else { <small>{{ quirk.hint }}</small> }
               </article>
             }

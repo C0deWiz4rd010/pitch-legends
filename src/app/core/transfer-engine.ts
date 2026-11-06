@@ -18,6 +18,7 @@ import { marketValueFor, playerName, weeklySalaryFor } from './ratings';
 import { clamp, Rng } from './util';
 import { record } from './career/finance';
 import { TRAIT_EFFECTS, hasManagerTrait, managerAttribute } from './career/manager-effects';
+import { TRANSFER_HEAT, warmRivalry } from './career/rivalry';
 
 export const MIN_SQUAD_SIZE = 16;
 export const MAX_SQUAD_SIZE = 26;
@@ -320,6 +321,8 @@ function executeNegotiation(game: GameState, negotiation: TransferNegotiation): 
   game.transfers.listings = game.transfers.listings.filter((listing) => listing.playerId !== player.id);
   game.transfers.shortlist = game.transfers.shortlist.filter((entry) => entry.playerId !== player.id);
   pushRecord(game, player, located.team?.id ?? null, buyer.id, located.freeAgent ? 'free-agent' : negotiation.kind, transferCost);
+  // A player who walks across to a rival is a provocation.
+  if (located.team && negotiation.kind === 'permanent') warmRivalry(game, located.team.id, buyer.id, TRANSFER_HEAT);
   return { ok: true, negotiation };
 }
 

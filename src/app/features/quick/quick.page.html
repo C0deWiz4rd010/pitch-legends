@@ -46,6 +46,7 @@
       <button type="button" [class.active]="settings().weather === 'clear'" (click)="update('weather', 'clear')">{{ text('KLAR', 'CLEAR') }}</button>
       <button type="button" [class.active]="settings().weather === 'rain'" (click)="update('weather', 'rain')">{{ text('REGEN', 'RAIN') }}</button>
       <button type="button" [class.active]="settings().weather === 'storm'" (click)="update('weather', 'storm')">{{ text('STURM', 'STORM') }}</button>
+      <button type="button" [class.active]="settings().weather === 'snow'" (click)="update('weather', 'snow')">{{ text('SCHNEE', 'SNOW') }}</button>
     </fieldset>
     <fieldset>
       <legend>{{ text('Tageszeit', 'Time of day') }}</legend>

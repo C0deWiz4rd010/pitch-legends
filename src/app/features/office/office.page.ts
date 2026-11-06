@@ -8,6 +8,12 @@ import { RpgService } from '../../core/services/rpg.service';
 import { playerName } from '../../core/ratings';
 import { roomEventById } from '../../data/dressing-room-events';
 import { ManagerAttributes, ManagerPerkPath } from '../../models/game.model';
+import { PRESS_QUESTIONS, PRESS_STYLES, REASON_LABEL } from '../../data/press-conference';
+import { answerPress, pressOdds } from '../../core/career/press-conference';
+import { SUPPLIERS, activeSupplier, signSupplier } from '../../core/career/supplier';
+import { SOCIAL_LABEL, socialRole } from '../../core/rpg/social';
+import { heatOf, rivalryBetween } from '../../core/career/rivalry';
+import { PressStyle } from '../../models/club-life.model';
 import { RoomRole } from '../../models/dressing-room.model';
 import { STAFF_ROLES, StaffRole, StaffSpecialty } from '../../models/staff.model';
 import { ManagerPortraitComponent } from '../../shared/components/manager-portrait.component';
@@ -20,6 +26,7 @@ const ATTRIBUTES: { key: keyof ManagerAttributes; de: string; en: string; effect
   { key: 'leadership', de: 'Führung', en: 'Leadership', effect: ['Teamgeist, Moral und Manager-XP', 'Team spirit, morale and manager XP'] },
   { key: 'negotiation', de: 'Verhandlung', en: 'Negotiation', effect: ['Bessere Vertragskonditionen', 'Better contract terms'] },
   { key: 'youthDevelopment', de: 'Jugend', en: 'Youth', effect: ['Besserer Nachwuchs, mehr Wachstum für Junge', 'A better intake, more growth for the young'] },
+  { key: 'media', de: 'Medien', en: 'Media', effect: ['Bessere Chancen in Pressekonferenzen', 'Better odds in press conferences'] },
 ];
 
 const TRAITS: Record<string, { de: string; en: string; effect: [string, string] }> = {
@@ -134,7 +141,84 @@ export class OfficePage {
       requested: entry.requested,
       canTalk: (entry.unhappyWeeks > 0 || entry.requested) && game.dressingRoom?.talked[entry.player.id] !== game.league.season,
       shortOfTime: entry.expected > 0 && entry.played < entry.expected * 0.5,
+      social: ((role) => (role ? this.text(SOCIAL_LABEL[role].name[0], SOCIAL_LABEL[role].name[1]) : ''))(socialRole(entry.player)),
+      partner: this.partnerName(entry.player.id),
     }));
+  });
+
+  private partnerName(playerId: string): string {
+    const club = this.gs.playerTeam();
+    const link = club?.partners?.[playerId];
+    const partner = link ? club?.players.find((candidate) => candidate.id === link.partnerId) : undefined;
+    return partner ? playerName(partner) : '';
+  }
+
+  /** The press conference before a big match: the question, the three answers with their odds, or what the last one did. */
+  protected readonly press = computed(() => {
+    const game = this.gs.game();
+    const conference = game?.press?.current;
+    if (!game || !conference) return null;
+    const opponent = game.teams.find((team) => team.id === conference.opponentId)?.name ?? '—';
+    const question = PRESS_QUESTIONS[conference.question] ?? PRESS_QUESTIONS[0];
+    return {
+      reason: this.text(REASON_LABEL[conference.reason][0], REASON_LABEL[conference.reason][1]),
+      question: this.text(question.text[0], question.text[1]).replace('{opponent}', opponent),
+      answered: conference.answer !== null,
+      outcome: conference.outcome ?? null,
+      answers: PRESS_STYLES.map((style) => {
+        const odds = pressOdds(game, conference.reason, style.id);
+        return { id: style.id, label: this.text(style.label[0], style.label[1]), quote: this.text(style.quote[0], style.quote[1]), chance: Math.round(odds.chance * 100), chosen: conference.answer === style.id };
+      }),
+    };
+  });
+
+  protected answerPress(style: PressStyle): void {
+    let text = '';
+    this.gs.mutate((draft) => {
+      const result = answerPress(draft, style);
+      text = !result.ok ? this.text('Hier wartet keine Pressekonferenz.', 'No press conference is waiting.') : result.success ? this.text('Die Antwort kam gut an.', 'The answer went down well.') : this.text('Die Antwort ging nach hinten los.', 'The answer backfired.');
+    });
+    this.message.set(text);
+  }
+
+  /** Kit suppliers: the deal in force and what is on offer. */
+  protected readonly suppliers = computed(() => {
+    const game = this.gs.game();
+    const club = this.gs.playerTeam();
+    if (!game || !club) return [];
+    const active = activeSupplier(game).id;
+    return SUPPLIERS.map((supplier) => ({
+      id: supplier.id,
+      name: this.text(supplier.name[0], supplier.name[1]),
+      text: this.text(supplier.text[0], supplier.text[1]),
+      fee: supplier.weeklyFee,
+      tier: supplier.tier,
+      active: supplier.id === active,
+      locked: club.reputation < supplier.minReputation,
+      minReputation: supplier.minReputation,
+      canSign: supplier.id !== 'basic' && active === 'basic' && club.reputation >= supplier.minReputation,
+    }));
+  });
+
+  protected signSupplier(id: string): void {
+    let text = '';
+    this.gs.mutate((draft) => {
+      const result = signSupplier(draft, id);
+      text = result.ok ? this.text('Vertrag unterschrieben. Die Schuhe der Spieler wirken stärker.', 'Contract signed. The boots of your players now give more.') : result.reason === 'running' ? this.text('Es läuft schon ein Vertrag.', 'A contract is already running.') : this.text('Dafür reicht der Ruf des Vereins nicht.', 'The reputation of the club is not enough for that.');
+    });
+    this.message.set(text);
+  }
+
+  /** The rivalries of the club and how hot each one is. */
+  protected readonly rivalries = computed(() => {
+    const game = this.gs.game();
+    const club = this.gs.playerTeam();
+    if (!game || !club) return [];
+    return club.rivalTeamIds.flatMap((id) => {
+      const rivalry = rivalryBetween(game, club.id, id);
+      const team = game.teams.find((candidate) => candidate.id === id);
+      return rivalry && team ? [{ id, name: team.name, heat: Math.round(heatOf(rivalry)), level: rivalry.intensity }] : [];
+    });
   });
   protected readonly requests = computed(() => this.room()?.requests.length ?? 0);
 

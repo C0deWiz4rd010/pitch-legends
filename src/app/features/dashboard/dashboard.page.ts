@@ -2,6 +2,7 @@ import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@a
 import { RouterLink } from '@angular/router';
 import { GameStateService } from '../../core/services/game-state.service';
 import { createClubVisualIdentity, hash32 } from '../../core/visual-identity';
+import { weatherFor } from '../../core/football/weather';
 import { playerName } from '../../core/ratings';
 import { Player } from '../../models/player.model';
 import { Team } from '../../models/team.model';
@@ -118,7 +119,7 @@ export class DashboardPage {
       rank: this.gs.standings().findIndex((row) => row.teamId === opponent.id) + 1,
       tierLabel: this.text(`${tierOfTeam(this.gs.game()!, opponent.id)}. Liga`, `Div ${tierOfTeam(this.gs.game()!, opponent.id)}`),
       form: this.formFor(opponent.id),
-      weather: (['clear', 'rain', 'storm'] as const)[hash32(`${fixture.id}|weather`) % 3],
+      weather: weatherFor(hash32(`${fixture.id}|weather`) % 10, fixture.week, this.gs.game()?.league.totalWeeks ?? 0),
     };
   });
 
@@ -179,11 +180,12 @@ export class DashboardPage {
 
   protected text(de: string, en: string): string { return this.i18n.pick(de, en); }
 
-  protected weatherLabel(weather: 'clear' | 'rain' | 'storm'): string {
+  protected weatherLabel(weather: 'clear' | 'rain' | 'storm' | 'snow'): string {
     const labels = {
       clear: this.text('Klar', 'Clear'),
       rain: this.text('Regen', 'Rain'),
       storm: this.text('Sturm', 'Storm'),
+      snow: this.text('Schnee', 'Snow'),
     };
     return labels[weather];
   }

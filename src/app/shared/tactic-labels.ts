@@ -28,6 +28,7 @@ export const TACTIC_LABELS: Record<Mentality | PressingIntensity | Width | Tacti
   clear: { de: 'Klar', en: 'Clear' },
   rain: { de: 'Regen', en: 'Rain' },
   storm: { de: 'Sturm', en: 'Storm' },
+  snow: { de: 'Schnee', en: 'Snow' },
 };
 
 export function tacticLabel(value: string | undefined | null, locale: 'de' | 'en'): string {

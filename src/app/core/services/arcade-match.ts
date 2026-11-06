@@ -51,6 +51,8 @@ import { Cond, condMatches } from '../rpg/conditions';
 import { SignatureRuntime, ULTIMATE_COST, ULTIMATE_SECONDS, createRuntimes, signatureBit } from '../rpg/signatures';
 import { SigEvent } from '../../data/signatures';
 import { HK, HOOK_BIT, HOOK_COUNT, hookName } from '../rpg/effects';
+import { partnerBonus } from '../rpg/partners';
+import { canUse } from '../rpg/stat-block';
 import { StatBlock, buildStatBlock, newAttributes, rawStatBlock, refreshAttributes, refreshHooks, resolveAttribute, resolveHook } from '../rpg/stat-block';
 import { shotAngleQuality, shotXg } from '../football/xg';
 
@@ -1586,7 +1588,11 @@ export class ArcadeMatch {
       : this.aiLevel(actor.side) === 'easy' ? 0.54 : this.aiLevel(actor.side) === 'hard' ? 0.24 : 0.30;
     // A sharp pass is hit harder and flatter; the shorter flight leaves less room for the receiver and the error is larger.
     const flat = sharp && !lob;
-    const error = this.hook(actor, HK.passError, ((100 - this.stat(actor,'passing')) / 100 * 0.075 + pressure * 0.045 + weakFoot * 0.018 + fatigue * 0.04) * (humanPass ? 1 : AI_PASS_SKILL) * (flat ? 1.3 : 1));
+    // A duo partner at the other end: the bond makes the pass a little cleaner (managed club only).
+    // The trivela pass: bent with the outside of the boot, it finds its man through traffic a little more often.
+    const trivela = !flat && pressure > 0.25 && canUse(this.statsOf(actor), 'trivela-pass') ? 0.88 : 1;
+    const partnerPass = (target ? partnerBonus(this.partnerStrength(actor, target)).passErrorMul : 1) * trivela;
+    const error = this.hook(actor, HK.passError, ((100 - this.stat(actor,'passing')) / 100 * 0.075 + pressure * 0.045 + weakFoot * 0.018 + fatigue * 0.04) * (humanPass ? 1 : AI_PASS_SKILL) * (flat ? 1.3 : 1) * partnerPass);
     const angleError = this.rng.gaussian(0, error * manualFactor * this.composure(actor.side));
     const cos = Math.cos(angleError);
     const sin = Math.sin(angleError);
@@ -1708,7 +1714,9 @@ export class ArcadeMatch {
       if (gap > 3.6) continue;
       // Each defender is beaten (or not) on his own: dribbling against defending, and whether he faces the carrier.
       const facing = gap > 0.01 ? (opponent.facingX * (actor.x - opponent.x) + opponent.facingY * (actor.y - opponent.y)) / gap : 1;
-      const chance = clamp(0.62 + quality * 0.38 - this.stat(opponent,'defending') / 100 * 0.40 - Math.max(0, facing) * 0.10 + (facing < -0.2 ? 0.15 : 0), 0.2, 0.95);
+      // The step-over talent: a rehearsed move that wrong-foots a little more often.
+      const stepOver = canUse(this.statsOf(actor), 'step-over') ? 0.06 : 0;
+      const chance = clamp(0.62 + quality * 0.38 - this.stat(opponent,'defending') / 100 * 0.40 - Math.max(0, facing) * 0.10 + (facing < -0.2 ? 0.15 : 0) + stepOver, 0.2, 0.95);
       if (!this.rng.bool(chance)) {
         if (gap <= 1.8) engagedBeatsYou = true;
         continue;
@@ -1835,7 +1843,9 @@ export class ArcadeMatch {
   private attemptTackle(actor: ArcadeActor, sliding: boolean): void {
     const owner = this.owner();
     if (!owner || owner.side === actor.side || actor.tackleCooldown > 0) return;
-    const reach = sliding ? 2.25 : 1.45;
+    // The Kaiser slide: a clean, well-timed slide that reaches a little further.
+    const kaiser = sliding && canUse(this.statsOf(actor), 'kaiser-slide');
+    const reach = sliding ? (kaiser ? 2.55 : 2.25) : 1.45;
     const gap = distance(actor, owner);
     // A slide can be started from further out: the lunge carries the player forward and, when short, leaves him on the floor.
     if (gap > (sliding ? SLIDE_LUNGE_REACH : reach)) return;
@@ -1862,7 +1872,7 @@ export class ArcadeMatch {
     // A carrier who actively shields (held button) is protected on top of that.
     const shielding = this.hook(owner, HK.shielding, shieldingBase + (this.isHumanControlled(owner) && this.previousInput.jockey ? 0.14 : 0));
     const jockeyBonus = (actor.action === 'jockey' ? 0.06 : 0) + (actor.side === 'home' ? ARCADE_MATCH_TUNING.homeComposure * 0.3 : 0);
-    const winChance = clamp(this.hook(actor, HK.tackleWin, 0.28 + this.stat(actor,'defending') / 170 - this.stat(owner,'dribbling') / 260 + approach * 0.12 + (sliding ? 0.08 : 0) - shielding + jockeyBonus), 0.12, 0.82);
+    const winChance = clamp(this.hook(actor, HK.tackleWin, 0.28 + this.stat(actor,'defending') / 170 - this.stat(owner,'dribbling') / 260 + approach * 0.12 + (sliding ? 0.08 : 0) + (kaiser ? 0.05 : 0) - shielding + jockeyBonus), 0.12, 0.82);
     const ballReach = distance(actor, this.ball) <= (sliding ? 1.9 : 1.15) && this.ball.z < .65;
     if (ballReach && this.rng.bool(winChance)) {
       if (!this.legalRestartTouch(actor)) return;
@@ -1949,6 +1959,13 @@ export class ArcadeMatch {
       const gap = distance(defender, kicker);
       if (gap > 7 && gap < 11.5) this.setAction(defender, 'wall-jump');
     }
+  }
+
+  /** Strength 0..1 of the duo bond between two players of the same side, 0 when they are no partners. */
+  private partnerStrength(a: ArcadeActor, b: ArcadeActor): number {
+    if (a.side !== b.side) return 0;
+    const link = this.teamOf(a.side).partners?.[a.player.id];
+    return link && link.partnerId === b.player.id ? link.strength : 0;
   }
 
   /** A yellow card held back during an advantage is shown at the next stoppage. */
@@ -2253,8 +2270,10 @@ export class ArcadeMatch {
       return;
     }
     const aerialPenalty = this.ball.z > 0.75 ? 10 + speed * 0.5 : 0;
-    const firstTouch = this.hook(candidate, HK.firstTouch, this.stat(candidate,'dribbling') + candidate.stamina * 0.25 - speed * 1.4 - aerialPenalty);
-    const weatherPenalty = this.config.weather === 'rain' ? 8 : this.config.weather === 'storm' ? 11 : 0;
+    const fromPartner = this.lastPasser && !this.lastPasser.received && this.lastPasser.side === candidate.side ? this.actors.find((other) => other.player.id === this.lastPasser!.id) : undefined;
+    const partnerTouch = fromPartner ? partnerBonus(this.partnerStrength(fromPartner, candidate)).firstTouchAdd : 0;
+    const firstTouch = this.hook(candidate, HK.firstTouch, this.stat(candidate,'dribbling') + candidate.stamina * 0.25 - speed * 1.4 - aerialPenalty + partnerTouch);
+    const weatherPenalty = this.config.weather === 'rain' ? 8 : this.config.weather === 'storm' ? 11 : this.config.weather === 'snow' ? 9 : 0;
     const humanReceiver = this.config.controllerMode === 'human' && candidate.side === this.controlledSide;
     const intendedAiReceiverBonus = !humanReceiver && candidate.player.id === this.intendedReceiverId
       ? ARCADE_MATCH_TUNING.aiIntendedReceiverBonus
@@ -2392,7 +2411,9 @@ export class ArcadeMatch {
     const targetY = aimedY + this.rng.normal(0, headingError);
     const headerXg = shotXg(goalDistance, actor.y - FIELD_WIDTH / 2, this.stat(actor,'shooting'), clamp((3 - this.closestOpponent(actor)) / 3, 0, 1), true, FIELD_WIDTH);
     const length = len2(goalX - actor.x, targetY - actor.y);
-    const speed = 11 + this.stat(actor,'physical') * 0.07 + speedBonus;
+    // The power-header talent: the head drives through the ball.
+    const powerHeader = canUse(this.statsOf(actor), 'power-header') ? 2.4 : 0;
+    const speed = 11 + this.stat(actor,'physical') * 0.07 + speedBonus + powerHeader;
     this.releaseBall(actor, (goalX - actor.x) / length * speed, (targetY - actor.y) / length * speed, -1.4, 0, 0, 0);
     if (actor.contact) actor.contact.kind = 'head';
     this.setAction(actor, action);
@@ -3436,7 +3457,7 @@ export class ArcadeMatch {
       let shared = 0;
       if (this.footballMinute >= 75) shared |= Cond.late;
       if (this.inExtraTime) shared |= Cond.extraTime;
-      if (this.config.weather === 'rain') shared |= Cond.rain;
+      if (this.config.weather === 'rain' || this.config.weather === 'snow') shared |= Cond.rain;
       else if (this.config.weather === 'storm') shared |= Cond.storm | Cond.rain;
       else shared |= Cond.clear;
       if (this.home.visuals?.stadium?.atmosphere === 'night') shared |= Cond.night;

@@ -1,5 +1,5 @@
 import { addChronicle } from '../rpg/story';
-import { inheritQuirk } from '../rpg/quirks';
+import { inheritQuirk, tameQuirks } from '../rpg/quirks';
 import { buildStatBlock, resolveHook } from '../rpg/stat-block';
 import { Injectable, inject } from '@angular/core';
 import { AttributeKey } from '../../models/enums';
@@ -376,9 +376,12 @@ export class TrainingService {
     };
   }
 
-  /** Adds mastery and pays out milestones: 25 gives XP, 50 a skill point, 100 the attribute's trait. */
+  /** Adds mastery and pays out milestones: 25 gives XP, 50 a skill point, 100 the attribute's trait; high mastery also tames a quirk's drawback. */
   private grantMastery(player: Player, attribute: AttributeKey, amount: number) {
     const outcome = addMastery(player, attribute, amount);
+    for (const quirk of tameQuirks(player)) {
+      if (this.currentWeek) addChronicle(player, { ...this.currentWeek, kind: 'tamed', params: { quirk: quirk.id } });
+    }
     if (outcome.milestone === 25) this.rpg.awardXp(player, 50);
     if (outcome.milestone === 50) player.skillPoints += 1;
     if (outcome.traitUnlocked) {

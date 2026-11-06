@@ -130,10 +130,13 @@
         <p class="muted hint">{{ text('Karte antippen, um sie zum Verkauf zu markieren. Kaderspieler sind geschützt.', 'Tap a card to mark it for sale. Squad players are protected.') }}</p>
         <div class="grid">
           @for (card of pagedCards(); track card.id) {
-            <button type="button" class="card-button" [class.marked]="selling().includes(card.id)" [class.locked]="isInSquad(card)" [attr.aria-pressed]="selling().includes(card.id)" (click)="toggleSell(card)">
-              <app-legends-card [card]="card" [seed]="seed()" [duplicate]="duplicateIds().has(card.id)" />
-              <small>{{ isInSquad(card) ? text('IM KADER', 'IN SQUAD') : quickSellValue(card) + ' ' + text('Münzen', 'coins') }}</small>
-            </button>
+            <div class="card-cell">
+              <button type="button" class="card-button" [class.marked]="selling().includes(card.id)" [class.locked]="isInSquad(card)" [attr.aria-pressed]="selling().includes(card.id)" (click)="toggleSell(card)">
+                <app-legends-card [card]="card" [seed]="seed()" [duplicate]="duplicateIds().has(card.id)" />
+                <small>{{ isInSquad(card) ? text('IM KADER', 'IN SQUAD') : quickSellValue(card) + ' ' + text('Münzen', 'coins') }}</small>
+              </button>
+              <button type="button" class="sheet-link" (click)="sheetPlayer.set(card.player)">{{ text('Akte', 'Sheet') }}</button>
+            </div>
           }
         </div>
         @if (pages() > 1) {
@@ -225,4 +228,4 @@
     </div>
   </div>
 }
-
+@if (sheetPlayer(); as sheetCardPlayer) { <app-player-detail [external]="sheetCardPlayer" (close)="sheetPlayer.set(null)" /> }

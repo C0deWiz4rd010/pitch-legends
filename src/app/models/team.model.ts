@@ -42,4 +42,6 @@ export interface Team {
   rivalTeamIds: string[];
   /** Season ledger: income, wages, transfers and upkeep. */
   finance: TeamFinance;
+  /** Duo partners of the managed club (see core/rpg/partners.ts): player id to the partner and the strength of the bond. */
+  partners?: Record<string, { partnerId: string; strength: number }>;
 }

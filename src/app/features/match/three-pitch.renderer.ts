@@ -25,6 +25,7 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { VignetteShader } from 'three/addons/shaders/VignetteShader.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { MatchCameraPreset } from '../../models/match.model';
+import { WEAR_HEIGHT, WEAR_WIDTH, stampWear } from './pitch-wear';
 import { BALL_RADIUS, netBallMotion, netBulge, netHitStrength, netSlack, netStopDepth, NET_REST_POCKET } from './net-physics';
 
 /** Camera angle (degrees above the pitch), lens and framing per broadcast preset. */
@@ -32,8 +33,44 @@ export const CAMERA_PRESETS: Record<MatchCameraPreset, { pitch: number; fov: num
   arcade: { pitch: 30, fov: 40, width: 0.8, follow: 1 },
   tv: { pitch: 25, fov: 32, width: 1.1, follow: 0.3 },
   tactic: { pitch: 60, fov: 46, width: 1.55, follow: 1 },
+  /** Close behind the player you control: low, tight, and the ball only a little in the picture. */
+  player: { pitch: 36, fov: 44, width: 0.52, follow: 1 },
 };
 const AURA_FLASH = new THREE.Color('#ffffff');
+
+/** Colour grading before tone mapping: a tint, a saturation and a contrast, chosen per atmosphere and weather. */
+const GradeShader = {
+  uniforms: { tDiffuse: { value: null as THREE.Texture | null }, tint: { value: new THREE.Vector3(1, 1, 1) }, saturation: { value: 1 }, contrast: { value: 1 } },
+  vertexShader: 'varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+  fragmentShader: 'uniform sampler2D tDiffuse; uniform vec3 tint; uniform float saturation; uniform float contrast; varying vec2 vUv; void main() { vec4 c = texture2D(tDiffuse, vUv); float l = dot(c.rgb, vec3(0.2126, 0.7152, 0.0722)); vec3 g = mix(vec3(l), c.rgb, saturation) * tint; g = (g - 0.18) * contrast + 0.18; gl_FragColor = vec4(max(g, 0.0), c.a); }',
+};
+
+/** Lays the wear map over the grass: worn turf turns browner. Works for the lit and the unlit pitch material alike. */
+function addWear(material: THREE.Material, texture: THREE.Texture, mirror: { value: number }): void {
+  material.onBeforeCompile = (shader) => {
+    shader.uniforms['wearMap'] = { value: texture };
+    shader.uniforms['wearMirror'] = mirror;
+    shader.fragmentShader = 'uniform sampler2D wearMap;\nuniform float wearMirror;\n' + shader.fragmentShader.replace('#include <map_fragment>', `#include <map_fragment>
+      vec2 wearUv = vec2(wearMirror > 0.0 ? vMapUv.x : 1.0 - vMapUv.x, vMapUv.y);
+      float worn = texture2D(wearMap, wearUv).r;
+      diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * vec3(0.78, 0.7, 0.52), min(1.0, worn * 2.4) * 0.85);`);
+  };
+  material.customProgramCacheKey = () => 'pitch-wear';
+}
+
+export interface Grade { tint: [number, number, number]; saturation: number; contrast: number }
+/** The look of each atmosphere; bad weather drains the colour. Pure, so the tests can check the table. */
+export function gradeFor(atmosphere: 'day' | 'sunset' | 'night', weather: 'clear' | 'rain' | 'storm' | 'snow'): Grade {
+  const base: Grade = atmosphere === 'night' ? { tint: [0.95, 1.0, 1.07], saturation: 1.05, contrast: 1.05 }
+    : atmosphere === 'sunset' ? { tint: [1.07, 0.98, 0.9], saturation: 1.1, contrast: 1.04 }
+    : { tint: [1.02, 1.0, 0.97], saturation: 1.06, contrast: 1.03 };
+  if (weather === 'rain') return { tint: [base.tint[0] * 0.97, base.tint[1] * 0.99, base.tint[2] * 1.03], saturation: base.saturation * 0.82, contrast: base.contrast * 0.98 };
+  if (weather === 'storm') return { tint: [base.tint[0] * 0.94, base.tint[1] * 0.97, base.tint[2] * 1.05], saturation: base.saturation * 0.7, contrast: base.contrast * 1.06 };
+  if (weather === 'snow') return { tint: [base.tint[0] * 0.98, base.tint[1] * 1.01, base.tint[2] * 1.05], saturation: base.saturation * 0.86, contrast: base.contrast * 0.97 };
+  return base;
+}
+/** The four floodlight masts of the ground, in scene coordinates (x along the pitch, z across). */
+const MAST_POSITIONS: readonly [number, number][] = [[-62, -44], [62, -44], [-62, 44], [62, 44]];
 
 const SKY: Record<'day' | 'sunset' | 'night', { zenith: string; horizon: string }> = {
   day: { zenith: '#5d8fc4', horizon: '#c9dde2' },
@@ -76,6 +113,8 @@ export class ThreePitchRenderer {
   private composerActive = false;
   private bloom: UnrealBloomPass | null = null;
   private readonly flags: THREE.Mesh[] = [];
+  /** The scrolling LED board textures. */
+  private readonly ledTextures: THREE.Texture[] = [];
   private turf!: THREE.Points;
   private readonly turfVelocity = new Float32Array(64 * 3);
   private readonly turfLife = new Float32Array(64);
@@ -94,6 +133,16 @@ export class ThreePitchRenderer {
   private readonly models = new Map<string, ProceduralFootballer>();
   private readonly matrixDummy = new THREE.Object3D();
   private readonly shadow: THREE.InstancedMesh;
+  /** Under floodlights every player throws four faint shadows, one away from each mast: soft ellipses instead of more shadow maps. */
+  private readonly mastShadows: THREE.InstancedMesh;
+  private floodlit = false;
+  /** Where players have worn the pitch: real pitch coordinates, one byte per texel. */
+  private readonly wear = new Uint8Array(WEAR_WIDTH * WEAR_HEIGHT);
+  private readonly wearTexture = new THREE.DataTexture(this.wear, WEAR_WIDTH, WEAR_HEIGHT, THREE.RedFormat, THREE.UnsignedByteType);
+  private readonly wearMirror = { value: 1 };
+  private wearClock = 0;
+  private wearStamp = false;
+  private wearUploaded = 0;
   private readonly selection: THREE.Mesh<THREE.RingGeometry, THREE.MeshBasicMaterial>;
   /** Rarity rings under Epic and better players, one instance per ring. */
   private readonly aura: THREE.InstancedMesh<THREE.RingGeometry, THREE.MeshBasicMaterial>;
@@ -135,6 +184,10 @@ export class ThreePitchRenderer {
   private readonly confettiOrigins = new Float32Array(160 * 3);
   private readonly confettiVelocity = new Float32Array(160 * 3);
   private readonly weather: THREE.LineSegments;
+  /** Snowflakes: soft white dots that drift down and sway; only in snow, never with reduced motion. */
+  private readonly snow: THREE.Points;
+  /** Splashes where the rain hits the pitch: dots that flash up for a moment, each one at a new place. */
+  private readonly splashes: THREE.Points;
   private quality: PitchQuality;
   private readonly mobile: boolean;
   /** Started on the high profile: only then do shadow map and post-processing exist, and they stay for the whole match. */
@@ -143,6 +196,8 @@ export class ThreePitchRenderer {
   private readonly adaptive: boolean;
   private gpuTimer: GpuTimer | null = null;
   private vignettePass: ShaderPass | null = null;
+  private gradePass: ShaderPass | null = null;
+  private grade: Grade = { tint: [1, 1, 1], saturation: 1, contrast: 1 };
   private readonly interpolation: RenderInterpolationScratch = { players: [], owned: [] };
   private readonly mirroredPlayer = {} as PlayerRuntimeSnapshot;
   /** Highest profile this device started with; recovery never exceeds it. */
@@ -236,6 +291,11 @@ export class ThreePitchRenderer {
     this.shadow.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     this.shadow.frustumCulled = false;
     this.scene.add(this.shadow);
+    this.mastShadows = new THREE.InstancedMesh(new THREE.CircleGeometry(0.46, 12), new THREE.MeshBasicMaterial({ color: '#071f1d', transparent: true, opacity: 0.075, depthWrite: false }), 32 * MAST_POSITIONS.length);
+    this.mastShadows.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    this.mastShadows.frustumCulled = false;
+    this.mastShadows.visible = false;
+    this.scene.add(this.mastShadows);
     this.selection = new THREE.Mesh(new THREE.RingGeometry(0.69, 0.79, 40), new THREE.MeshBasicMaterial({ color: '#ffe875', transparent: true, opacity: 0.97, depthWrite: false, toneMapped: false }));
     this.selection.rotation.x = -Math.PI / 2;
     this.selection.renderOrder = 4;
@@ -319,6 +379,16 @@ export class ThreePitchRenderer {
     this.weather = new THREE.LineSegments(new THREE.BufferGeometry().setAttribute('position', new THREE.Float32BufferAttribute(rain, 3)), new THREE.LineBasicMaterial({ color: '#d1efff', transparent: true, opacity: 0.20, depthWrite: false }));
     this.weather.frustumCulled = false;
     this.scene.add(this.weather);
+    const flakes = new Float32Array(420 * 3);
+    for (let i = 0; i < 420; i++) flakes.set([(hash32(`snow-x-${i}`) % 1250) / 10 - 62.5, (hash32(`snow-y-${i}`) % 140) / 10, (hash32(`snow-z-${i}`) % 800) / 10 - 40], i * 3);
+    this.snow = new THREE.Points(new THREE.BufferGeometry().setAttribute('position', new THREE.Float32BufferAttribute(flakes, 3)), new THREE.PointsMaterial({ size: 0.2, map: this.softDot, color: '#ffffff', transparent: true, opacity: 0.85, depthWrite: false, alphaTest: 0.02, toneMapped: false }));
+    this.snow.frustumCulled = false;
+    this.snow.visible = false;
+    this.scene.add(this.snow);
+    this.splashes = new THREE.Points(new THREE.BufferGeometry().setAttribute('position', new THREE.Float32BufferAttribute(new Float32Array(120 * 3).fill(-9), 3)), new THREE.PointsMaterial({ size: 0.26, map: this.softDot, color: '#e8f6ff', transparent: true, opacity: 0.5, depthWrite: false, alphaTest: 0.02, toneMapped: false }));
+    this.splashes.frustumCulled = false;
+    this.splashes.visible = false;
+    this.scene.add(this.splashes);
 
     canvas.style.imageRendering = 'auto';
     canvas.dataset['renderer'] = 'three-webgl2';
@@ -407,6 +477,10 @@ export class ThreePitchRenderer {
     const lookAt = { x: mirror > 0 ? state.ball.x : -state.ball.x, y: state.ball.y };
     this.watchEvents(match);
     let index = 0;
+    let mastIndex = 0;
+    // The wear map is stamped every sixth frame of the live match (not in replays) and uploaded twice a second.
+    this.wearMirror.value = mirror;
+    this.wearStamp = !replay && ++this.wearClock % 6 === 0;
     let auraIndex = 0;
     const auraMode = this.quality === 'low' || this.software ? 'off' : match.config.auras ?? 'on';
     // Last frame's set becomes the previous one; swapping avoids a new Set per frame.
@@ -440,11 +514,27 @@ export class ThreePitchRenderer {
         this.turfSpawned.set(`${player.id}:c`, player.contact.tick);
         this.spawnTurf((player.contact.x - FIELD_LENGTH / 2) * mirror, player.contact.y - FIELD_WIDTH / 2, 7, 2.4);
       }
+      // Footsteps wear the turf: ten stamps a second are plenty; the camera mirror is undone so wear stays where it happened.
+      if (this.wearStamp) stampWear(this.wear, player.x, player.y, FIELD_LENGTH, FIELD_WIDTH, Math.hypot(player.vx, player.vy) > 3 ? 3 : 1);
       this.matrixDummy.position.copy(model.mesh.position).setY(0.014);
       this.matrixDummy.rotation.set(-Math.PI / 2, 0, 0);
       this.matrixDummy.scale.set(1.0, 0.66, 1);
       this.matrixDummy.updateMatrix();
       this.shadow.setMatrixAt(index++, this.matrixDummy.matrix);
+      if (this.floodlit && this.quality !== 'low') {
+        // One long faint shadow per mast, pointing away from it.
+        const px = model.mesh.position.x, pz = model.mesh.position.z;
+        this.matrixDummy.rotation.order = 'YXZ';
+        for (const [mx, mz] of MAST_POSITIONS) {
+          const dx = px - mx, dz = pz - mz, length = Math.hypot(dx, dz) || 1;
+          this.matrixDummy.position.set(px + dx / length * 0.55, 0.013, pz + dz / length * 0.55);
+          this.matrixDummy.rotation.set(-Math.PI / 2, -Math.atan2(dz, dx), 0);
+          this.matrixDummy.scale.set(1.45, 0.46, 1);
+          this.matrixDummy.updateMatrix();
+          this.mastShadows.setMatrixAt(mastIndex++, this.matrixDummy.matrix);
+        }
+        this.matrixDummy.rotation.order = 'XYZ';
+      }
       const rarity = auraMode === 'off' ? undefined : this.auraRarity.get(player.id);
       const awake = auraMode !== 'off' && this.awakeIds.has(player.id);
       if ((rarity || awake) && auraIndex < 32) {
@@ -488,6 +578,10 @@ export class ThreePitchRenderer {
       this.aura.setColorAt(auraIndex++, this.auraColor);
     }
     this.shadow.count = index;
+    if (this.wearStamp && this.time - this.wearUploaded > 0.5) { this.wearTexture.needsUpdate = true; this.wearUploaded = this.time; }
+    this.mastShadows.count = mastIndex;
+    this.mastShadows.visible = this.floodlit && this.quality !== 'low' && mastIndex > 0;
+    this.mastShadows.instanceMatrix.needsUpdate = true;
     this.aura.count = auraIndex;
     this.aura.instanceMatrix.needsUpdate = true;
     if (this.aura.instanceColor) this.aura.instanceColor.needsUpdate = true;
@@ -570,6 +664,10 @@ export class ThreePitchRenderer {
     vignette.uniforms['darkness'].value = 0.85;
     composer.addPass(vignette);
     this.vignettePass = vignette;
+    // The grade comes last before tone mapping, so it works on the full range of the picture.
+    this.gradePass = new ShaderPass(GradeShader);
+    composer.addPass(this.gradePass);
+    this.pushGrade();
     composer.addPass(new OutputPass());
     this.composer = composer;
     this.setPostPasses();
@@ -579,6 +677,20 @@ export class ThreePitchRenderer {
     const on = this.quality === 'high';
     if (this.bloom) this.bloom.enabled = on;
     if (this.vignettePass) this.vignettePass.enabled = on;
+    if (this.gradePass) this.gradePass.enabled = on;
+  }
+
+  /** Sets the colour grade of the ground: its atmosphere and the weather of the match. */
+  private applyGrade(atmosphere: 'day' | 'sunset' | 'night', weather: 'clear' | 'rain' | 'storm' | 'snow'): void {
+    this.grade = gradeFor(atmosphere, weather);
+    this.pushGrade();
+  }
+
+  private pushGrade(): void {
+    if (!this.gradePass) return;
+    (this.gradePass.uniforms['tint'].value as THREE.Vector3).set(...this.grade.tint);
+    this.gradePass.uniforms['saturation'].value = this.grade.saturation;
+    this.gradePass.uniforms['contrast'].value = this.grade.contrast;
   }
 
   destroy(): void {
@@ -641,20 +753,34 @@ export class ThreePitchRenderer {
     const sz = selected ? selected.y - FIELD_WIDTH / 2 : bz;
     const lead = Math.min(0.12, match.config.camera.lookAhead ?? 0.12);
     const limitX = Math.max(4, FIELD_LENGTH / 2 - 9.5), limitZ = Math.max(3, FIELD_WIDTH / 2 - 10);
-    let targetX = THREE.MathUtils.clamp(bx * 0.55 + sx * 0.45 + state.ball.vx * mirror * lead, -limitX, limitX);
-    const targetZ = THREE.MathUtils.clamp(bz * 0.55 + sz * 0.45 + state.ball.vy * lead * 0.5, -limitZ, limitZ);
+    // The player camera hangs on the controlled player; every other angle follows the ball and the player together.
+    const own = this.presetFor(match) === 'player' && !!selected;
+    const ballShare = own ? 0.18 : 0.55;
+    let targetX = THREE.MathUtils.clamp(bx * ballShare + sx * (1 - ballShare) + state.ball.vx * mirror * lead, -limitX, limitX);
+    let targetZ = THREE.MathUtils.clamp(bz * ballShare + sz * (1 - ballShare) + state.ball.vy * lead * 0.5, -limitZ, limitZ);
     // The cage is small: frame it tighter.
     const frame = match.pitch.id === 'small' ? 0.62 : 1;
     const preset = CAMERA_PRESETS[this.presetFor(match)];
     const reduced = match.config.camera.reducedMotion;
     const baseWidth = (replay && !reduced ? 34 : 48) * frame;
-    let targetWidth = Math.max(baseWidth, Math.abs(bx - sx) * 1.25 + 25 * frame) * preset.width / THREE.MathUtils.clamp(match.config.camera.zoom || 1, 0.6, 1.4);
+    let targetWidth = (own ? Math.max(baseWidth, Math.abs(bx - sx) * 1.1 + 12 * frame) : Math.max(baseWidth, Math.abs(bx - sx) * 1.25 + 25 * frame)) * preset.width / THREE.MathUtils.clamp(match.config.camera.zoom || 1, 0.6, 1.4);
     // Set pieces in the attacking third are framed on the goal: the camera moves towards it and closes in.
     const restart = match.rule.phase;
     if (!replay && (restart === 'corner' || restart === 'penalty' || restart === 'freeKick') && Math.abs(bx) > FIELD_LENGTH / 2 - 38 * frame) {
       const goalX = Math.sign(bx) * (FIELD_LENGTH / 2);
       targetX = THREE.MathUtils.clamp(THREE.MathUtils.lerp(bx, goalX, restart === 'penalty' ? 0.55 : 0.32), -limitX, limitX);
       targetWidth = Math.min(targetWidth, (restart === 'penalty' ? 24 : 32) * frame * preset.width);
+    }
+    // Kick-off: the centre circle and both teams lined up; half time and full time: the whole pitch from high up, drifting slowly.
+    const stage = match.phase;
+    if (!replay && match.rule.phase === 'kickoff' && stage !== 'halftime' && stage !== 'fulltime') {
+      targetX = THREE.MathUtils.lerp(targetX, 0, 0.7);
+      targetZ = THREE.MathUtils.lerp(targetZ, 0, 0.7);
+      targetWidth = Math.min(targetWidth, 40 * frame * preset.width);
+    } else if (!replay && (stage === 'halftime' || stage === 'fulltime' || stage === 'report')) {
+      targetX = reduced ? 0 : Math.sin(this.time * 0.25) * 10;
+      targetZ = 0;
+      targetWidth = 78 * frame * Math.max(0.9, preset.width);
     }
     if (!this.cameraInitialized || this.lastDirection !== mirror) {
       this.cameraX = targetX;
@@ -779,6 +905,7 @@ export class ThreePitchRenderer {
       disposeTree(this.stadium);
       this.stadium.clear();
       this.goalNets.length = 0;
+      this.ledTextures.length = 0;
       this.netRestPositions.length = 0;
       this.netEntry = null;
       this.netHit = null;
@@ -839,13 +966,17 @@ export class ThreePitchRenderer {
   private buildStadium(match: ArcadeMatch): void {
     const atmosphere = match.home.visuals.stadium.atmosphere;
     const night = atmosphere === 'night';
+    this.floodlit = night;
     const sunset = atmosphere === 'sunset';
+    this.applyGrade(night ? 'night' : sunset ? 'sunset' : 'day', match.config.weather);
     const sky = SKY[night ? 'night' : sunset ? 'sunset' : 'day'];
     const bg = sky.horizon;
-    this.scene.background = new THREE.Color(bg);
-    // Rain and storms close the view in.
+    // Rain and storms close the view in; snow turns the sky and the distance white.
     const weather = match.config.weather;
-    this.scene.fog = new THREE.Fog(bg, weather === 'storm' ? 60 : weather === 'rain' ? 85 : 140, weather === 'storm' ? 190 : weather === 'rain' ? 230 : 300);
+    const snowy = weather === 'snow';
+    const backdrop = snowy ? new THREE.Color(bg).lerp(new THREE.Color('#eef4f8'), 0.55) : new THREE.Color(bg);
+    this.scene.background = backdrop;
+    this.scene.fog = new THREE.Fog(backdrop, weather === 'storm' ? 60 : weather === 'rain' ? 85 : snowy ? 70 : 140, weather === 'storm' ? 190 : weather === 'rain' ? 230 : snowy ? 210 : 300);
     this.applySkyEnvironment(sky, night, sunset);
     this.sun.color.set(night ? '#e4efff' : sunset ? '#ffd9a0' : '#fff5df');
     // Night: floodlights from high above and a darker ambient; day: warm low sun.
@@ -863,11 +994,15 @@ export class ThreePitchRenderer {
     surround.position.y = -0.04;
     surround.receiveShadow = true;
     this.stadium.add(surround);
-    const pitchTexture = createPitchTexture(match.home.visuals.seed, match.config.weather !== 'clear');
+    const pitchTexture = createPitchTexture(match.home.visuals.seed, match.config.weather !== 'clear', match.config.weather === 'snow');
     pitchTexture.anisotropy = this.software?1:Math.min(8, this.renderer.capabilities.getMaxAnisotropy());
     const wet = match.config.weather !== 'clear';
-    this.pitchMaterial = this.software ? new THREE.MeshBasicMaterial({ map: pitchTexture, color: '#74ab83' })
-      : new THREE.MeshStandardMaterial({ map: pitchTexture, bumpMap: createGrassBump(), bumpScale: 0.35, roughness: wet ? 0.62 : 0.94, metalness: 0, color: '#ffffff', envMapIntensity: 0.3 });
+    this.pitchMaterial = this.software ? new THREE.MeshBasicMaterial({ map: pitchTexture, color: snowy ? '#c4d6cc' : '#74ab83' })
+      : new THREE.MeshStandardMaterial({ map: pitchTexture, bumpMap: createGrassBump(), bumpScale: 0.35, roughness: wet ? (snowy ? 0.8 : 0.5) : 0.94, metalness: 0, color: snowy ? '#e9f3f1' : '#ffffff', envMapIntensity: snowy ? 0.55 : wet ? 0.75 : 0.3 });
+    this.wear.fill(0);
+    this.wearTexture.minFilter = this.wearTexture.magFilter = THREE.LinearFilter;
+    this.wearTexture.needsUpdate = true;
+    addWear(this.pitchMaterial, this.wearTexture, this.wearMirror);
     const pitch = new THREE.Mesh(new THREE.PlaneGeometry(FIELD_LENGTH, FIELD_WIDTH), this.pitchMaterial);
     pitch.rotation.x = -Math.PI / 2;
     pitch.receiveShadow = true;
@@ -886,15 +1021,20 @@ export class ThreePitchRenderer {
 
     const structures: { position: number[]; scale: number[]; color: string }[] = [];
     const addBox = (x: number, y: number, z: number, w: number, h: number, d: number, color: string) => structures.push({ position: [x, y, z], scale: [w, h, d], color });
-    const rows = 5 + Math.min(5, match.home.facilities.stadium);
-    const seatColor = match.home.visuals.stadium.seatColor;
+    const theme = match.home.visuals.stadium;
+    // The style of the ground: compact ones have fewer rows, bowls rise higher and close their corners, industrial ones show their steel.
+    const rows = Math.max(4, 5 + Math.min(5, match.home.facilities.stadium) + (theme.standStyle === 'compact' ? -1 : theme.standStyle === 'bowl' ? 1 : 0));
+    const stand = theme.standStyle === 'industrial' ? ['#46535a', '#374349'] : theme.standStyle === 'classic' ? ['#4a4338', '#3b352c'] : ['#354858', '#2b3d4b'];
+    const seatColor = theme.seatColor;
     // Four compact stands form a coherent, deliberately stylized ground.
     // The camera sits in the near main stand, so only the far long side is built (it would block the view).
     for (const side of [-1, 1]) {
       for (let row = 0; row < rows; row++) {
         const y = 0.7 + row * 0.62;
-        if (side < 0) addBox(0, y / 2, side * (41 + row * 0.95), 116, y, 0.98, row % 2 ? '#354858' : '#2b3d4b');
-        addBox(side * (59 + row * 0.95), y / 2, 0, 0.98, y, 79, row % 2 ? '#354858' : '#2b3d4b');
+        if (side < 0) addBox(0, y / 2, side * (41 + row * 0.95), 116, y, 0.98, row % 2 ? stand[0] : stand[1]);
+        addBox(side * (59 + row * 0.95), y / 2, 0, 0.98, y, 79, row % 2 ? stand[0] : stand[1]);
+        // A bowl fills the corners with a curved-looking block between the stands.
+        if (theme.standStyle === 'bowl') for (const end of [-1, 1]) addBox(end * (57.5 + row * 0.7), y / 2, side * (39.5 + row * 0.7), 3.2 + row * 0.7, y, 3.2 + row * 0.7, row % 2 ? stand[0] : stand[1]);
       }
       addBox(0, 0.46, side * 37.6, 111, 0.90, 0.26, '#f1ebd2');
       addBox(side * 56.4, 0.46, 0, 0.26, 0.90, 76, '#f1ebd2');
@@ -908,7 +1048,8 @@ export class ThreePitchRenderer {
         const depth = rows * 0.95 + 3;
         if (side < 0) addBox(0, top + 3.2, side * (40.5 + depth / 2), 124, 0.28, depth, '#2c3a45');
         addBox(side * (58.5 + depth / 2), top + 3.2, 0, depth, 0.28, 86, '#2c3a45');
-        if (side < 0) for (let x = -54; x <= 54; x += 18) addBox(x, (top + 3.2) / 2 + 0.8, side * (42.4 + rows * 0.95), 0.3, top + 3.2 - 1.6, 0.3, '#56646d');
+        // Industrial grounds show their trusses twice as often.
+        if (side < 0) for (let x = -54; x <= 54; x += theme.standStyle === 'industrial' ? 9 : 18) addBox(x, (top + 3.2) / 2 + 0.8, side * (42.4 + rows * 0.95), theme.standStyle === 'industrial' ? 0.45 : 0.3, top + 3.2 - 1.6, 0.3, '#56646d');
       }
       for (let x = -48; x <= 48; x += 16) {
         addBox(x, 0.5, side * 37.78, 12, 0.54, 0.12, x % 32 ? match.home.visuals.kits.home.shirt : '#163748');
@@ -966,21 +1107,49 @@ export class ThreePitchRenderer {
       flag.position.set(x, 0, z);
       this.stadium.add(flag);
     }
-    // One texture creates all perimeter wordmarks; no external advertising/brands.
+    // LED boards: the wordmarks of the game itself (no external advertising or brands), in the colours and the pattern of the
+    // club's ground, scrolling slowly; the slogans come from the ground's seed so every ground reads differently.
+    const slogans = ['PITCH LEGENDS', 'PLAY BEAUTIFUL', 'THE GAME IS YOURS', 'ONE MORE MATCH', 'LEGENDS ARE MADE HERE', 'FOR THE LOVE OF THE GAME', 'EVERY WEEK COUNTS', 'FIGHT FOR EVERY BALL'];
+    const start = theme.sponsorSeed % slogans.length;
+    const text = [0, 1, 2, 3].map((i) => slogans[(start + i * 3) % slogans.length]).join('     •     ');
     const bannerCanvas = document.createElement('canvas');
     bannerCanvas.width = 1024;
     bannerCanvas.height = 64;
     const ctx = bannerCanvas.getContext('2d');
     if (ctx) {
+      const kit = match.home.visuals.kits.home;
       ctx.fillStyle = '#102c36'; ctx.fillRect(0, 0, 1024, 64);
-      ctx.fillStyle = '#f4e5ac'; ctx.font = 'bold 27px sans-serif'; ctx.textAlign = 'center';
-      ctx.fillText('PITCH LEGENDS     •     PLAY BEAUTIFUL     •     THE GAME IS YOURS', 512, 42);
+      // The pattern of the ground runs along the bottom and top edge of the board.
+      ctx.fillStyle = kit.shirt;
+      const pattern = theme.bannerPattern;
+      for (let x = 0; x < 1024; x += 32) {
+        if (pattern === 'stripe' || pattern === 'hoops' || pattern === 'sash') ctx.fillRect(x, 0, 16, 5), ctx.fillRect(x + 16, 59, 16, 5);
+        else if (pattern === 'chevron') ctx.fillRect(x, 0, 16, 3 + (x / 32) % 3 * 2), ctx.fillRect(x, 61 - (x / 32) % 3 * 2, 16, 3 + (x / 32) % 3 * 2);
+        else if (pattern === 'halves' || pattern === 'quarters') ctx.fillRect(x < 512 ? 0 : 512, 0, 512, 4), ctx.fillRect(x < 512 ? 512 : 0, 60, 512, 4);
+        else ctx.fillRect(0, 0, 1024, 4), ctx.fillRect(0, 60, 1024, 4);
+      }
+      ctx.fillStyle = '#f4e5ac'; ctx.font = 'bold 25px sans-serif'; ctx.textAlign = 'center';
+      ctx.fillText(text, 512, 41, 1000);
     }
     const bannerTexture = new THREE.CanvasTexture(bannerCanvas);
     bannerTexture.colorSpace = THREE.SRGBColorSpace;
-    const banner = new THREE.Mesh(new THREE.PlaneGeometry(98, 0.86), new THREE.MeshBasicMaterial({ map: bannerTexture }));
+    bannerTexture.wrapS = THREE.RepeatWrapping;
+    this.ledTextures.push(bannerTexture);
+    const bannerMaterial = new THREE.MeshBasicMaterial({ map: bannerTexture });
+    const banner = new THREE.Mesh(new THREE.PlaneGeometry(98, 0.86), bannerMaterial);
     banner.position.set(0, 0.6, -37.43);
     this.stadium.add(banner);
+    // The same board runs round the ends, a little out of step.
+    for (const end of [-1, 1]) {
+      const endTexture = bannerTexture.clone();
+      endTexture.needsUpdate = true;
+      endTexture.offset.x = end * 0.25;
+      this.ledTextures.push(endTexture);
+      const endBoard = new THREE.Mesh(new THREE.PlaneGeometry(60, 0.86), new THREE.MeshBasicMaterial({ map: endTexture }));
+      endBoard.position.set(end * 56.65, 0.6, 0);
+      endBoard.rotation.y = -end * Math.PI / 2;
+      this.stadium.add(endBoard);
+    }
   }
 
   /** Five-a-side: boards around the pitch, a fence behind the goals and four light masts. */
@@ -1166,11 +1335,37 @@ export class ThreePitchRenderer {
     const goalAge = this.time - this.goalTime;
     this.crowdUniform.value = this.time;
     this.crowdEnergy.value = reduced ? 0 : goalAge < 4 ? 0.12 : 0.009;
-    this.weather.visible = !reduced && match.config.weather !== 'clear' && this.quality !== 'low';
+    this.weather.visible = !reduced && match.config.weather !== 'clear' && match.config.weather !== 'snow' && this.quality !== 'low';
     if (this.weather.visible) {
       this.weather.position.y = -(this.time * (match.config.weather === 'storm' ? 14 : 10) % 11.4);
       (this.weather.material as THREE.LineBasicMaterial).opacity = match.config.weather === 'storm' ? 0.32 : 0.2;
     }
+    this.splashes.visible = this.weather.visible;
+    if (this.splashes.visible) {
+      const positions = this.splashes.geometry.getAttribute('position') as THREE.BufferAttribute;
+      const storm = match.config.weather === 'storm';
+      for (let i = 0; i < positions.count; i++) {
+        // Each dot lives a fifth of a short cycle, then it is somewhere else.
+        const cycle = this.time * (storm ? 2.6 : 1.8) + i * 0.173;
+        const phase = cycle % 1, round = Math.floor(cycle);
+        if (phase > 0.22) { positions.setXYZ(i, 0, -9, 0); continue; }
+        positions.setXYZ(i, ((hash32(`splash-x-${i}-${round}`) % 560) / 10 - 28) + this.weather.position.x, 0.05 + phase * 0.5, ((hash32(`splash-z-${i}-${round}`) % 400) / 10 - 20) + this.weather.position.z);
+      }
+      positions.needsUpdate = true;
+    }
+    this.snow.visible = !reduced && match.config.weather === 'snow' && this.quality !== 'low';
+    if (this.snow.visible) {
+      const positions = this.snow.geometry.getAttribute('position') as THREE.BufferAttribute;
+      for (let i = 0; i < positions.count; i++) {
+        const fall = (hash32(`snow-y-${i}`) % 140) / 10 - this.time * (0.9 + (i % 5) * 0.18);
+        positions.setY(i, ((fall % 14) + 14) % 14);
+        positions.setX(i, (hash32(`snow-x-${i}`) % 1250) / 10 - 62.5 + Math.sin(this.time * 0.7 + i) * 0.5);
+      }
+      positions.needsUpdate = true;
+      this.snow.position.x = this.weather.position.x;
+      this.snow.position.z = this.weather.position.z;
+    }
+    if (!reduced) this.ledTextures.forEach((texture, i) => { texture.offset.x = ((i === 0 ? 0 : i === 1 ? -0.25 : 0.25) + this.time * 0.012) % 1; });
     if (!reduced) this.flags.forEach((cloth, i) => { cloth.rotation.y = Math.sin(this.time * (match.config.weather === 'storm' ? 6 : 3) + i * 1.7) * 0.45; });
     if (match.config.weather === 'storm' && !reduced) {
       const flash = lightningFlash(this.time);
@@ -1178,6 +1373,8 @@ export class ThreePitchRenderer {
       this.rim.intensity = this.rimBase * (1 + 2 * flash);
     }
     this.confetti.visible = !reduced && goalAge >= 0 && goalAge < 3;
+    // Confetti flutters: the size swells and shrinks as the pieces turn over in the air.
+    (this.confetti.material as THREE.PointsMaterial).size = 0.2 + Math.abs(Math.sin(this.time * 9)) * 0.12;
     if (this.confetti.visible) {
       const pos = this.confetti.geometry.getAttribute('position') as THREE.BufferAttribute;
       for (let i = 0; i < 160; i++) {
@@ -1369,7 +1566,7 @@ export class ThreePitchRenderer {
 }
 
 /** Real mowing and white paint in one inexpensive, locally generated texture. */
-function createPitchTexture(seed: number, wet: boolean): THREE.CanvasTexture {
+function createPitchTexture(seed: number, wet: boolean, snow = false): THREE.CanvasTexture {
   const canvas = document.createElement('canvas');
   canvas.width = 2048; canvas.height = 1326;
   const ctx = canvas.getContext('2d');
@@ -1404,6 +1601,18 @@ function createPitchTexture(seed: number, wet: boolean): THREE.CanvasTexture {
     const light = ctx.createLinearGradient(0, 0, 0, canvas.height);
     light.addColorStop(0, 'rgba(0,20,10,.08)'); light.addColorStop(1, 'rgba(255,255,220,.05)');
     ctx.fillStyle = light; ctx.fillRect(0, 0, canvas.width, canvas.height);
+    if (snow) {
+      // A cover of snow: the grass shows through in the mowing stripes and in patches where the cover is thin.
+      ctx.fillStyle = 'rgba(232,241,246,.66)'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+      for (let stripe = 0; stripe < 10; stripe += 2) { ctx.fillStyle = 'rgba(70,120,90,.10)'; ctx.fillRect(stripe * canvas.width / 10, 0, canvas.width / 10, canvas.height); }
+      for (let i = 0; i < 90; i++) {
+        const n = hash32(`${seed}|thin|${i}`);
+        const px = n % canvas.width, py = (n >>> 11) % canvas.height, radius = 30 + (n >>> 20) % 90;
+        const thin = ctx.createRadialGradient(px, py, 0, px, py, radius);
+        thin.addColorStop(0, 'rgba(60,110,80,.22)'); thin.addColorStop(1, 'rgba(60,110,80,0)');
+        ctx.fillStyle = thin; ctx.fillRect(px - radius, py - radius, radius * 2, radius * 2);
+      }
+    }
   }
   const texture = new THREE.CanvasTexture(canvas);
   texture.colorSpace = THREE.SRGBColorSpace;

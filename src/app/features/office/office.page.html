@@ -71,13 +71,57 @@
     </article>
   </div>
 
+  @if (press(); as p) {
+    <article class="card">
+      <h2>{{ text('PRESSEKONFERENZ', 'PRESS CONFERENCE') }} <small>{{ p.reason }}</small></h2>
+      <h3>{{ p.question }}</h3>
+      <div class="answers">
+        @for (answer of p.answers; track answer.id) {
+          <button class="btn answer" [class.chosen]="answer.chosen" [disabled]="p.answered" (click)="answerPress(answer.id)">
+            <strong>{{ answer.label }} <b>{{ answer.chance }} %</b></strong>
+            <span>{{ answer.quote }}</span>
+          </button>
+        }
+      </div>
+      @if (p.outcome; as outcome) {
+        <p class="hint" [class.warn]="!outcome.success">{{ outcome.success ? text('Angekommen!', 'It landed!') : text('Daneben.', 'It missed.') }} {{ text('Teamgeist', 'Spirit') }} {{ outcome.spirit }} · {{ text('Moral', 'Morale') }} {{ outcome.morale }} · {{ text('Vorstand', 'Board') }} {{ outcome.board }} · {{ text('Gegner', 'Opponent') }} {{ outcome.opponent }}</p>
+      }
+    </article>
+  }
+
+  @if (rivalries().length) {
+    <article class="card">
+      <h2>{{ text('RIVALITÄTEN', 'RIVALRIES') }}</h2>
+      @for (rival of rivalries(); track rival.id) {
+        <div class="heat"><span>{{ rival.name }}</span><div class="bar" role="img" [attr.aria-label]="text('Hitze', 'Heat')"><i [style.width.%]="rival.heat"></i></div><b>{{ rival.heat }}</b></div>
+      }
+      <p class="muted">{{ text('Derbys, knappe Ergebnisse und Wechsel zwischen den Klubs heizen sie an, die Zeit kühlt sie ab. Je heißer, desto größer die Kulisse und desto mehr bewegt ein Derby die Kabine.', 'Derbies, close results and transfers between the clubs heat them up, time cools them down. The hotter, the bigger the crowd and the more a derby moves the dressing room.') }}</p>
+    </article>
+  }
+
+  <article class="card">
+    <h2>{{ text('AUSRÜSTER', 'KIT SUPPLIER') }}</h2>
+    <p class="muted">{{ text('Der Vertrag macht die Stärke der Schuhe deiner Spieler größer, nie die Schwäche. Die Schuhe wählst du in der Spielerakte.', 'The deal sharpens the gain of the boots of your players, never the drawback. You pick the boots in the player sheet.') }}</p>
+    <div class="suppliers">
+      @for (supplier of suppliers(); track supplier.id) {
+        <div class="supplier" [class.active]="supplier.active">
+          <strong>{{ supplier.name }}</strong>
+          <span>{{ supplier.text }}</span>
+          <small>{{ formatCoins(supplier.fee) }}/{{ text('W', 'wk') }}@if (supplier.locked) { · {{ text('Ruf', 'Reputation') }} {{ supplier.minReputation }} }</small>
+          @if (supplier.active) { <b>{{ text('Aktiv', 'Active') }}</b> }
+          @else if (supplier.canSign) { <button class="btn small" (click)="signSupplier(supplier.id)">{{ text('Unterschreiben', 'Sign') }}</button> }
+        </div>
+      }
+    </div>
+  </article>
+
   <article class="card">
     <h2>{{ text('ROLLEN UND EINSATZZEIT', 'ROLES AND PLAYING TIME') }}</h2>
     <p class="muted">{{ text('Jeder erwartet Spiele passend zu seiner Rolle. Wer lange weniger als die Hälfte davon bekommt, wird unzufrieden.', 'Everyone expects matches that fit his role. Whoever gets less than half of that for long becomes unhappy.') }}</p>
     <div class="table" role="table">
       @for (row of squad(); track row.id) {
         <div class="row" role="row" [class.unhappy]="row.unhappy" [class.asks]="row.requested">
-          <span class="name">{{ row.name }} <small>{{ row.overall }}</small></span>
+          <span class="name">{{ row.name }} <small>{{ row.overall }}</small>@if (row.social) { <small class="social">{{ row.social }}</small> }@if (row.partner) { <small class="partner">{{ text('Duo', 'Duo') }}: {{ row.partner }}</small> }</span>
           <span>{{ row.role }}</span>
           <span [class.neg]="row.shortOfTime">{{ row.played }} % / {{ row.expected }} %</span>
           <span>

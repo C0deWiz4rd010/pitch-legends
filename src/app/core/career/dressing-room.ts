@@ -7,6 +7,7 @@ import { isPlayerAvailable } from '../injury-engine';
 import { Rng, clamp } from '../util';
 import { hash32 } from '../visual-identity';
 import { book } from './finance';
+import { socialMix } from '../rpg/social';
 import { TRAIT_EFFECTS, hasManagerTrait, managerAttribute } from './manager-effects';
 
 export { ROOM_ROLES };
@@ -89,7 +90,8 @@ export function spiritTarget(game: GameState, team: Team, room: DressingRoomStat
   const morale = squad.reduce((sum, player) => sum + player.morale, 0) / Math.max(1, squad.length);
   const captain = squad.find((player) => player.id === team.tactics.captainId);
   const captainBonus = captain ? 2 + (captain.traitIds.includes('leader') ? 3 : 0) + (captain.level >= 8 ? 1 : 0) : 0;
-  const mix = clamp(squad.filter((player) => player.personality === 'team-player').length * 0.8, 0, 6) - clamp(squad.filter((player) => player.personality === 'volatile').length * 0.8, 0, 5);
+  // Team players hold the room together; egoists and loners cost spirit (see core/rpg/social.ts).
+  const mix = socialMix(squad).spirit;
   const leadership = (managerAttribute(game.manager, 'leadership') - 55) / 5;
   const motivator = hasManagerTrait(game.manager, 'motivator') ? TRAIT_EFFECTS.motivatorSpirit : 0;
   const unhappy = Object.keys(room.unhappyWeeks).length;

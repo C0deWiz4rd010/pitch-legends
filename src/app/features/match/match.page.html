@@ -153,6 +153,13 @@
       <b>VS</b>
       <div><app-club-crest [team]="$any(awayTeam())" [size]="76" /><strong>{{ awayTeam()?.name }}</strong><small>{{ awayTeam()?.formation?.name }}</small></div>
     </div>
+    <div class="lineups" [attr.aria-label]="i18n.pick('Aufstellung', 'Line-ups')">
+      @for (side of lineups(); track side.id) {
+        <ol>
+          @for (entry of side.players; track entry.id; let i = $index) { <li [style.--i]="i"><b>{{ entry.number }}</b> {{ entry.name }}</li> }
+        </ol>
+      }
+    </div>
     <p>{{ i18n.pick('SCHIRI', 'REF') }} · M. BYTE · {{ tacticLabel(expectedWeather()).toUpperCase() }}</p>
     <button class="btn btn--ghost" (click)="skipIntro()">{{ i18n.pick('INTRO ÜBERSPRINGEN', 'SKIP INTRO') }}</button>
   </section>

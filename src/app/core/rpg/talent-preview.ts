@@ -102,14 +102,18 @@ export function previewTalent(
       const node = getTalent(id);
       if (!node) continue;
       for (const key of ATTRIBUTE_KEYS)
-        result[key] = clamp(result[key] + ((node.modifiers[key] ?? 0) + flatEffect(node, key)) * rank, 1, 99);
+        result[key] = clamp(
+          result[key] + ((node.modifiers[key] ?? 0) + flatEffect(node, key)) * rank,
+          1,
+          99,
+        );
     }
     return result;
   };
   Object.assign(before, withTalents(player.talentRanks ?? {}));
   Object.assign(after, withTalents({ ...player.talentRanks, [talent.id]: rankAfter }));
   const effects = (talent.effects ?? [])
-    .filter((effect) => !(isFlat(effect)))
+    .filter((effect) => !isFlat(effect))
     .map((effect) => describeEffect(effect, 1, language));
   const unlocks = (talent.unlocks ?? []).map((id) => {
     const info = ACTIONS.find((action) => action.id === id)!;

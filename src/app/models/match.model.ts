@@ -20,7 +20,7 @@ export type Side = 'home' | 'away';
 export type MatchMode = 'play' | 'coach' | 'instant';
 export type MatchControllerMode = 'human' | 'auto';
 export type AssistPreset = 'assisted' | 'balanced' | 'manual';
-export type MatchWeather = 'clear' | 'rain' | 'storm';
+export type MatchWeather = 'clear' | 'rain' | 'storm' | 'snow';
 export type InputDevice = 'keyboard' | 'gamepad' | 'touch' | 'ai';
 export type PlayerActionState =
   | 'formation'
@@ -129,7 +129,7 @@ export interface PenaltyShootout {
   winner: Side;
 }
 
-export type MatchCameraPreset = 'arcade' | 'tv' | 'tactic';
+export type MatchCameraPreset = 'arcade' | 'tv' | 'tactic' | 'player';
 
 export interface MatchCameraSettings {
   /** Broadcast angle; older configs derive it from the zoom value. */

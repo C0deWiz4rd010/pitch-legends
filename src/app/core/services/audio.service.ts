@@ -80,15 +80,16 @@ export class AudioService {
     this.noise(.3,.12,2200);
   }
   error():void {this.tone(150,.16,'sawtooth',.10,90);}
-  contact(contact:FootballContact, speed:number):void {
+  /** `pan` places the sound on the pitch as the broadcast camera sees it: -1 far left, 1 far right. */
+  contact(contact:FootballContact, speed:number, pan=0):void {
     if(contact.tick<=this.lastContactTick) return;
     this.lastContactTick=contact.tick;
-    if(contact.dribble) { this.tone(170,.03,'sine',.035,90); return; }
+    if(contact.dribble) { this.tone(170,.03,'sine',.035,90,'sfxVolume',0,pan); return; }
     const strength=Math.min(1,Math.max(.1,speed/30));
     // Shots get a deeper, heavier strike than passes.
-    if(contact.kind==='foot' && speed>22) this.tone(80,.09,'sine',.12+strength*.12,40);
-    this.tone(contact.kind==='head'?115:contact.kind==='hand'?90:150,.045+strength*.055,'sine',.10+strength*.18,45);
-    this.noise(.035+strength*.04,.04+strength*.08,contact.kind==='hand'?1300:600);
+    if(contact.kind==='foot' && speed>22) this.tone(80,.09,'sine',.12+strength*.12,40,'sfxVolume',0,pan);
+    this.tone(contact.kind==='head'?115:contact.kind==='hand'?90:150,.045+strength*.055,'sine',.10+strength*.18,45,'sfxVolume',0,pan);
+    this.noise(.035+strength*.04,.04+strength*.08,contact.kind==='hand'?1300:600,pan);
   }
   resetContacts():void {this.lastContactTick=-1;}
   post():void {this.tone(740,.22,'triangle',.16,710);this.tone(1170,.15,'sine',.045,1100);}
@@ -112,10 +113,11 @@ export class AudioService {
   setChant(active:boolean):void {
     if(active===!!this.chantTimer) return;
     if(!active) { if(this.chantTimer) clearInterval(this.chantTimer); this.chantTimer=null; return; }
+    // The two ends answer each other: a phrase of eight beats from the left, the next one from the right.
     this.chantTimer=this.startBeat(.3,(step,delay)=>{
-      const beat=step%8;
-      if(beat<3 || beat===4 || beat===5) this.crowdSwell(.08,.16,beat<3?1800:900,'crowdVolume',delay);
-      if(beat===6) this.crowdSwell(.14,.5,520,'crowdVolume',delay);
+      const beat=step%8, pan=Math.floor(step/8)%2===0?-.6:.6;
+      if(beat<3 || beat===4 || beat===5) this.crowdSwell(.08,.16,beat<3?1800:900,'crowdVolume',delay,pan);
+      if(beat===6) this.crowdSwell(.14,.5,520,'crowdVolume',delay,pan);
     });
   }
   startMusic():void {
@@ -162,26 +164,34 @@ export class AudioService {
     for(let i=0;i<samples.length;i++) {previous=(previous+Math.random()*2-1)/1.8;samples[i]=previous;}
     return this.noiseBuffer=buffer;
   }
-  private noise(duration:number, volume:number, cutoff:number):void {
+  /** The end of a chain: straight to the speakers, or through a stereo panner when the sound has a place. Returns the node to release. */
+  private output(ctx:AudioContext,pan:number):StereoPannerNode|null {
+    if(!pan||typeof ctx.createStereoPanner!=='function') return null;
+    const panner=ctx.createStereoPanner();
+    panner.pan.value=Math.max(-1,Math.min(1,pan));
+    panner.connect(ctx.destination);
+    return panner;
+  }
+  private noise(duration:number, volume:number, cutoff:number, pan=0):void {
     const level=this.level('sfxVolume')*volume;if(level<=0) return;
     const ctx=this.audioContext();if(!ctx) return;
-    const source=ctx.createBufferSource(),filter=ctx.createBiquadFilter(),gain=ctx.createGain();
+    const source=ctx.createBufferSource(),filter=ctx.createBiquadFilter(),gain=ctx.createGain(),panner=this.output(ctx,pan);
     source.buffer=this.getNoise(ctx);filter.type='lowpass';filter.frequency.value=cutoff;
     gain.gain.setValueAtTime(level,ctx.currentTime);gain.gain.exponentialRampToValueAtTime(.0001,ctx.currentTime+duration);
-    source.connect(filter).connect(gain).connect(ctx.destination);source.start();source.stop(ctx.currentTime+duration);
-    source.onended=()=>{source.disconnect();filter.disconnect();gain.disconnect();};
+    source.connect(filter).connect(gain).connect(panner??ctx.destination);source.start();source.stop(ctx.currentTime+duration);
+    source.onended=()=>{source.disconnect();filter.disconnect();gain.disconnect();panner?.disconnect();};
   }
   /** Band-limited noise that rises and falls: a stylised crowd voice. */
-  private crowdSwell(volume:number,duration:number,centre:number,channel:Channel,delay=0):void {
+  private crowdSwell(volume:number,duration:number,centre:number,channel:Channel,delay=0,pan=0):void {
     const level=this.level(channel)*volume;if(level<=0) return;
     const ctx=this.audioContext();if(!ctx) return;
-    const source=ctx.createBufferSource(),filter=ctx.createBiquadFilter(),gain=ctx.createGain(),start=ctx.currentTime+delay;
+    const source=ctx.createBufferSource(),filter=ctx.createBiquadFilter(),gain=ctx.createGain(),start=ctx.currentTime+delay,panner=this.output(ctx,pan);
     source.buffer=this.getNoise(ctx);source.loop=true;
     filter.type='bandpass';filter.Q.value=.9;
     filter.frequency.setValueAtTime(centre*.8,start);filter.frequency.linearRampToValueAtTime(centre*1.25,start+duration*.35);filter.frequency.linearRampToValueAtTime(centre*.9,start+duration);
     gain.gain.setValueAtTime(.0001,start);gain.gain.linearRampToValueAtTime(level,start+duration*.3);gain.gain.exponentialRampToValueAtTime(.0001,start+duration);
-    source.connect(filter).connect(gain).connect(ctx.destination);source.start(start);source.stop(start+duration);
-    source.onended=()=>{source.disconnect();filter.disconnect();gain.disconnect();};
+    source.connect(filter).connect(gain).connect(panner??ctx.destination);source.start(start);source.stop(start+duration);
+    source.onended=()=>{source.disconnect();filter.disconnect();gain.disconnect();panner?.disconnect();};
   }
   /**
    * A steady beat on the audio clock: notes are handed to the audio context a fraction of a second ahead, so a busy main thread
@@ -192,15 +202,15 @@ export class AudioService {
     let next=ctx.currentTime+.05,index=0;
     return setInterval(()=>{while(next<ctx.currentTime+.3){play(index++,Math.max(0,next-ctx.currentTime));next+=period;}},80);
   }
-  private tone(frequency:number,duration:number,wave:OscillatorType,volume:number,endFrequency=frequency,channel:Channel='sfxVolume',delay=0):void {
+  private tone(frequency:number,duration:number,wave:OscillatorType,volume:number,endFrequency=frequency,channel:Channel='sfxVolume',delay=0,pan=0):void {
     const level=this.level(channel)*volume;if(level<=0) return;
     const ctx=this.audioContext();if(!ctx) return;
-    const oscillator=ctx.createOscillator(),gain=ctx.createGain(),start=ctx.currentTime+delay;
+    const oscillator=ctx.createOscillator(),gain=ctx.createGain(),start=ctx.currentTime+delay,panner=this.output(ctx,pan);
     oscillator.type=wave;oscillator.frequency.setValueAtTime(frequency,start);
     oscillator.frequency.exponentialRampToValueAtTime(Math.max(20,endFrequency),start+duration);
     gain.gain.setValueAtTime(.0001,start);gain.gain.linearRampToValueAtTime(level,start+.005);
     gain.gain.exponentialRampToValueAtTime(.0001,start+duration);
-    oscillator.connect(gain).connect(ctx.destination);oscillator.start(start);oscillator.stop(start+duration);
-    oscillator.onended=()=>{oscillator.disconnect();gain.disconnect();};
+    oscillator.connect(gain).connect(panner??ctx.destination);oscillator.start(start);oscillator.stop(start+duration);
+    oscillator.onended=()=>{oscillator.disconnect();gain.disconnect();panner?.disconnect();};
   }
 }

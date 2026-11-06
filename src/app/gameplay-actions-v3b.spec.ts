@@ -4,6 +4,7 @@ import { ACTION_CONTACT_TICKS } from './core/football/action-timing';
 import { BALL_RADIUS } from './core/football/ball-physics';
 import { ArcadeActor, FIELD_WIDTH } from './core/football/match-types';
 import { EMPTY_MATCH_COMMAND, MatchCommand } from './models/match.model';
+import { TALENT_NODES } from './data/talents';
 
 /** Home attacks towards +x in the first half. */
 function scene(seed = 404) {
@@ -269,6 +270,28 @@ describe('Phase 8 follow-up – new actions', () => {
     }
     expect(punches).toBeGreaterThan(0);
     expect(smothers).toBeGreaterThan(0);
+  });
+});
+
+describe('Phase 8 follow-up – talent actions in the match', () => {
+  it('lets the power-header talent drive a header harder, with everything else equal', () => {
+    const speeds = [false, true].map((talent) => {
+      const match = scene(77);
+      const header = match.actors.find((actor) => actor.side === 'home' && actor.player.positionGroup === 'ATT')!;
+      isolate(match, [header]);
+      Object.assign(header, { x: 98, y: 34, facingX: 1, facingY: 0 });
+      giveBall(match, header);
+      const node = TALENT_NODES.find((candidate) => candidate.unlocks?.includes('power-header'))!;
+      header.player.archetype = node.archetype;
+      header.player.talentRanks = talent ? { [node.id]: 1 } : {};
+      header.stats = undefined;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (match as unknown as { headAtGoal: (...args: any[]) => void }).headAtGoal(header, 0);
+      return Math.hypot(match.ball.vx, match.ball.vy);
+    });
+    // The same header, 2.4 m/s harder (a little less along the ground when the aim is wide of the middle).
+    expect(speeds[1] - speeds[0]).toBeGreaterThan(1.8);
+    expect(speeds[1] - speeds[0]).toBeLessThan(2.5);
   });
 });
 

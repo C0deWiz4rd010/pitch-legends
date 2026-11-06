@@ -164,7 +164,10 @@ export function quirkEffects(state: QuirkState): EffectSpec[] {
 }
 
 /** The attribute a player trains to get a quirk under control: the one its first drawback hits. */
-export function tamingAttribute(player: Pick<Player, 'positionGroup'>, quirkId: string): AttributeKey {
+export function tamingAttribute(
+  player: Pick<Player, 'positionGroup'>,
+  quirkId: string,
+): AttributeKey {
   const drawback = (getQuirk(quirkId)?.effects ?? []).find(isDrawback);
   const hook = drawback?.hook;
   if (hook) {

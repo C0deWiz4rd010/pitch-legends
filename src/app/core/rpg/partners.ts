@@ -77,8 +77,7 @@ export function duoPartners(
       if (score >= PARTNER_THRESHOLD) pairs.push({ a: players[i], b: players[j], score });
     }
   pairs.sort(
-    (x, y) =>
-      y.score - x.score || pairKey(x.a.id, x.b.id).localeCompare(pairKey(y.a.id, y.b.id)),
+    (x, y) => y.score - x.score || pairKey(x.a.id, x.b.id).localeCompare(pairKey(y.a.id, y.b.id)),
   );
   const result = new Map<string, PartnerLink>();
   for (const pair of pairs) {

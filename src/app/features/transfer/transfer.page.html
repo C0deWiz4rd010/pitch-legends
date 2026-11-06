@@ -97,6 +97,7 @@
         </div>
 
         <div class="dossier-tags">
+          <button type="button" class="btn btn--ghost btn--sm" (click)="sheetId.set(target.player.id)">{{ 'transfer.sheet' | t }}</button>
           @if (target.improvesStartingXi) { <span class="positive">↑ {{ 'transfer.upgradesXi' | t }}</span> }
           @if (target.loanAvailable) { <span>{{ 'transfer.loanAvailable' | t }}</span> }
           <span>{{ target.player.archetype }}</span>
@@ -226,3 +227,4 @@
   }
 </dialog>
 @if (modal() !== null) { <button class="dialog-backdrop" aria-label="Dialog schließen" (click)="closeModal()"></button> }
+@if (sheetId(); as sheet) { <app-player-detail [playerId]="sheet" (close)="sheetId.set(null)" /> }

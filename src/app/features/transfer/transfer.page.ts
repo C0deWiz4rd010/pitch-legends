@@ -22,6 +22,7 @@ import { Player, PlayerAttributes } from '../../models/player.model';
 import { ContractProposal, TransferKind, TransferNegotiation } from '../../models/transfer.model';
 import { ClubCrestComponent } from '../../shared/components/club-crest.component';
 import { PlayerPortraitComponent } from '../../shared/components/player-portrait.component';
+import { PlayerDetailComponent } from '../../shared/components/player-detail.component';
 import { RadarChartComponent } from '../../shared/components/radar-chart.component';
 
 type TransferTab = 'market' | 'shortlist' | 'offers' | 'squad';
@@ -44,7 +45,7 @@ const UI_MEMORY = {
 @Component({
   selector: 'app-transfer',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [ModalDirective, I18nPipe, ClubCrestComponent, PlayerPortraitComponent, RadarChartComponent, RarityGemComponent],
+  imports: [ModalDirective, I18nPipe, ClubCrestComponent, PlayerPortraitComponent, RadarChartComponent, RarityGemComponent, PlayerDetailComponent],
   templateUrl: './transfer.page.html',
   styleUrl: './transfer.page.scss',
 })
@@ -86,6 +87,8 @@ export class TransferPage {
   protected readonly contractWeeks = signal<ContractProposal['weeks']>(104);
   protected readonly contractSalary = signal(1_000);
   protected readonly contractRole = signal<ContractProposal['squadRole']>('rotation');
+  /** The player whose sheet is open (read only unless he is in the squad). */
+  protected readonly sheetId = signal<string | null>(null);
   protected readonly signingBonus = signal(4_000);
   protected readonly listingPrice = signal(0);
   protected readonly listingLoan = signal(false);

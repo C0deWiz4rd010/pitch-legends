@@ -51,6 +51,7 @@ import { PortraitService } from '../../core/services/portrait.service';
 import { BINDABLE_ACTIONS, BUTTON_ACTIONS, ButtonAction, buttonFor, keysFor } from '../../core/controls/control-prefs';
 import { ControlPrefsService } from '../../core/services/control-prefs.service';
 import { PICK_KEYS } from '../../data/control-bindings';
+import { weatherFor } from '../../core/football/weather';
 import { ClubCrestComponent } from '../../shared/components/club-crest.component';
 import { MiniKitComponent } from '../../shared/components/mini-kit.component';
 import { ManagerPortraitComponent } from '../../shared/components/manager-portrait.component';
@@ -153,7 +154,7 @@ export class MatchPage implements OnDestroy {
   protected readonly inputDevice = signal<InputDevice>('keyboard');
   protected readonly autoEnabled = signal(false);
   protected readonly fullscreenActive = signal(false);
-  protected readonly cameraView = signal<'ARCADE'|'TV'|'TAKTIK'>('ARCADE');
+  protected readonly cameraView = signal<'ARCADE'|'TV'|'TAKTIK'|'SPIELER'>('ARCADE');
   protected readonly switchPolicy = signal<NonNullable<MatchConfig['autoSwitch']>>('receivers');
   protected readonly matchView = signal<MatchViewState>(EMPTY_MATCH_VIEW);
   protected readonly committing = signal(false);
@@ -251,6 +252,17 @@ export class MatchPage implements OnDestroy {
   protected readonly widths: Width[] = ['narrow', 'balanced', 'wide'];
   protected readonly assists: AssistPreset[] = ['assisted', 'balanced', 'manual'];
 
+  /** The two starting elevens for the intro: the formation's slots in order, with kit numbers and surnames. */
+  protected readonly lineups = computed(() => {
+    const sides = [this.homeTeam(), this.awayTeam()];
+    return sides.map((team) => ({
+      id: team?.id ?? 'none',
+      players: (team?.formation.slots ?? []).flatMap((slot) => {
+        const player = team!.players.find((candidate) => candidate.id === slot.playerId);
+        return player ? [{ id: player.id, number: player.kitNumber, name: player.lastName || player.firstName }] : [];
+      }),
+    }));
+  });
   protected readonly homeTeam = computed<Team | null>(() => {
     if (this.practiceTeams) return this.practiceTeams.home;
     const result = this.result();
@@ -310,7 +322,7 @@ export class MatchPage implements OnDestroy {
     const fixture = this.gs.nextFixture();
     if (!fixture) return 'clear';
     const roll = this.stableSeed(fixture.id) % 10;
-    return roll < 6 ? 'clear' : roll < 9 ? 'rain' : 'storm';
+    return weatherFor(roll, fixture.week, this.gs.game()?.league.totalWeeks ?? 0);
   });
   protected readonly lineupErrors = computed(() => this.validateLineup(this.controlledTeam()));
   protected readonly starters = computed(() => {
@@ -610,7 +622,8 @@ export class MatchPage implements OnDestroy {
     this.saveCheckpoint();
     this.phase.set('intro');
     this.audio.startMusic();
-    this.introTimer = setTimeout(() => this.skipIntro(), 2800);
+    // Long enough for the line-ups to run in; the intro can be skipped at any time.
+    this.introTimer = setTimeout(() => this.skipIntro(), 5200);
   }
 
   protected resumeMatch(): void {
@@ -741,7 +754,9 @@ export class MatchPage implements OnDestroy {
         this.challenge?.afterStep();
         this.currentRenderState = this.arcade.renderState(spare);
         for(const actor of this.arcade.actors) if(actor.contact?.tick===this.arcade.tick) {
-          this.audio.contact(actor.contact,Math.hypot(this.arcade.ball.vx,this.arcade.ball.vy));
+          // Placed on the pitch as the camera sees it: left to right along the pitch, flipped with the attack direction.
+          const pan=Math.max(-.7,Math.min(.7,(actor.contact.x-FIELD_LENGTH/2)/(FIELD_LENGTH/2)*this.arcade.currentAttackDirection*.7));
+          this.audio.contact(actor.contact,Math.hypot(this.arcade.ball.vx,this.arcade.ball.vy),pan);
         }
         this.fixedAccumulator -= MATCH_TICK;
         steps++;
@@ -969,10 +984,11 @@ export class MatchPage implements OnDestroy {
   }
 
   protected cycleCamera(): void {
-    const view = this.cameraView() === 'ARCADE' ? 'TV' : this.cameraView() === 'TV' ? 'TAKTIK' : 'ARCADE';
+    const order = ['ARCADE', 'TV', 'TAKTIK', 'SPIELER'] as const;
+    const view = order[(order.indexOf(this.cameraView()) + 1) % order.length];
     this.cameraView.set(view);
     if (this.arcade) {
-      this.arcade.config.camera.preset = view === 'ARCADE' ? 'arcade' : view === 'TV' ? 'tv' : 'tactic';
+      this.arcade.config.camera.preset = view === 'ARCADE' ? 'arcade' : view === 'TV' ? 'tv' : view === 'TAKTIK' ? 'tactic' : 'player';
       this.arcade.config.camera.zoom = 1;
     }
   }

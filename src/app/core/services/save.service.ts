@@ -262,6 +262,7 @@ export class SaveService {
       if (own?.players.length) room.spirit = Math.round(Math.min(100, Math.max(0, 30 + (own.players.reduce((sum, player) => sum + player.morale, 0) / own.players.length) * 0.55 + 4)));
       game.dressingRoom = room;
     }
+    game.manager.attributes.media ??= 55;
     for (const key of Object.keys(game.manager.attributes) as (keyof GameState['manager']['attributes'])[]) {
       game.manager.attributes[key] = Math.min(99, Math.max(1, Math.round(game.manager.attributes[key] ?? 55)));
     }

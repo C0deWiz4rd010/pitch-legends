@@ -104,7 +104,29 @@ export function evolveSignature(
   return { ok: true };
 }
 
-/** Adds what the signatures of the managed club's players did in a match to their career tallies. */
+/**
+ * Computer-managed clubs evolve their signatures themselves, at the turn of the season: every quest that is ready
+ * is completed, the branch at stage II chosen from the player's id (so it never changes). Returns how many evolved.
+ */
+export function autoEvolveSignatures(team: Team, at: { season: number; week: number }): number {
+  let evolved = 0;
+  for (const player of team.players) {
+    for (const state of player.dna?.signatures ?? []) {
+      const quest = signatureQuest(player, state);
+      if (!quest.ready || !quest.stage) continue;
+      const path =
+        quest.stage.to === 2
+          ? hash32(`${player.id}|${state.id}|path`) % 2 === 0
+            ? 'a'
+            : 'b'
+          : null;
+      if (evolveSignature(player, state.id, path, at).ok) evolved++;
+    }
+  }
+  return evolved;
+}
+
+/** Adds what the signatures of a club's players did in a match to their career tallies (every club's, not only the managed one). */
 export function applySignatureProgress(team: Team, result: MatchResult): void {
   for (const entry of result.signatures ?? []) {
     const player = team.players.find((candidate) => candidate.id === entry.playerId);

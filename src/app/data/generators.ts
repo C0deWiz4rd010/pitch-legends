@@ -493,6 +493,7 @@ export function generateManager(seed: number, index: number, clubId: string, exp
       leadership: playerControlled ? 55 : rng.int(45, 88),
       negotiation: playerControlled ? 55 : rng.int(45, 88),
       youthDevelopment: playerControlled ? 55 : rng.int(45, 88),
+      media: 55,
     },
     tacticalPhilosophy: playerControlled ? preferredPhilosophy ?? 'balanced' : tacticalPhilosophy,
     recruitmentPhilosophy: rng.pick(['academy', 'stars', 'value', 'athletic', 'loyalty'] as const),

@@ -6,7 +6,7 @@ import { PATH_NAMES, PATH_TEXT } from '../../data/evolutions';
 import { RARITY_DEFS } from '../../data/rarity';
 import { evolveSignature, signatureQuest, signatureTitle } from '../../core/rpg/evolution';
 import { getQuirk } from '../../data/quirks';
-import { REVEAL_EVERY, careerTotal } from '../../core/rpg/quirks';
+import { REVEAL_EVERY, careerTotal, quirkQuest, tameState } from '../../core/rpg/quirks';
 import { buildBio, chronicleLine } from '../../core/rpg/story';
 import { getSignature } from '../../data/signatures';
 import { dnaOf } from '../../core/rpg/player-dna';
@@ -29,6 +29,10 @@ import { TalentNode } from '../../data/talents';
 import { PlayerPortraitComponent } from './player-portrait.component';
 import { PlayerPaperDollComponent } from './player-paper-doll.component';
 import { MedicalService } from '../../core/services/medical.service';
+import { BOOT_LOOKS, BOOT_TYPES, BootType, bootDef, setBoot, setLook } from '../../core/rpg/equipment';
+import { respecCost, respecState, respecTalents } from '../../core/career/respec';
+import { SOCIAL_LABEL, socialRole } from '../../core/rpg/social';
+import { activeSupplier } from '../../core/career/supplier';
 
 export type SheetTab = 'overview' | 'talents' | 'signature' | 'quirks' | 'story' | 'training';
 
@@ -44,7 +48,9 @@ export class PlayerDetailComponent {
   private readonly rpg = inject(RpgService);
   private readonly medical = inject(MedicalService);
 
-  readonly playerId = input.required<string>();
+  readonly playerId = input<string>('');
+  /** A player who is not in the managed squad (market, free agents, Legends cards): the sheet is then read only. */
+  readonly external = input<Player | null>(null);
   readonly close = output<void>();
 
   protected readonly tab = signal<SheetTab>('overview');
@@ -59,7 +65,7 @@ export class PlayerDetailComponent {
 
   /** Arrow keys move between tabs, Home/End jump to the ends. */
   protected moveTab(event: KeyboardEvent, from: SheetTab): void {
-    const keys = this.tabs.map((entry) => entry.key);
+    const keys = this.visibleTabs().map((entry) => entry.key);
     const index = keys.indexOf(from);
     const next = event.key === 'ArrowRight' ? (index + 1) % keys.length
       : event.key === 'ArrowLeft' ? (index + keys.length - 1) % keys.length
@@ -136,6 +142,10 @@ export class PlayerDetailComponent {
         plus: definition ? this.i18n.pick(definition.plus[0], definition.plus[1]) : '',
         minus: definition ? this.i18n.pick(definition.minus[0], definition.minus[1]) : '',
         hint: quirk.revealed ? '' : this.i18n.pick(`Wird nach etwa ${untilNext} Einsätzen entdeckt`, `Discovered in about ${untilNext} appearances`),
+        tamed: !!quirk.tamed,
+        // The drawback can be trained away through mastery in one attribute; the quirk may also grow into a better one.
+        tame: quirk.revealed && !quirk.tamed ? ((state) => (state.open ? { label: ATTRIBUTE_LABELS[state.attribute], mastery: Math.min(state.mastery, state.target), target: state.target, percent: Math.round(Math.min(state.mastery, state.target) / state.target * 100) } : null))(tameState(player, quirk)) : null,
+        quest: ((quest) => (quest && definition?.evolve ? { target: quest.target, progress: quest.progress, percent: quest.percent, to: this.i18n.pick(getQuirk(quest.to)?.name[0] ?? quest.to, getQuirk(quest.to)?.name[1] ?? quest.to) } : null))(quirkQuest(player, quirk)),
       };
     });
   }
@@ -154,8 +164,16 @@ export class PlayerDetailComponent {
     }));
   }
 
+  /** The breakdown of an attribute is asked for several times per frame by the template: it is kept per player and state. */
+  private readonly sourceMemo = new WeakMap<Player, { stamp: string; byKey: Map<AttributeKey, AttributeSources> }>();
+
   protected sources(player: Player, key: AttributeKey): AttributeSources {
-    return attributeSources(player, key, player.position);
+    const stamp = `${player.overall}|${player.level}|${player.form}|${player.morale}|${player.fitness}|${player.traitIds.length}|${JSON.stringify(player.talentRanks)}|${player.equipment?.boot ?? ''}|${player.equipment?.tier ?? ''}`;
+    let entry = this.sourceMemo.get(player);
+    if (!entry || entry.stamp !== stamp) this.sourceMemo.set(player, (entry = { stamp, byKey: new Map() }));
+    let sources = entry.byKey.get(key);
+    if (!sources) entry.byKey.set(key, (sources = attributeSources(player, key, player.position)));
+    return sources;
   }
 
   /** Stacked bar of an attribute: base, talents, traits, training, quirks and form/morale. */
@@ -206,8 +224,23 @@ export class PlayerDetailComponent {
     return nick ? this.i18n.pick(nick[0], nick[1]) : null;
   }
 
-  protected readonly player = computed(() => this.gs.squad().find((p) => p.id === this.playerId()) ?? null);
-  protected readonly currentKit = computed(() => this.gs.playerTeam()?.visuals.kits.home ?? null);
+  protected readonly player = computed(() => {
+    const external = this.external();
+    if (external) return external;
+    const id = this.playerId();
+    const own = this.gs.squad().find((p) => p.id === id);
+    if (own) return own;
+    const game = this.gs.game();
+    return game?.teams.flatMap((team) => team.players).find((p) => p.id === id) ?? game?.transfers.freeAgents.find((p) => p.id === id) ?? null;
+  });
+  /** Only players of the managed squad can be changed from the sheet. */
+  protected readonly editable = computed(() => !this.external() && this.gs.squad().some((p) => p.id === this.playerId()));
+  protected readonly sheetTeam = computed(() => {
+    const id = this.player()?.id;
+    return (id ? this.gs.game()?.teams.find((team) => team.players.some((p) => p.id === id)) : undefined) ?? this.gs.playerTeam();
+  });
+  protected readonly currentKit = computed(() => this.sheetTeam()?.visuals.kits.home ?? null);
+  protected readonly visibleTabs = computed(() => (this.editable() ? this.tabs : this.tabs.filter((entry) => entry.key !== 'training')));
 
   protected readonly xpPercent = computed(() => {
     const p = this.player();
@@ -255,11 +288,23 @@ export class PlayerDetailComponent {
   /** Takes the next evolution step of a signature; the branch choice at stage II is final. */
   protected evolve(signatureId: string, path: 'a' | 'b' | null): void {
     const id = this.playerId();
+    const before = this.player() ? this.signatureCards(this.player()!).find((card) => card.id === signatureId) : undefined;
+    let evolved = false;
     this.gs.mutate((draft) => {
       const target = draft.teams.find((team) => team.id === draft.clubId)?.players.find((candidate) => candidate.id === id);
-      if (target) evolveSignature(target, signatureId, path, { season: draft.league.season, week: draft.league.currentWeek });
+      if (target) evolved = evolveSignature(target, signatureId, path, { season: draft.league.season, week: draft.league.currentWeek }).ok;
     });
+    const player = this.player();
+    const after = player ? this.signatureCards(player).find((card) => card.id === signatureId) : undefined;
+    // The ceremony: a before and after of the signature that just grew.
+    if (evolved && before && after) {
+      this.ceremony.set({ player: `${player!.firstName} ${player!.lastName}`, from: { name: before.name, level: before.level, power: before.power }, to: { name: after.name, level: after.level, power: after.power }, text: after.pathText || after.text });
+    }
   }
+
+  /** What the evolution ceremony shows: the signature before and after. */
+  protected readonly ceremony = signal<{ player: string; from: { name: string; level: number; power: number }; to: { name: string; level: number; power: number }; text: string } | null>(null);
+  protected readonly stageLabels = ['I', 'II', 'III'];
 
   protected unlockTrait(traitId: string): void {
     const id = this.playerId();
@@ -291,6 +336,66 @@ export class PlayerDetailComponent {
       const player = draft.teams.find((team) => team.id === draft.clubId)?.players.find((candidate) => candidate.id === id);
       if (player) this.rpg.unlockTalent(player, talentId);
     });
+  }
+
+  /** Boots with a trade-off, the look that does nothing, and the one-time talent reset of the season. */
+  protected readonly bootTypes = BOOT_TYPES;
+  protected readonly bootLooks = BOOT_LOOKS;
+  protected readonly boots = computed(() => {
+    const player = this.player();
+    const game = this.gs.game();
+    if (!player || !game) return null;
+    const def = bootDef(player.equipment?.boot);
+    return { def, look: player.equipment?.look ?? 'classic', supplier: activeSupplier(game) };
+  });
+  protected readonly respecInfo = computed(() => {
+    const player = this.player();
+    const game = this.gs.game();
+    if (!player || !game) return null;
+    return { state: respecState(player, game.league.season), cost: respecCost(game, player) };
+  });
+  protected readonly social = computed(() => {
+    const player = this.player();
+    const role = player ? socialRole(player) : null;
+    return role ? SOCIAL_LABEL[role] : null;
+  });
+  protected readonly partner = computed(() => {
+    const player = this.player();
+    const club = this.gs.playerTeam();
+    const link = player ? club?.partners?.[player.id] : undefined;
+    const partner = link ? club?.players.find((candidate) => candidate.id === link.partnerId) : undefined;
+    return partner && link ? { name: `${partner.firstName} ${partner.lastName}`, strength: Math.round(link.strength * 100) } : null;
+  });
+  protected readonly sheetMessage = signal('');
+
+  protected chooseBoot(boot: BootType): void {
+    const id = this.playerId();
+    this.gs.mutate((draft) => {
+      const player = draft.teams.find((team) => team.id === draft.clubId)?.players.find((candidate) => candidate.id === id);
+      if (player) setBoot(player, boot);
+    });
+  }
+
+  protected chooseLook(look: string): void {
+    const id = this.playerId();
+    this.gs.mutate((draft) => {
+      const player = draft.teams.find((team) => team.id === draft.clubId)?.players.find((candidate) => candidate.id === id);
+      if (player) setLook(player, look);
+    });
+  }
+
+  protected respec(): void {
+    const id = this.playerId();
+    let text = '';
+    this.gs.mutate((draft) => {
+      const result = respecTalents(draft, id);
+      text = result.ok
+        ? this.i18n.pick(`Gespräch geführt: ${result.refunded} Skillpunkte zurück${result.mood === 'grumbles' ? ', er murrt etwas.' : '.'}`, `Talk held: ${result.refunded} skill points back${result.mood === 'grumbles' ? ', he grumbles a little.' : '.'}`)
+        : result.error === 'budget' ? this.i18n.pick('Dafür fehlt das Geld.', 'You cannot afford that.')
+        : result.error === 'done' ? this.i18n.pick('Dieses Gespräch gab es schon in dieser Saison.', 'That talk already happened this season.')
+        : this.i18n.pick('Es gibt nichts zurückzunehmen.', 'There is nothing to take back.');
+    });
+    this.sheetMessage.set(text);
   }
 
   protected canUnlockTalent(talent: TalentNode): boolean {

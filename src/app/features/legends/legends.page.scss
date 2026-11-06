@@ -45,6 +45,9 @@ input, select { padding: 8px; background: var(--ink-950); color: var(--text); bo
 .empty { width: 92px; height: 70px; display: grid; place-items: center; border: 2px dashed #6aa585; color: #cfe9da; font-size: 24px; }
 .row { display: flex; flex-wrap: wrap; gap: 10px; }
 .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 10px; }
+.card-cell { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+.sheet-link { border: 1px solid var(--border); background: transparent; color: var(--text-mute); font-size: 10px; padding: 2px 8px; cursor: pointer; }
+.sheet-link:hover { border-color: var(--accent); color: var(--text); }
 .card-button { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 4px; border: 2px solid transparent; background: transparent; color: var(--text-mute); cursor: pointer; font-size: 11px; }
 .card-button.marked { border-color: var(--danger); background: rgba(255, 79, 120, 0.1); }
 .card-button.locked { opacity: .75; cursor: default; }
