@@ -124,11 +124,13 @@ describe('Signature abilities', () => {
       internals.fireSignature('ballWon', actor, null);
       const flags = () => internals.updateSignatures(actor, 0) & Cond.signature;
       expect(flags()).toBeTruthy();
-      for (let tick = 0; tick < 60 * 3 + 2; tick++) match.step(MATCH_TICK);
+      // A goal in the unattended match would freeze the clock for its replay: skip it.
+      const advance = (ticks: number) => { for (let tick = 0; tick < ticks; tick++) { if (match.phase === 'goalReplay') match.endReplay(); match.step(MATCH_TICK); } };
+      advance(60 * 3 + 2);
       expect(flags()).toBeFalsy();
       internals.fireSignature('ballWon', actor, null);
       expect(flags()).toBeFalsy();
-      for (let tick = 0; tick < 60 * 12; tick++) match.step(MATCH_TICK);
+      advance(60 * 12);
       internals.fireSignature('ballWon', actor, null);
       expect(flags()).toBeTruthy();
       expect(match.events.some((event) => event.messageKey === 'match.signature' && event.playerId === actor.player.id)).toBe(true);

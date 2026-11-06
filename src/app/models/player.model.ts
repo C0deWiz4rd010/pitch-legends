@@ -3,6 +3,7 @@ import { PlayerVisualIdentity } from './visual.model';
 import type { EffectSpec } from '../core/rpg/effects';
 import type { Rarity } from '../data/rarity';
 import type { Nickname } from '../data/nicknames';
+import type { EquipmentState } from '../core/rpg/equipment';
 
 /** A trait/perk that modifies a player's match behaviour. */
 export interface Trait {
@@ -100,9 +101,11 @@ export interface SignatureState {
 export interface QuirkState {
   id: string;
   revealed: boolean;
+  /** Trained away through mastery: the drawback no longer acts, the advantage stays. */
+  tamed?: boolean;
 }
 
-export type ChronicleKind = 'signature' | 'ascension' | 'debut' | 'firstGoal' | 'hattrick' | 'motm' | 'injury' | 'comeback' | 'level' | 'quirk' | 'evolution' | 'mastery' | 'transfer';
+export type ChronicleKind = 'signature' | 'ascension' | 'debut' | 'firstGoal' | 'hattrick' | 'motm' | 'injury' | 'comeback' | 'level' | 'quirk' | 'evolution' | 'mastery' | 'transfer' | 'tamed';
 
 /** One line of a player's career story; the text is built from kind and params in the UI language. */
 export interface ChronicleEntry {
@@ -181,6 +184,12 @@ export interface Player {
   personalGoal: PersonalGoal;
   /** Mastery, load history and match buffs from the training camp. */
   training?: PlayerTrainingState;
+  /** Boots with a trade-off (managed club only; see core/rpg/equipment.ts). */
+  equipment?: EquipmentState;
+  /** Season of the last talent respec: one per player and season. */
+  respecSeason?: number;
+  /** Club id of the academy the player came through, for duo chemistry. */
+  fromAcademy?: string;
   /** Rarity, nickname and (later) signature, quirks and story. Assigned once, never re-rolled. */
   dna?: PlayerDNA;
 

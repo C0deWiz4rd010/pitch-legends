@@ -8,11 +8,12 @@ import { WorldState } from './world.model';
 import { AcademyState, BoardState, CupState, ScoutAssignment, SeasonArchive } from './career.model';
 import { DressingRoomState } from './dressing-room.model';
 import { StaffState } from './staff.model';
+import { ChemistryState, PressState, SupplierContract } from './club-life.model';
 
 export type Difficulty = 'easy' | 'normal' | 'hard';
 export type Locale = 'de' | 'en';
 export type MatchDuration = 3 | 5 | 8;
-export type ManagerPerkPath = 'coaching' | 'tactics' | 'scouting' | 'leadership' | 'negotiation' | 'youthDevelopment';
+export type ManagerPerkPath = 'coaching' | 'tactics' | 'scouting' | 'leadership' | 'negotiation' | 'youthDevelopment' | 'media';
 export type TacticalPhilosophy = 'balanced' | 'possession' | 'gegenpress' | 'counter' | 'low-block';
 export type RecruitmentPhilosophy = 'academy' | 'stars' | 'value' | 'athletic' | 'loyalty';
 
@@ -23,8 +24,10 @@ export interface ManagerAttributes {
   leadership: number;
   negotiation: number;
   youthDevelopment: number;
+  /** Dealing with the press (version 8); a missing value counts as 55. */
+  media?: number;
 }
-export type InputAction = 'move' | 'pass' | 'through' | 'lob' | 'shoot' | 'sprint' | 'skill' | 'switch' | 'tactics' | 'keeper' | 'jockey' | 'ultimate';
+export type InputAction = 'move' | 'pass' | 'through' | 'lob' | 'shoot' | 'sprint' | 'skill' | 'switch' | 'tactics' | 'keeper' | 'jockey' | 'ultimate' | 'modifier' | 'request';
 
 export interface ControlLearningState {
   introSeen: boolean;
@@ -204,4 +207,10 @@ export interface GameState {
   staff?: StaffState;
   /** Version 8: team spirit, grievances and events of the managed club's dressing room. */
   dressingRoom?: DressingRoomState;
+  /** Version 8: the kit supplier of the managed club; absent means the basic deal. */
+  supplier?: SupplierContract;
+  /** Version 8: matches the managed club's players started together, for duo chemistry. */
+  chemistry?: ChemistryState;
+  /** Version 8: the press conference before a big match and the weeks of the last ones. */
+  press?: PressState;
 }

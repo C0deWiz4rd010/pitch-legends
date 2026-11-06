@@ -1,6 +1,7 @@
 import { ArcadeMatch } from '../src/app/core/services/arcade-match';
 import { createNewGame } from '../src/app/data/generators';
-import { MatchConfig } from '../src/app/models/match.model';
+import { EMPTY_MATCH_COMMAND, MatchConfig } from '../src/app/models/match.model';
+import { MATCH_TICK } from '../src/app/core/football/match-types';
 import { Team } from '../src/app/models/team.model';
 
 const count = Math.max(1, Number(process.argv[2]) || 500);
@@ -67,7 +68,57 @@ const report = {
 
 console.log(JSON.stringify(report, null, 2));
 
+// Tactic telemetry: the sliders must visibly move the team. Same squad, the home side changes one slider; the figures are
+// sampled every half second over a few short matches. High pressing must close the ball carrier down sooner and push the
+// team up the pitch, a wide set-up must spread the team across the pitch.
+const telemetryMatches = Math.min(count, 12);
+interface Telemetry { depth: number; pressGap: number; spread: number; samples: number }
+function measure(change: (team: Team) => void): Telemetry {
+  const side = structuredClone(home);
+  change(side);
+  const total: Telemetry = { depth: 0, pressGap: 0, spread: 0, samples: 0 };
+  let pressSamples = 0;
+  for (let index = 0; index < telemetryMatches; index++) {
+    const config: MatchConfig = {
+      mode: 'instant', controllerMode: 'auto', seed: 70_000 + index, fixtureId: `telemetry-${index}`,
+      controlledTeamId: side.id, halfMinutes: 3, difficulty: 'normal', assist: 'balanced',
+      playerLockId: null, weather: 'clear', effects, inputDevice: 'ai',
+      camera: { zoom: 1, lookAhead: 0.18, shake: false, reducedMotion: true },
+    };
+    const match = new ArcadeMatch(side, away, config);
+    let tick = 0;
+    while (!match.finished && tick < 20_000) {
+      if (match.phase === 'halftime') match.resumeSecondHalf();
+      if (match.phase === 'goalReplay') match.endReplay();
+      match.step(MATCH_TICK, EMPTY_MATCH_COMMAND);
+      if (++tick % 30 !== 0) continue;
+      const direction = match.attackDirection('home');
+      const outfield = match.actors.filter((actor) => actor.active && actor.side === 'home' && actor.player.positionGroup !== 'GK');
+      if (!outfield.length) continue;
+      total.depth += outfield.reduce((sum, actor) => sum + (direction > 0 ? actor.x : 105 - actor.x), 0) / outfield.length;
+      const ys = outfield.map((actor) => actor.y);
+      const meanY = ys.reduce((sum, y) => sum + y, 0) / ys.length;
+      total.spread += Math.sqrt(ys.reduce((sum, y) => sum + (y - meanY) ** 2, 0) / ys.length);
+      total.samples++;
+      const owner = match.actors.find((actor) => actor.player.id === match.ball.ownerId);
+      if (owner && owner.side === 'away') {
+        total.pressGap += Math.min(...outfield.map((actor) => Math.hypot(actor.x - owner.x, actor.y - owner.y)));
+        pressSamples++;
+      }
+    }
+  }
+  return { depth: total.depth / Math.max(1, total.samples), spread: total.spread / Math.max(1, total.samples), pressGap: total.pressGap / Math.max(1, pressSamples), samples: total.samples };
+}
+const low = measure((team) => { team.tactics.pressing = 'low'; team.tactics.defensiveLine = 'deep'; });
+const high = measure((team) => { team.tactics.pressing = 'gegenpress'; team.tactics.defensiveLine = 'high'; });
+const narrow = measure((team) => { team.tactics.width = 'narrow'; });
+const wide = measure((team) => { team.tactics.width = 'wide'; });
+console.log(JSON.stringify({ tacticTelemetry: { matches: telemetryMatches, lowPress: low, highPress: high, narrow, wide } }, null, 2));
+
 const failures = [
+  high.pressGap < low.pressGap - 0.25 ? '' : 'high pressing must close the carrier down at least 0.25 m closer than low pressing',
+  high.depth > low.depth + 1.5 ? '' : 'a high line with gegenpress must sit at least 1.5 m higher up the pitch than a deep line',
+  wide.spread > narrow.spread + 1 ? '' : 'a wide set-up must spread the team at least 1 m more across the pitch than a narrow one',
   inRange(report.averageGoals, 2.2, 3.4) ? '' : 'averageGoals must be 2.2-3.4',
   inRange(report.averageShotsPerTeam, 8, 18) ? '' : 'averageShotsPerTeam must be 8-18',
   inRange(report.averagePassAccuracy, 65, 88) ? '' : 'averagePassAccuracy must be 65-88',

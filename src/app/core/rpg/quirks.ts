@@ -1,6 +1,9 @@
 import { RARITIES, RARITY_DEFS, Rarity } from '../../data/rarity';
 import { QuirkStat, getQuirk, rollableQuirks } from '../../data/quirks';
+import { ATTRIBUTE_KEYS, AttributeKey } from '../../models/enums';
 import { Player, QuirkState } from '../../models/player.model';
+import { EffectHook, EffectSpec } from './effects';
+import { CORE_ATTRIBUTE } from './training-rules';
 import { Rng } from '../util';
 import { hash32 } from '../visual-identity';
 
@@ -77,6 +80,7 @@ export function evolveQuirks(player: Player): { from: string; to: string }[] {
     changes.push({ from: quirk.id, to: evolve.to });
     quirk.id = evolve.to;
     quirk.revealed = true;
+    delete quirk.tamed;
   }
   return changes;
 }
@@ -113,4 +117,120 @@ export function inheritQuirk(
   const id = options[rng.int(0, options.length - 1)];
   quirks.push({ id, revealed: false });
   return id;
+}
+
+/** Hooks where a lower value is the better one: a multiplier above 1 or an addition above 0 is a drawback there. */
+const LOWER_IS_BETTER = new Set<EffectHook>([
+  'shotError',
+  'passError',
+  'staminaDrain',
+  'injuryRisk',
+  'composure',
+]);
+
+/** The attribute whose training addresses a derived hook; attributes address themselves. */
+const HOOK_ATTRIBUTE: Partial<Record<EffectHook, AttributeKey>> = {
+  shotError: 'shooting',
+  shotPower: 'shooting',
+  curve: 'shooting',
+  composure: 'shooting',
+  passError: 'passing',
+  throughLead: 'passing',
+  firstTouch: 'dribbling',
+  acceleration: 'pace',
+  sprintBurst: 'pace',
+  tackleWin: 'defending',
+  pressTackle: 'defending',
+  shielding: 'physical',
+  aerial: 'physical',
+  staminaDrain: 'stamina',
+  staminaRecovery: 'stamina',
+  injuryRisk: 'physical',
+  keeperReaction: 'goalkeeping',
+  keeperReach: 'goalkeeping',
+};
+
+/** True when an effect hurts the player: a loss of an attribute, a rise in an error rate, a drop in a chance. */
+export function isDrawback(effect: EffectSpec): boolean {
+  const lowerIsBetter = LOWER_IS_BETTER.has(effect.hook);
+  if (effect.op === 'add') return lowerIsBetter ? effect.value > 0 : effect.value < 0;
+  return lowerIsBetter ? effect.value > 1 : effect.value < 1;
+}
+
+/** The effects a quirk has right now: all of them, or only the advantages once the quirk is tamed. */
+export function quirkEffects(state: QuirkState): EffectSpec[] {
+  const effects = getQuirk(state.id)?.effects ?? [];
+  return state.tamed ? effects.filter((effect) => !isDrawback(effect)) : effects;
+}
+
+/** The attribute a player trains to get a quirk under control: the one its first drawback hits. */
+export function tamingAttribute(player: Pick<Player, 'positionGroup'>, quirkId: string): AttributeKey {
+  const drawback = (getQuirk(quirkId)?.effects ?? []).find(isDrawback);
+  const hook = drawback?.hook;
+  if (hook) {
+    if ((ATTRIBUTE_KEYS as string[]).includes(hook)) return hook as AttributeKey;
+    const mapped = HOOK_ATTRIBUTE[hook];
+    if (mapped) return mapped;
+  }
+  return CORE_ATTRIBUTE[player.positionGroup];
+}
+
+/** Mastery (0..100) in that attribute at which the drawback of a quirk is gone for good. */
+export const TAME_MASTERY = 80;
+
+export interface TameState {
+  attribute: AttributeKey;
+  mastery: number;
+  target: number;
+  /** The quirk has a drawback that can still be trained away. */
+  open: boolean;
+}
+
+export function tameState(player: Player, quirk: QuirkState): TameState {
+  const attribute = tamingAttribute(player, quirk.id);
+  const effects = getQuirk(quirk.id)?.effects ?? [];
+  return {
+    attribute,
+    mastery: player.training?.mastery[attribute] ?? 0,
+    target: TAME_MASTERY,
+    open: !quirk.tamed && effects.some(isDrawback),
+  };
+}
+
+/** Revealed quirks whose drawback the player has trained away. Call after mastery changed; returns the new ones. */
+export function tameQuirks(player: Player): QuirkState[] {
+  const tamed: QuirkState[] = [];
+  for (const quirk of player.dna?.quirks ?? []) {
+    if (!quirk.revealed) continue;
+    const state = tameState(player, quirk);
+    if (state.open && state.mastery >= state.target) {
+      quirk.tamed = true;
+      tamed.push(quirk);
+    }
+  }
+  return tamed;
+}
+
+export interface QuirkQuest {
+  to: string;
+  stat: QuirkStat;
+  progress: number;
+  target: number;
+  percent: number;
+  ready: boolean;
+}
+
+/** Progress of a quirk towards its evolution, in the same shape the signature quest uses. */
+export function quirkQuest(player: Player, quirk: QuirkState): QuirkQuest | null {
+  const evolve = quirk.revealed ? getQuirk(quirk.id)?.evolve : undefined;
+  if (!evolve) return null;
+  const progress = careerTotal(player, evolve.stat);
+  return {
+    to: evolve.to,
+    stat: evolve.stat,
+    progress: Math.min(progress, evolve.target),
+    target: evolve.target,
+    percent: Math.min(100, Math.round((progress / evolve.target) * 100)),
+    ready: progress >= evolve.target,
+  };
 }

@@ -21,7 +21,9 @@ export type DerivedHook =
   | 'composure'
   | 'xpGain'
   | 'injuryRisk'
-  | 'growthChance';
+  | 'growthChance'
+  /** Strength (0..1) of the bond with the duo partner; the engine reads it when the ball goes between the two. */
+  | 'linkPartner';
 
 export type EffectHook = AttributeKey | DerivedHook;
 
@@ -46,6 +48,7 @@ const DERIVED_HOOKS: DerivedHook[] = [
   'xpGain',
   'injuryRisk',
   'growthChance',
+  'linkPartner',
 ];
 
 export const HOOK_COUNT = DERIVED_HOOKS.length;
@@ -72,6 +75,7 @@ export const HK = {
   xpGain: 17,
   injuryRisk: 18,
   growthChance: 19,
+  linkPartner: 20,
 } as const;
 
 export function hookName(index: number): DerivedHook {
@@ -87,7 +91,15 @@ export const HOOK_BIT = Object.fromEntries(
 ) as Record<DerivedHook, number>;
 
 export type ModifierSourceKind =
-  'trait' | 'talent' | 'signature' | 'quirk' | 'state' | 'training' | 'form';
+  | 'trait'
+  | 'talent'
+  | 'signature'
+  | 'quirk'
+  | 'state'
+  | 'training'
+  | 'form'
+  | 'equipment'
+  | 'chemistry';
 
 export interface ModifierSource {
   kind: ModifierSourceKind;
@@ -143,6 +155,8 @@ export const EFFECT_CAPS: Partial<Record<EffectHook, EffectCap>> = {
   keeperReach: { add: [-0.2, 0.35], mul: [0.9, 1.2] },
   staminaRecovery: { add: [-0.02, 0.05], mul: [0.5, 2] },
   composure: { add: [-0.2, 0.15], mul: [0.75, 1.25] },
+  // A duo bond is a strength between 0 and 1; what it does to passes and touches is capped in partners.ts.
+  linkPartner: { add: [0, 1], mul: [1, 1] },
 };
 
 export function capFor(hook: EffectHook, isAttribute: boolean): EffectCap {

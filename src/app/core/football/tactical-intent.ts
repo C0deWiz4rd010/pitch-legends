@@ -129,6 +129,10 @@ export function tacticalIntent(actor: ArcadeActor, owner: ArcadeActor | undefine
     }
     depth += clamp((ballDepth-FIELD_LENGTH/2)*.35,-13*sx,9*sx);
     depth = Math.min(depth, Math.max(12*sx, ballDepth-5*sx));
+    // Recovery run: whoever was ahead of the ball when it was lost races back behind it (the long way home makes him sprint).
+    if (reads && owner && actor.player.positionGroup !== 'GK' && homeDepth < ballDepth + 6 * sx && (direction > 0 ? actor.x : FIELD_LENGTH - actor.x) > ballDepth + 4 * sx) {
+      depth = Math.min(depth, Math.max(10 * sx, ballDepth - 9 * sx));
+    }
     const threat = instruction.marking !== 'zonal' ? frame.marks.get(actor.player.id) : undefined;
     if (threat) {
       const gap = instruction.marking === 'aggressive' ? 1.2 : 2.5;
@@ -171,6 +175,20 @@ export function tacticalIntent(actor: ArcadeActor, owner: ArcadeActor | undefine
       if (role==='f9') {depth=ballDepth+3*sx;y=FIELD_WIDTH/2;}
       if (role==='tm') {depth=ballDepth+12*sx;y=FIELD_WIDTH/2+(actor.homeY-FIELD_WIDTH/2)*.4;}
       if (role==='poacher') {depth+=7*sx;y=FIELD_WIDTH/2+(actor.homeY-FIELD_WIDTH/2)*.35;}
+      if (reads && owner && owner !== actor && actor.player.positionGroup !== 'DEF' && actor.player.positionGroup !== 'GK' && ballDepth > 30 * sx && ballDepth < 82 * sx && !['f9', 'tm', 'poacher', 'anchor', 'dlp'].includes(role)) {
+        // Third man: the second-nearest option to the carrier, once a first outlet exists, runs beyond the ball into the space the first pass opens.
+        // Attackers without a special role also form a triangle: wide of the carrier, ahead of him.
+        let nearer = 0;
+        const own = len2(actor.x - owner.x, actor.y - owner.y);
+        for (const mate of teammates) if (mate !== actor && mate !== owner && len2(mate.x - owner.x, mate.y - owner.y) < own) nearer++;
+        if (nearer === 1 && actor.player.positionGroup === 'MID') {
+          depth = ballDepth + 13 * sx + duty;
+          y = clamp(owner.y + (actor.y >= owner.y ? 1 : -1) * 10 * sy, 5 * sy, FIELD_WIDTH - 5 * sy);
+        } else if (actor.player.positionGroup === 'ATT' && nearer < 3) {
+          depth = ballDepth + 10 * sx + duty;
+          y = clamp(owner.y + (actor.homeY < owner.y ? -1 : 1) * 12 * sy, 5 * sy, FIELD_WIDTH - 5 * sy);
+        }
+      }
       if (reads && owner && owner !== actor && actor.player.positionGroup === 'DEF') {
         const flank = Math.sign(actor.homeY - FIELD_WIDTH / 2);
         const wide = Math.abs(actor.homeY - FIELD_WIDTH / 2) > 16 * sy;

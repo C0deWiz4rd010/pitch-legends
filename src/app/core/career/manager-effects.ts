@@ -7,7 +7,7 @@ export const PERK_ATTRIBUTE_STEP = 2;
 /** An attribute with the perk ranks of its path added: this is what all effects of the manager read. */
 export function managerAttribute(manager: ManagerProfile, key: keyof ManagerAttributes): number {
   const rank = manager.perks[key as ManagerPerkPath] ?? 0;
-  return clamp(manager.attributes[key] + rank * PERK_ATTRIBUTE_STEP, 1, 99);
+  return clamp((manager.attributes[key] ?? 55) + rank * PERK_ATTRIBUTE_STEP, 1, 99);
 }
 
 export function hasManagerTrait(manager: ManagerProfile, trait: string): boolean {

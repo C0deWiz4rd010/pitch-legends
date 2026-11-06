@@ -5,8 +5,10 @@ import { PlayerRuntimeSnapshot } from '../../models/match.model';
 import { hash32 } from '../../core/visual-identity';
 import { blendJointSkin } from './joint-skinning';
 import { createLimbSurface } from './limb-surface';
-import { ACTION_DURATION_TICKS } from '../../core/football/action-timing';
+import { ACTION_CONTACT_TICKS, ACTION_DURATION_TICKS } from '../../core/football/action-timing';
 import { advanceGait, GaitMemory, newGait, strideFor, turnStepAmount } from './animation/locomotion';
+import { blendSecondsFor, limpLoad } from './animation/kick-phase';
+import { poseBicycleKick, poseFakeShot, poseFlyingHeader, poseKeeperPunch, poseKeeperSmother, poseKick, poseWallJump } from './animation/action-poses';
 import { boneSlot, clipSet, ClipSet, sampleLocomotion, sampleSingle } from './animation/clip-store';
 
 const SKIN = ['#f5d0a9', '#e9b989', '#d99a68', '#bf7b50', '#9b5c3d', '#75422f', '#573126', '#35221f'];
@@ -353,7 +355,7 @@ export function placeFoot(model: ProceduralFootballer, side: 'left' | 'right', x
 }
 
 /** Actions whose pose covers the whole body; the baked locomotion must not be laid under them. */
-const NO_CLIP_ACTIONS: ReadonlySet<string> = new Set(['slide', 'injured', 'celebrate']);
+const NO_CLIP_ACTIONS: ReadonlySet<string> = new Set(['slide', 'injured', 'celebrate', 'bicycle-kick', 'flying-header']);
 const CLIP_UPPER_BODY = ['spine', 'chest', 'head', 'leftArm', 'leftForearm', 'rightArm', 'rightForearm'] as const;
 const CLIP_FRAME: { data: Float32Array | null } = { data: null };
 const CLIP_QUATERNION = new THREE.Quaternion(), CLIP_LEAN = new THREE.Quaternion(), AXIS_Z = new THREE.Vector3(0, 0, 1);
@@ -410,12 +412,13 @@ function poseFromClip(model: ProceduralFootballer, set: ClipSet, name: string, a
 }
 
 /** Continuous, distance-driven locomotion and simulation-timed action poses. */
-const KICK_ACTIONS: ReadonlySet<string> = new Set(['pass', 'through-pass', 'lob', 'shot', 'low-shot', 'finesse-shot', 'chip-shot', 'keeper-kick', 'knock-on']);
+const KICK_ACTIONS: ReadonlySet<string> = new Set(['pass', 'through-pass', 'lob', 'shot', 'low-shot', 'finesse-shot', 'chip-shot', 'keeper-kick', 'knock-on', 'volley']);
 const BLEND_SECONDS = 0.14;
 const BLEND_TARGET = new THREE.Quaternion();
 // Scratch for keeper and contact IK, which run every frame for several players.
 const KEEPER_TARGET = new THREE.Vector3();
 const CATCH_POINT = new THREE.Vector3(0, 1.10, .35);
+const SMOTHER_POINT = new THREE.Vector3(0, 0.30, .42);
 const IK_ORIGIN = new THREE.Vector3(), IK_DESTINATION = new THREE.Vector3(), IK_DELTA = new THREE.Vector3();
 const IK_POLE = new THREE.Vector3(), IK_ELBOW = new THREE.Vector3(), IK_LOCAL = new THREE.Vector3(), IK_CHILD = new THREE.Vector3();
 const IK_OLD_ARM = new THREE.Quaternion(), IK_OLD_ELBOW = new THREE.Quaternion();
@@ -457,7 +460,28 @@ function jointList(model: ProceduralFootballer): THREE.Bone[] {
   return list;
 }
 
-export function poseFootballer(model: ProceduralFootballer, state: PlayerRuntimeSnapshot, tick: number, time: number, reducedMotion = false, chargePower = 0, lookAt?: { x: number; y: number }): void {
+/**
+ * Which foot kicks: the one that touches the ball when the simulation says so, otherwise the foot on the side the ball is on
+ * when it clearly lies to one side, otherwise the strong foot.
+ */
+export function kickingFoot(model: ProceduralFootballer, state: PlayerRuntimeSnapshot, lookAt?: { x: number; y: number }): 'left' | 'right' {
+  const contact = state.contact;
+  if (contact && contact.kind === 'foot' && contact.tick >= state.actionStartedTick) return contact.foot;
+  if (lookAt) {
+    const lateral = (lookAt.x - state.x) * state.facingY - (lookAt.y - state.y) * state.facingX;
+    if (Math.abs(lateral) > 0.35 && Math.hypot(lookAt.x - state.x, lookAt.y - state.y) < 1.6) return lateral > 0 ? 'left' : 'right';
+  }
+  return model.footedness > 0 ? 'right' : 'left';
+}
+
+/** Which leg of this figure is hurt when he limps (stable per figure). */
+export function hurtLeg(model: ProceduralFootballer): 'left' | 'right' { return model.recipe.seed % 2 ? 'left' : 'right'; }
+
+/**
+ * `limp` is a render-only 0 to 1 flag (the renderer reads it from the match, the simulation and its hashes never see it):
+ * the hurt leg drags, the body drops and leans onto the other leg.
+ */
+export function poseFootballer(model: ProceduralFootballer, state: PlayerRuntimeSnapshot, tick: number, time: number, reducedMotion = false, chargePower = 0, lookAt?: { x: number; y: number }, limp = 0): void {
   const j = model.joints;
   const memory = poseMemory(model);
   const speed = Math.hypot(state.vx, state.vy);
@@ -482,8 +506,12 @@ export function poseFootballer(model: ProceduralFootballer, state: PlayerRuntime
   // A slow player who turns steps on the spot instead of rotating with his feet nailed to the turf.
   const cycle = advanceGait(memory.gait, state.animationDistance ?? 0, speed, model.recipe.height, speed < 1 ? Math.abs(turnAngle) * 0.28 : 0);
   const phase = cycle * TAU;
-  const age = Math.max(0, (tick - state.actionStartedTick) / 60);
+  const ticks = Math.max(0, tick - state.actionStartedTick);
+  const age = ticks / 60;
   const actionDuration = (ACTION_DURATION_TICKS[state.action] ?? 12) / 60;
+  const contactTicks = ACTION_CONTACT_TICKS[state.action] ?? 0;
+  const limping = limp > 0 && (state.action === 'idle' || state.action === 'formation' || state.action === 'jog' || state.action === 'sprint' || state.action === 'carry' || state.action === 'press' || state.action === 'support-press' || state.action === 'jockey');
+  const hurt = hurtLeg(model);
   const breath = reducedMotion ? 0 : Math.sin(time * 2.2 + model.recipe.seed % 11) * 0.005;
   for (const joint of jointList(model)) joint.rotation.set(0, 0, 0);
   const moving = Math.max(Math.min(1, speed / 0.8), turnStepAmount(memory.yawRate, speed));
@@ -515,7 +543,8 @@ export function poseFootballer(model: ProceduralFootballer, state: PlayerRuntime
     // During stance, d(forward)/d(distance) = -1: the foot stays on the turf.
     const swing = Math.max(0, (t - 0.25) / 0.75);
     const travel = t < 0.25 ? stanceHalf - t * stride : -stanceHalf * Math.cos(swing * Math.PI);
-    const lift = t < 0.25 ? 0 : Math.sin(swing * Math.PI) * (0.07 + run * 0.19);
+    // A hurt leg barely leaves the ground: the stance is kept (no sliding), the swing is cut short.
+    const lift = (t < 0.25 ? 0 : Math.sin(swing * Math.PI) * (0.07 + run * 0.19)) * (limping && side === hurt ? 1 - 0.8 * limp : 1);
     placeFoot(model, side, sign * 0.108 + travel * sideVelocity * moving,
       0.11 + lift * moving, travel * forwardVelocity * moving);
     j[`${side}Arm`].rotation.x = Math.sin(phase + (side === 'left' ? 0 : Math.PI)) * 0.58 * run;
@@ -523,16 +552,38 @@ export function poseFootballer(model: ProceduralFootballer, state: PlayerRuntime
     j[`${side}Forearm`].rotation.x = -0.22 - run * 0.78;
   }
   if (clips && !NO_CLIP_ACTIONS.has(state.action)) applyClipLocomotion(model, memory, clips, speed, forwardVelocity, cycle, time, elapsed, j.spine.rotation.z);
+  if (limping) {
+    // The body drops onto the hurt leg while it carries the weight and leans away from it; the head hangs a little.
+    const load = limpLoad(cycle, hurt === 'left' ? 0 : 0.5) * Math.max(moving, 0.35);
+    const hurtSign = hurt === 'left' ? 1 : -1;
+    j.hips.position.y -= 0.05 * limp * load;
+    j.hips.rotation.z += hurtSign * 0.07 * limp * load;
+    j.spine.rotation.z += -hurtSign * 0.12 * limp * (0.4 + 0.6 * load);
+    j.spine.rotation.x += 0.07 * limp;
+    j.head.rotation.x += 0.12 * limp;
+  }
   const kick = KICK_ACTIONS.has(state.action);
   const kickEnd = Math.min(.50, actionDuration);
-  if (kick && age < kickEnd) {
+  const kickLeg = kickingFoot(model, state, lookAt);
+  if (kick && contactTicks > 0 && ticks < (ACTION_DURATION_TICKS[state.action] ?? 12)) {
+    // Wind-up, strike at the simulated contact tick, follow-through.
+    poseKick(model, state.action, kickLeg, ticks, contactTicks, ACTION_DURATION_TICKS[state.action] ?? 12);
+  } else if (state.action === 'fake-shot') {
+    poseFakeShot(model, kickLeg, ticks, ACTION_DURATION_TICKS['fake-shot'] ?? 22);
+  } else if (state.action === 'bicycle-kick') {
+    poseBicycleKick(model, kickLeg, ticks, contactTicks || 10, ACTION_DURATION_TICKS['bicycle-kick'] ?? 44);
+  } else if (state.action === 'flying-header') {
+    poseFlyingHeader(model, ticks, contactTicks || 12, ACTION_DURATION_TICKS['flying-header'] ?? 36, state.contact?.kind === 'head' ? state.contact.z : state.actionTarget?.z ?? 1.0);
+  } else if (state.action === 'wall-jump') {
+    poseWallJump(model, ticks, ACTION_DURATION_TICKS['wall-jump'] ?? 24);
+  } else if (kick && age < kickEnd) {
     const action = state.action;
     const passLike = action === 'pass' || action === 'through-pass' || action === 'knock-on';
     const strike = action === 'shot' || action === 'low-shot' || action === 'keeper-kick';
     const strength = action === 'knock-on' ? 0.45 : passLike ? 0.75 : 1;
     const weight=1-THREE.MathUtils.smoothstep(age,Math.min(.17,kickEnd*.4),kickEnd);
     const extension=Math.sin(Math.min(1,age/.36)*Math.PI)*strength;
-    const side=model.footedness>0?'right':'left', other=side==='right'?'left':'right';
+    const side=kickLeg, other=side==='right'?'left':'right';
     const thigh=j[`${side}Thigh`],shin=j[`${side}Shin`],foot=j[`${side}Foot`];
     // Follow-through height: strikes swing high, chips stab short, crosses wrap round.
     const follow = strike ? 1.05 : action === 'chip-shot' ? 0.35 : action === 'lob' ? 0.85 : 0.66;
@@ -540,11 +591,12 @@ export function poseFootballer(model: ProceduralFootballer, state: PlayerRuntime
     shin.rotation.x=THREE.MathUtils.lerp(shin.rotation.x,(action === 'chip-shot' ? .55 : .24)*(1-extension),weight);
     foot.rotation.x=THREE.MathUtils.lerp(foot.rotation.x,.22,weight);
     // Inside-foot passes and finesse shots open the foot; driven strikes keep the laces down.
-    if (passLike || action === 'finesse-shot') foot.rotation.y = -model.footedness * 0.55 * extension * weight;
+    const footSign = side === 'right' ? 1 : -1;
+    if (passLike || action === 'finesse-shot') foot.rotation.y = -footSign * 0.55 * extension * weight;
     // Standing leg bends and plants; the opposite arm swings through for balance.
     j[`${other}Shin`].rotation.x += (strike ? .28 : .16) * weight;
     j.spine.rotation.x+=(action === 'chip-shot' ? -.12 : strike ? .24 : .18)*extension*weight;
-    j.chest.rotation.y-=model.footedness*extension*(action === 'lob' ? .45 : .32)*weight;
+    j.chest.rotation.y-=footSign*extension*(action === 'lob' ? .45 : .32)*weight;
     j.leftArm.rotation.z+=.55*weight;j.rightArm.rotation.z-=.55*weight;
     j[`${other}Arm`].rotation.x += (strike ? -.7 : -.35) * extension * weight;
   } else if(chargePower>.01) {
@@ -647,7 +699,8 @@ export function poseFootballer(model: ProceduralFootballer, state: PlayerRuntime
     } else j.head.rotation.x += 0.25;
   }
   // Cross-fade into the new action; contact and keeper IK below stay exact.
-  const blend = memory.blendStart >= 0 ? THREE.MathUtils.smoothstep(time - memory.blendStart, 0, BLEND_SECONDS) : 1;
+  // Kicks with a wind-up cross-fade quickly; a long blend would smear the swing out before the foot reaches the ball.
+  const blend = memory.blendStart >= 0 ? THREE.MathUtils.smoothstep(time - memory.blendStart, 0, blendSecondsFor(contactTicks, BLEND_SECONDS)) : 1;
   if (blend < 1) {
     const joints = jointList(model);
     // slerpQuaternions would alias its target with the second argument; blend through a temporary.
@@ -702,6 +755,18 @@ export function poseFootballer(model: ProceduralFootballer, state: PlayerRuntime
       const weight=1-THREE.MathUtils.smoothstep(age,.15,.45);
       j.rightArm.rotation.x=-1.3*weight;j.rightForearm.rotation.x=-.25*weight;
       j.chest.rotation.y=-.32*weight;
+    } else if(state.action==='keeper-punch') {
+      // Two fists: the simulation's hand contact says when the ball is hit, without one the punch lands after a spring.
+      const hit=state.contact?.kind==='hand'?Math.max(0,state.contact.tick-state.actionStartedTick):7;
+      const reach=poseKeeperPunch(model,ticks,ACTION_DURATION_TICKS['keeper-punch'] ?? 34,hit);
+      pointHand(model,'left',target,reach,.08);
+      pointHand(model,'right',target,reach,-.08);
+    } else if(state.action==='keeper-smother') {
+      const gather=poseKeeperSmother(model,ticks,ACTION_DURATION_TICKS['keeper-smother'] ?? 40);
+      // Reach down to the ball first, then fold the arms round it in front of the chest.
+      target.lerp(SMOTHER_POINT,gather);
+      pointHand(model,'left',target,1,.10);
+      pointHand(model,'right',target,1,-.10);
     }
   }
   const contact = state.contact;
@@ -710,13 +775,17 @@ export function poseFootballer(model: ProceduralFootballer, state: PlayerRuntime
     const forward = dx * state.facingX + dy * state.facingY - 0.31;
     const lateral = dx * state.facingY - dy * state.facingX;
     const distance = Math.hypot(forward, lateral);
-    if (distance < maximumReach * 0.85) {
+    // A ball in the air (volley) is met with a raised ankle; on the ground it is the old ankle height of 11 cm.
+    const ankle = Math.min(maximumReach * 0.7, Math.max(0.11, contact.z - 0.08));
+    const raised = ankle > 0.2;
+    const reachable = raised ? Math.hypot(forward, lateral, Math.max(0, j.hips.position.y - ankle)) < maximumReach * 0.97 : distance < maximumReach * 0.85;
+    if (state.action !== 'bicycle-kick' && reachable) {
       const weight = Math.max(0, 1 - (tick - contact.tick) / 9);
       const targetDrop = Math.sqrt(Math.max(0.2, maximumReach * maximumReach - distance * distance));
-      j.hips.position.y = Math.min(j.hips.position.y, 0.11 + targetDrop);
+      if (!raised) j.hips.position.y = Math.min(j.hips.position.y, 0.11 + targetDrop);
       const thigh = j[`${contact.foot}Thigh`], shin = j[`${contact.foot}Shin`], foot = j[`${contact.foot}Foot`];
       CONTACT_OLD[0].copy(thigh.quaternion); CONTACT_OLD[1].copy(shin.quaternion); CONTACT_OLD[2].copy(foot.quaternion);
-      placeFoot(model, contact.foot, lateral, 0.11, forward);
+      placeFoot(model, contact.foot, lateral, ankle, forward);
       thigh.quaternion.copy(CONTACT_OLD[0].slerp(thigh.quaternion, weight));
       shin.quaternion.copy(CONTACT_OLD[1].slerp(shin.quaternion, weight));
       foot.quaternion.copy(CONTACT_OLD[2].slerp(foot.quaternion, weight));
@@ -802,7 +871,7 @@ function pointHand(model:ProceduralFootballer,side:'left'|'right',target:THREE.V
  * The figure runs straight along +Z at `speed`; a foot counts as planted while it is in the stance part of its
  * cycle in both of two consecutive poses. The Player Studio and the tests use it to catch foot sliding.
  */
-export function measureFootSlide(model: ProceduralFootballer, base: PlayerRuntimeSnapshot, speed: number, step = 0.05, samples = 120): number {
+export function measureFootSlide(model: ProceduralFootballer, base: PlayerRuntimeSnapshot, speed: number, step = 0.05, samples = 120, limp = 0): number {
   const memory = poseMemory(model);
   memory.gait = newGait();
   const world = new THREE.Vector3();
@@ -813,7 +882,7 @@ export function measureFootSlide(model: ProceduralFootballer, base: PlayerRuntim
     const distance = i * step;
     model.mesh.position.set(0, 0, distance);
     model.mesh.updateMatrixWorld(true);
-    poseFootballer(model, { ...base, vx: 0, vy: speed, facingX: 0, facingY: 1, animationDistance: distance, action: 'jog' }, 60, 1 + distance / Math.max(speed, 0.1), true);
+    poseFootballer(model, { ...base, vx: 0, vy: speed, facingX: 0, facingY: 1, animationDistance: distance, action: 'jog' }, 60, 1 + distance / Math.max(speed, 0.1), true, 0, undefined, limp);
     model.mesh.updateMatrixWorld(true);
     const cycle = memory.gait.cycle;
     const current = feet.map((foot, index) => {

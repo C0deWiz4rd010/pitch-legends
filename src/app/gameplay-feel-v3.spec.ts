@@ -148,8 +148,8 @@ describe('Phase 1 – control and reaction', () => {
     const aim = { aimX: match.currentAttackDirection, aimY: 0 };
     for (let i = 0; i < 10; i++) match.step(MATCH_TICK, command({ pass: true, ...aim }));
     expect(match.selectedPlayerId).toBe(passer.player.id);
-    match.step(MATCH_TICK, command(aim));
-    // No 12-tick wait: the stick already steers the receiver.
+    // The ball leaves after the wind-up (three ticks), and the receiver is chosen in that very tick, not after 12.
+    for (let i = 0; i < 4; i++) match.step(MATCH_TICK, command(aim));
     expect(match.ball.ownerId).toBeNull();
     expect(match.selectedPlayerId).toBe(receiver.player.id);
   });

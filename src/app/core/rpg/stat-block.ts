@@ -1,11 +1,13 @@
 import { ATTRIBUTE_KEYS, AttributeKey } from '../../models/enums';
 import { Player } from '../../models/player.model';
-import { getTalent } from '../../data/talents';
+import { getTalent, unlockedActions } from '../../data/talents';
 import { getQuirk } from '../../data/quirks';
 import { getTrait } from '../../data/traits';
 import { computeOverall, positionFamiliarity } from '../ratings';
 import { clamp } from '../util';
 import { condMatches } from './conditions';
+import { equipmentEffects } from './equipment';
+import { quirkEffects } from './quirks';
 import { ULTIMATE_EFFECTS, scaleEffect, signatureEffects } from './signatures';
 import {
   DerivedHook,
@@ -21,6 +23,8 @@ import {
 export interface StatContext {
   /** Formation slot the player fills; out-of-position players lose some sharpness. */
   slotPosition?: string;
+  /** The player's duo partner and the strength of the bond (see partners.ts); only the managed club has one. */
+  partner?: { id: string; strength: number };
 }
 
 /** One line of the "why is my shot 78?" breakdown. */
@@ -54,6 +58,10 @@ export interface StatBlock {
   flagMask: number;
   /** Bit of every modified derived hook (see HOOK_BIT); a hook without its bit needs no lookup. */
   hookMask: number;
+  /** Match actions the player's talents unlock (ids from data/actions.ts); read them through `canUse`. */
+  actions?: string[];
+  /** The duo partner, when the career has assigned one (`linkPartner` then carries the strength). */
+  partnerId?: string;
 }
 
 const IS_ATTRIBUTE = new Set<string>(ATTRIBUTE_KEYS);
@@ -103,7 +111,7 @@ export function buildStatBlock(player: Player, context: StatContext = {}): StatB
     }
   }
   for (const quirk of player.dna?.quirks ?? []) {
-    for (const effect of getQuirk(quirk.id)?.effects ?? []) {
+    for (const effect of quirkEffects(quirk)) {
       if (isFlatBonus(effect)) raw[effect.hook as AttributeKey] += effect.value;
     }
   }
@@ -147,10 +155,24 @@ export function buildStatBlock(player: Player, context: StatContext = {}): StatB
     }
   }
   for (const quirk of player.dna?.quirks ?? []) {
-    for (const effect of getQuirk(quirk.id)?.effects ?? []) {
+    for (const effect of quirkEffects(quirk)) {
       if (!isFlatBonus(effect))
         (mods[effect.hook] ??= []).push({ ...effect, source: { kind: 'quirk', id: quirk.id } });
     }
+  }
+  for (const effect of equipmentEffects(player.equipment)) {
+    (mods[effect.hook] ??= []).push({
+      ...effect,
+      source: { kind: 'equipment', id: player.equipment!.boot },
+    });
+  }
+  if (context.partner && context.partner.strength > 0) {
+    (mods.linkPartner ??= []).push({
+      hook: 'linkPartner',
+      op: 'add',
+      value: context.partner.strength,
+      source: { kind: 'chemistry', id: context.partner.id },
+    });
   }
   if (player.dna?.rarity === 'mythic') {
     for (const effect of ULTIMATE_EFFECTS)
@@ -182,7 +204,26 @@ export function buildStatBlock(player: Player, context: StatContext = {}): StatB
       (mask, hook) => mask | (HOOK_BIT[hook as DerivedHook] ?? 0),
       0,
     ),
+    actions: unlockedActions(player.talentRanks),
+    ...(context.partner ? { partnerId: context.partner.id } : {}),
   };
+}
+
+/** True when the player's talents unlock the match action. The engine may gate a move behind this. */
+export function canUse(block: Pick<StatBlock, 'actions'>, actionId: string): boolean {
+  return !!block.actions?.includes(actionId);
+}
+
+/** The same question for a player who has no stat block at hand. */
+export function playerCanUse(player: Pick<Player, 'talentRanks'>, actionId: string): boolean {
+  return unlockedActions(player.talentRanks).includes(actionId as never);
+}
+
+/** The duo bond of a block: the partner and the strength 0..1, or null without a partner. */
+export function partnerLink(block: StatBlock): { partnerId: string; strength: number } | null {
+  if (!block.partnerId) return null;
+  const strength = resolveHook(block, 'linkPartner', 0, 0);
+  return strength > 0 ? { partnerId: block.partnerId, strength } : null;
 }
 
 /** A block that plays the plain attributes: used when effects are switched off for comparisons. */
@@ -406,7 +447,7 @@ export function attributeSources(
     0,
   );
   const quirks = (player.dna?.quirks ?? []).reduce(
-    (sum, quirk) => sum + flat(getQuirk(quirk.id)?.effects),
+    (sum, quirk) => sum + flat(quirkEffects(quirk)),
     0,
   );
   const block = buildStatBlock(player, { slotPosition });

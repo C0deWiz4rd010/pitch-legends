@@ -13,6 +13,7 @@ import { clamp } from '../util';
 import { TalentNode, getTalent, talentsFor } from '../../data/talents';
 import { ManagerProfile } from '../../models/game.model';
 import { buildStatBlock, resolveHook } from '../rpg/stat-block';
+import { spentOnTalents } from '../rpg/talent-preview';
 
 export interface LevelUpResult {
   levelsGained: number;
@@ -110,6 +111,15 @@ export class RpgService {
     player.talentRanks[talentId] = current + 1;
     this.recompute(player);
     return true;
+  }
+
+  /** Takes every rank back and returns the points that were spent on them. The caller decides who may do this and what it costs. */
+  refundTalents(player: Player): number {
+    const refunded = spentOnTalents(player);
+    player.talentRanks = {};
+    player.skillPoints += refunded;
+    this.recompute(player);
+    return refunded;
   }
 
   awardManagerXp(manager: ManagerProfile, amount: number): number {

@@ -59,6 +59,13 @@ export type PlayerActionState =
   | 'keeper-dive'
   | 'keeper-throw'
   | 'keeper-kick'
+  | 'keeper-punch'
+  | 'keeper-smother'
+  | 'volley'
+  | 'bicycle-kick'
+  | 'flying-header'
+  | 'wall-jump'
+  | 'fake-shot'
   | 'subbed-on';
 export type MatchPhase =
   | 'preMatch'
@@ -164,6 +171,13 @@ export interface InputFrame {
   jockey?: boolean;
   /** Fire the Mythic ultimate of the team (needs a full focus meter). */
   ultimate?: boolean;
+  /**
+   * Modifier button. Held when a pass is released it plays a sharp, flat ball; held (or tapped) when a shot is released
+   * or during the wind-up it turns the kick into a feint (a pass is only cancelled).
+   */
+  modifier?: boolean;
+  /** Asks the team-mate nearest to the ball and furthest forward for a run in behind. */
+  request?: boolean;
   /** Right stick: flick in a direction to pick the team-mate that way (screen convention, like move). */
   pickX?: number;
   pickY?: number;
@@ -171,6 +185,28 @@ export interface InputFrame {
   tacticY?: number;
   pause?: boolean;
   device?: InputDevice;
+}
+
+/** A kick that has been released but whose ball contact (see ACTION_CONTACT_TICKS) has not happened yet. */
+export interface PendingKick {
+  actorId: string;
+  startTick: number;
+  contactTick: number;
+  type: 'pass' | 'shoot' | 'cross' | 'volley' | 'bicycle-kick' | 'flying-header';
+  power: number;
+  aimX: number;
+  aimY: number;
+  through?: boolean;
+  lob?: boolean;
+  forcedId?: string;
+  /** Sharp flat pass (modifier held at release). */
+  sharp?: boolean;
+  finesse?: boolean;
+  low?: boolean;
+  chip?: boolean;
+  driven?: boolean;
+  /** Second shoot press inside the wind-up: the finish is cleaner. */
+  timed?: boolean;
 }
 
 export interface MatchCommand extends Required<InputFrame> {
@@ -193,6 +229,8 @@ export const EMPTY_MATCH_COMMAND: MatchCommand = {
   keeperRush: false,
   jockey: false,
   ultimate: false,
+  modifier: false,
+  request: false,
   pickX: 0,
   pickY: 0,
   tacticX: 0,
@@ -388,7 +426,7 @@ export interface MatchCheckpoint {
     football?: {
       selectionUntilTick: number;
       switchCandidate?: {id:string;sinceTick:number} | null;
-      queuedAction: { kind: 'pass' | 'through' | 'lob' | 'shoot'; expiresTick: number; power: number; aimX: number; aimY: number; finesse: boolean; low: boolean; chip?: boolean } | null;
+      queuedAction: { kind: 'pass' | 'through' | 'lob' | 'shoot'; expiresTick: number; power: number; aimX: number; aimY: number; finesse: boolean; low: boolean; chip?: boolean; sharp?: boolean; feint?: boolean } | null;
       offsideCandidates: string[];
       oneTwoRunnerId: string | null;
       oneTwoUntilTick: number;
@@ -406,6 +444,18 @@ export interface MatchCheckpoint {
       interceptTried?: string[];
       /** Per player: the tick until which a kick, tackle or lunge still slows the body down. */
       recoveryUntil?: Record<string, number>;
+      /** The kick between release and ball contact (wind-up); at most one, as only one player owns the ball. */
+      pendingKick?: PendingKick | null;
+      /** The release of a shoot press that only served as the timing tap of a finish is not a shot of its own. */
+      ignoreRelease?: boolean;
+      /** A team-mate sent on a run in behind (the "request run" button). */
+      runRequest?: { id: string; side: Side; untilTick: number } | null;
+      /** AI give-and-go: the receiver hands the ball straight back to the runner. */
+      oneTwoReturn?: { receiverId: string; runnerId: string; untilTick: number } | null;
+      /** A yellow card held back during an advantage; shown at the next stoppage. */
+      pendingYellow?: string | null;
+      /** Cards waiting for the next stoppage because the referee played advantage. */
+      pendingCards?: { playerId: string; side: Side; card: 'yellow' | 'red' }[];
     };
     previousInput: MatchCommand;
     actionHeld: { pass: number; through: number; lob: number; shoot: number };

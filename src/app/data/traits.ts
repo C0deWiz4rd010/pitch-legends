@@ -148,6 +148,7 @@ const MATCH_FEEL_TRAITS: Trait[] = [
   { id: 'composed', name: 'Composed', description: 'Stays calm in front of goal. 15 % tighter shot spread.', category: 'mental', modifiers: {}, effects: [{ hook: 'composure', op: 'mul', value: 0.85 }], unlockLevel: 6 },
   { id: 'quicklearner', name: 'Quick Learner', description: 'Picks things up fast. +10 % match XP and a better chance of training breakthroughs.', category: 'mental', modifiers: {},
     effects: [{ hook: 'growthChance', op: 'add', value: 0.03 }, { hook: 'xpGain', op: 'mul', value: 1.1 }], unlockLevel: 2 },
+  { id: 'tandem', name: 'Tandem Player', description: 'Thrives next to a partner. +25 % to the bond with his duo partner (pass error and first touch between the two).', category: 'mental', modifiers: {}, effects: [{ hook: 'linkPartner', op: 'add', value: 0.25 }], unlockLevel: 5 },
 ];
 TRAITS.push(...MATCH_FEEL_TRAITS);
 for (const trait of MATCH_FEEL_TRAITS) TRAIT_MAP.set(trait.id, trait);
@@ -174,6 +175,7 @@ const TRAIT_DE: Record<string, [string, string]> = {
   longreach: ['Lange Arme', 'Deckt mehr vom Tor ab. +0,2 m Reichweite.'],
   recovery: ['Schnelle Erholung', 'Kommt schnell wieder zu Atem: erholt sich im Stehen doppelt so schnell.'],
   composed: ['Gelassen', 'Bleibt vor dem Tor ruhig. 15 % weniger Streuung bei Schüssen.'],
+  tandem: ['Tandemspieler', 'Blüht neben einem Partner auf. +25 % auf die Bindung zum Duo-Partner (Passfehler und Ballannahme zwischen den beiden).'],
   quicklearner: ['Schnelle Auffassung', 'Lernt zügig. +10 % Erfahrung aus Spielen und bessere Durchbruchchance im Training.'],
 };
 for (const trait of TRAITS) {

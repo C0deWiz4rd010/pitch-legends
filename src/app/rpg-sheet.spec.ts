@@ -29,9 +29,13 @@ describe('Talent tree', () => {
   it('has a root, two exclusive branches and an elite node below each, for every archetype', () => {
     expect(ARCHETYPES).toHaveLength(12);
     for (const archetype of ARCHETYPES) {
-      const nodes = talentsFor(archetype);
+      const all = talentsFor(archetype);
+      // The tree grew to nine nodes (Phase 8 follow-up); the first five are still the root, two branches and their elites.
+      expect(all).toHaveLength(9);
+      const nodes = all.slice(0, 5);
       expect(nodes.map((node) => node.id)).toEqual([1, 2, 3, 4, 5].map((index) => `${archetype}-${index}`));
       expect(nodes.map((node) => node.tier)).toEqual([1, 2, 2, 3, 3]);
+      expect(all.slice(5).map((node) => node.kind).sort()).toEqual(['action', 'action', 'mind', 'side']);
       const [root, a, b, eliteA, eliteB] = nodes;
       expect(root.requires).toBeUndefined();
       expect(a).toMatchObject({ requires: root.id, excludes: b.id, branch: 'a' });
@@ -125,14 +129,17 @@ describe('Player sheet components', () => {
     fixture.componentInstance.unlock.subscribe((id) => unlocked.push(id));
     fixture.detectChanges();
     const nodes = fixture.nativeElement.querySelectorAll('g.node') as NodeListOf<SVGGElement>;
-    expect(nodes).toHaveLength(5);
+    expect(nodes).toHaveLength(9);
     expect(nodes[0].getAttribute('data-status')).toBe('open');
     expect(nodes[1].getAttribute('data-status')).toBe('needs-parent');
-    nodes[1].dispatchEvent(new Event('click'));
+    // A click only previews: nothing is spent until the choice is confirmed.
     nodes[0].dispatchEvent(new Event('click'));
-    expect(unlocked).toEqual(['speedster-1']);
     fixture.detectChanges();
+    expect(unlocked).toEqual([]);
     expect(fixture.nativeElement.querySelector('.detail')).not.toBeNull();
+    const confirm = fixture.nativeElement.querySelector('button.btn--primary') as HTMLButtonElement;
+    confirm.click();
+    expect(unlocked).toEqual(['speedster-1']);
   });
 
   it('shows mastery, load and buffs of a player', () => {

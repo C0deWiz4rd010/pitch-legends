@@ -50,6 +50,7 @@ import { ControlHelpService } from '../../core/services/control-help.service';
 import { PortraitService } from '../../core/services/portrait.service';
 import { BINDABLE_ACTIONS, BUTTON_ACTIONS, ButtonAction, buttonFor, keysFor } from '../../core/controls/control-prefs';
 import { ControlPrefsService } from '../../core/services/control-prefs.service';
+import { PICK_KEYS } from '../../data/control-bindings';
 import { ClubCrestComponent } from '../../shared/components/club-crest.component';
 import { MiniKitComponent } from '../../shared/components/mini-kit.component';
 import { ManagerPortraitComponent } from '../../shared/components/manager-portrait.component';
@@ -70,7 +71,7 @@ import { CHALLENGES, ChallengeController, ChallengeHud, ChallengeOutcome, loadCh
 import type { ThreePitchRenderer } from './three-pitch.renderer';
 
 type PagePhase = 'preview' | 'intro' | 'simulating' | 'match' | 'halftime' | 'result';
-type TouchAction = 'sprint' | 'pass' | 'through' | 'lob' | 'shoot' | 'skill' | 'switch' | 'jockey' | 'ultimate';
+type TouchAction = 'sprint' | 'pass' | 'through' | 'lob' | 'shoot' | 'skill' | 'switch' | 'jockey' | 'ultimate' | 'modifier' | 'request';
 
 const EMPTY_MATCH_VIEW: MatchViewState = {
   footballMinute: 0,
@@ -194,6 +195,8 @@ export class MatchPage implements OnDestroy {
     { action: 'sprint', css: 'rt', label: 'RT', de: 'Sprint', en: 'Sprint' },
     { action: 'jockey', css: 'lt', label: 'LT', de: 'Stellen', en: 'Jockey' },
     { action: 'ultimate', css: 'ult', label: 'ULT', de: 'Ultimate', en: 'Ultimate' },
+    { action: 'modifier', css: 'md', label: 'MD', de: 'Modifikator: scharf oder Täuschung', en: 'Modifier: sharp or feint' },
+    { action: 'request', css: 'rq', label: 'RUN', de: 'Lauf anfordern', en: 'Request run' },
   ];
   protected readonly touchX = signal(0);
   protected readonly touchY = signal(0);
@@ -207,6 +210,8 @@ export class MatchPage implements OnDestroy {
     switch: false,
     jockey: false,
     ultimate: false,
+    modifier: false,
+    request: false,
   });
 
   private arcade: ArcadeMatch | null = null;
@@ -1178,6 +1183,10 @@ export class MatchPage implements OnDestroy {
     const gamepad = typeof navigator !== 'undefined' ? navigator.getGamepads?.()[0] : null;
     const [axisX, axisY] = radialAxes(gamepad?.axes[0] ?? 0, gamepad?.axes[1] ?? 0);
     const [pickX, pickY] = radialAxes(gamepad?.axes[2] ?? 0, gamepad?.axes[3] ?? 0);
+    // Keyboard: T/G/V/B pick the team-mate up/down/left/right, the same as a flick of the right stick.
+    const pickHeld = (key: string) => (this.keys.has(key) || this.edgeKeys.has(key) ? 1 : 0);
+    const pickKeyX = pickHeld(PICK_KEYS.right) - pickHeld(PICK_KEYS.left);
+    const pickKeyY = pickHeld(PICK_KEYS.down) - pickHeld(PICK_KEYS.up);
     const prefs = this.controlPrefs.prefs();
     const held = (direction: 'up' | 'down' | 'left' | 'right') => keysFor(prefs, `move-${direction}`).some((key) => this.keys.has(key)) ? 1 : 0;
     const keyboardX = held('right') - held('left');
@@ -1218,8 +1227,10 @@ export class MatchPage implements OnDestroy {
       keeperRush: pressed('through'),
       jockey: pressed('jockey'),
       ultimate: pressed('ultimate'),
-      pickX,
-      pickY,
+      modifier: pressed('modifier'),
+      request: pressed('request'),
+      pickX: pickKeyX || pickX,
+      pickY: pickKeyY || pickY,
       tacticX: 0,
       tacticY: 0,
       pause: false,
@@ -1271,7 +1282,7 @@ export class MatchPage implements OnDestroy {
     this.pendingPassAttempt = -1;
     this.touchX.set(0);
     this.touchY.set(0);
-    this.touchActions.set({ sprint: false, pass: false, through: false, lob: false, shoot: false, skill: false, switch: false, jockey: false, ultimate: false });
+    this.touchActions.set({ sprint: false, pass: false, through: false, lob: false, shoot: false, skill: false, switch: false, jockey: false, ultimate: false, modifier: false, request: false });
   }
 
   private async enterImmersiveMode(force: boolean): Promise<void> {

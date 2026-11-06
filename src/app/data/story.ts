@@ -24,6 +24,10 @@ export const CHRONICLE_TEXT: Record<ChronicleKind, [string, string]> = {
     'Mastered {attribute}: unlocked {trait}.',
   ],
   transfer: ['Wechselt zu {club}.', 'Moves to {club}.'],
+  tamed: [
+    'Hat „{quirk}“ im Griff: Die Schwäche ist verschwunden.',
+    'Has “{quirk}” under control: the drawback is gone.',
+  ],
 };
 
 /** Bio building blocks; the bio picks one line of each group deterministically from the player id. */

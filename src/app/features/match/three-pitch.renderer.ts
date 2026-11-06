@@ -25,6 +25,7 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { VignetteShader } from 'three/addons/shaders/VignetteShader.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { MatchCameraPreset } from '../../models/match.model';
+import { BALL_RADIUS, netBallMotion, netBulge, netHitStrength, netSlack, netStopDepth, NET_REST_POCKET } from './net-physics';
 
 /** Camera angle (degrees above the pitch), lens and framing per broadcast preset. */
 export const CAMERA_PRESETS: Record<MatchCameraPreset, { pitch: number; fov: number; width: number; follow: number }> = {
@@ -157,9 +158,15 @@ export class ThreePitchRenderer {
   private kits: MatchKitSelection | null = null;
   private time = 0;
   private goalTime = -100;
-  private netImpulse = 0;
   /** Scene side of the net that was hit: -1 or 1, indexing goalNets 0 and 1. */
   private netSide = 1;
+  /** The ball that crossed the line and is held by the net: where and how fast it came in. */
+  private netEntry: { side: 1 | -1; time: number; depth: number; height: number; z: number; speed: number } | null = null;
+  /** The bulge in the net the ball hit: the net index, the point it stopped at and how hard it came. */
+  private netHit: { index: number; strength: number; time: number; px: number; py: number; pz: number } | null = null;
+  /** Eased 0 to 1: whether a ball still lies in the net (the pocket it pushes out). */
+  private netRest = 0;
+  private recentBallSpeed = 0;
   private cameraX = 0;
   private cameraZ = 0;
   private viewWidth = 91;
@@ -363,7 +370,6 @@ export class ThreePitchRenderer {
 
   triggerGoal(): void {
     this.goalTime = this.time;
-    this.netImpulse = 1;
     this.shake = Math.max(this.shake, 0.5);
     this.replayVariant = (this.replayVariant + 1) % 3;
     const side = this.ball.position.x >= 0 ? 1 : -1;
@@ -424,7 +430,8 @@ export class ThreePitchRenderer {
       this.cullSphere.center.copy(model.mesh.position).setY(1);
       if (!this.cullFrustum.intersectsSphere(this.cullSphere)) { model.mesh.visible = false; continue; }
       model.mesh.rotation.y = Math.atan2(player.facingX * mirror, player.facingY);
-      poseFootballer(model, playerInCameraSpace(player,mirror,this.mirroredPlayer), state.tick, this.poseClock, match.config.camera.reducedMotion,player.id===state.controlledPlayerId&&!replay?match.actionPower:0, lookAt);
+      // Injuries are known to the match, not to the render state; the limp is a render-only flag that never feeds back.
+      poseFootballer(model, playerInCameraSpace(player,mirror,this.mirroredPlayer), state.tick, this.poseClock, match.config.camera.reducedMotion,player.id===state.controlledPlayerId&&!replay?match.actionPower:0, lookAt, match.isInjured(player.id) ? 1 : 0);
       if (player.action === 'slide' && state.tick - player.actionStartedTick < 3 && this.turfSpawned.get(player.id) !== player.actionStartedTick) {
         this.turfSpawned.set(player.id, player.actionStartedTick);
         this.spawnTurf(model.mesh.position.x, model.mesh.position.z, 12, 3.2);
@@ -773,6 +780,9 @@ export class ThreePitchRenderer {
       this.stadium.clear();
       this.goalNets.length = 0;
       this.netRestPositions.length = 0;
+      this.netEntry = null;
+      this.netHit = null;
+      this.netRest = 0;
       this.buildStadium(match);
       this.trailPoints.length = 0;
       this.time = 0;
@@ -1090,9 +1100,25 @@ export class ThreePitchRenderer {
   }
 
   private updateBall(state: VisualState, dt: number, simDt: number, replay: boolean): void {
-    const x = (state.ball.x - FIELD_LENGTH / 2) * state.attackDirection;
+    let x = (state.ball.x - FIELD_LENGTH / 2) * state.attackDirection;
     const z = state.ball.y - FIELD_WIDTH / 2;
-    const h = Math.max(0, state.ball.z);
+    let h = Math.max(0, state.ball.z);
+    // A ball that crossed the line stays in the net: the engine resets it at the goal, the picture carries it on into the netting.
+    const flight = Math.hypot(state.ball.vx, state.ball.vy, state.ball.vz);
+    this.recentBallSpeed = Math.max(flight, this.recentBallSpeed * Math.exp(-dt * 0.8));
+    const depth = Math.abs(x) - FIELD_LENGTH / 2;
+    if (depth > 0 && Math.abs(z) < GOAL_WIDTH / 2 + 0.02 && h < GOAL_HEIGHT) {
+      const side: 1 | -1 = x > 0 ? 1 : -1;
+      if (!this.netEntry || this.netEntry.side !== side) {
+        const speed = Math.max(flight, this.recentBallSpeed);
+        this.netEntry = { side, time: this.time, depth, height: h, z, speed };
+        const stop = netStopDepth(speed, h, GOAL_HEIGHT);
+        this.netHit = { index: side > 0 ? 1 : 0, strength: netHitStrength(speed), time: this.time, px: side * (FIELD_LENGTH / 2 + stop), py: Math.min(GOAL_HEIGHT - 0.12, Math.max(0.15, h)), pz: z };
+      }
+      const entry = this.netEntry, motion = netBallMotion(entry.depth, entry.height, entry.speed, this.time - entry.time, GOAL_HEIGHT);
+      x = side * (FIELD_LENGTH / 2 + Math.max(depth, motion.depth));
+      h = Math.min(h, motion.height);
+    } else this.netEntry = null;
     const next = this.ballPosition.set(x, Math.max(0.11, h), z);
     const travelled = next.distanceTo(this.ball.position);
     this.ball.position.copy(next);
@@ -1163,21 +1189,27 @@ export class ThreePitchRenderer {
       pos.needsUpdate = true;
       (this.confetti.material as THREE.PointsMaterial).opacity = Math.min(1, (3 - goalAge) * 1.2);
     }
-    if (this.netImpulse > 0) {
-      this.netImpulse = Math.max(0, this.netImpulse - dt * 0.65);
-      this.goalNets.forEach((mesh, index) => {
-        // Only the net that was hit moves.
-        if ((index === 1) !== (this.netSide > 0)) return;
-        const rest = this.netRestPositions[index];
-        const pos = mesh.geometry.getAttribute('position') as THREE.BufferAttribute;
-        for (let i = 0; i < pos.count; i++) {
-          const amplitude = Math.sin(Math.PI * rest[i * 3 + 1] / GOAL_HEIGHT) * Math.cos(rest[i * 3 + 2] * 0.35);
-          const wave = reduced ? 0 : Math.sin(goalAge * 19 - rest[i * 3 + 2] * 2) * amplitude * this.netImpulse * 0.22;
-          pos.setX(i, rest[i * 3] + wave);
-        }
-        pos.needsUpdate = true;
-      });
+    this.updateNet(dt, reduced);
+  }
+
+  /** Only the net the ball hit moves: a bulge around the stopped ball swings out and settles into a pocket while the ball lies in it. */
+  private updateNet(dt: number, reduced: boolean): void {
+    const hit = this.netHit;
+    if (!hit) return;
+    const mesh = this.goalNets[hit.index], rest = this.netRestPositions[hit.index];
+    if (!mesh || !rest) { this.netHit = null; return; }
+    const age = this.time - hit.time;
+    this.netRest += ((this.netEntry ? 1 : 0) - this.netRest) * Math.min(1, dt * 4);
+    const pos = mesh.geometry.getAttribute('position') as THREE.BufferAttribute;
+    const sign = hit.index === 1 ? 1 : -1;
+    const done = age > 5 && this.netRest < 0.01;
+    for (let i = 0; i < pos.count; i++) {
+      const rx = rest[i * 3], ry = rest[i * 3 + 1], rz = rest[i * 3 + 2];
+      const distance = Math.hypot(rx - hit.px, ry - hit.py, rz - hit.pz);
+      pos.setX(i, done ? rx : rx + sign * netBulge(distance, age, hit.strength, this.netRest, reduced));
     }
+    pos.needsUpdate = true;
+    if (done) this.netHit = null;
   }
 
   /** Name and stamina above the player you control. */
@@ -1501,11 +1533,12 @@ function createPitchMarkings(): THREE.BufferGeometry {
 function createNetGeometry(x: number, topX: number, backX: number, half: number): THREE.BufferGeometry {
   const positions: number[] = [], uvs: number[] = [], index: number[] = [];
   const cell = 0.18;
-  const quad = (a: THREE.Vector3, b: THREE.Vector3, c: THREE.Vector3, d: THREE.Vector3, su: number, sv: number) => {
+  const quad = (a: THREE.Vector3, b: THREE.Vector3, c: THREE.Vector3, d: THREE.Vector3, su: number, sv: number, slack?: (u: number, v: number) => THREE.Vector3) => {
     const base = positions.length / 3, lu = a.distanceTo(b) / cell, lv = a.distanceTo(d) / cell;
     for (let v = 0; v <= sv; v++) for (let u = 0; u <= su; u++) {
       const top = new THREE.Vector3().lerpVectors(a, b, u / su), bottom = new THREE.Vector3().lerpVectors(d, c, u / su);
       const p = top.lerp(bottom, v / sv);
+      if (slack) p.add(slack(u / su, v / sv));
       positions.push(p.x, p.y, p.z); uvs.push(u / su * lu, v / sv * lv);
     }
     for (let v = 0; v < sv; v++) for (let u = 0; u < su; u++) {
@@ -1515,10 +1548,12 @@ function createNetGeometry(x: number, topX: number, backX: number, half: number)
   };
   const H = GOAL_HEIGHT;
   const V = (px: number, py: number, pz: number) => new THREE.Vector3(px, py, pz);
-  quad(V(x, H, -half), V(x, H, half), V(topX, H - .08, half), V(topX, H - .08, -half), 14, 2);
-  quad(V(topX, H - .08, -half), V(topX, H - .08, half), V(backX, .06, half), V(backX, .06, -half), 14, 8);
+  // A hung net is not taut: the roof sags, the back net bellies out and the sides give a little, fixed along their edges.
+  const out = Math.sign(backX - x) || 1;
+  quad(V(x, H, -half), V(x, H, half), V(topX, H - .08, half), V(topX, H - .08, -half), 14, 2, (u, v) => V(0, -netSlack(u, v, 0.07), 0));
+  quad(V(topX, H - .08, -half), V(topX, H - .08, half), V(backX, .06, half), V(backX, .06, -half), 14, 8, (u, v) => V(out * netSlack(u, v, 0.14), 0, 0));
   for (const z of [-half, half]) {
-    quad(V(x, H, z), V(topX, H - .08, z), V(backX, .06, z), V(x, .06, z), 4, 8);
+    quad(V(x, H, z), V(topX, H - .08, z), V(backX, .06, z), V(x, .06, z), 4, 8, (u, v) => V(0, 0, Math.sign(z) * netSlack(u, v, 0.06)));
   }
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));

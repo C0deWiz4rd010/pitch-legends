@@ -75,7 +75,8 @@ describe('Gameplay actions', () => {
     Object.assign(runner, { x: 55, y: 34, vx: 0, vy: 0, decisionCooldown: 99, intentX: 55, intentY: 34 });
     giveBall(match, passer);
     tick(match, { through: true, aimX: 1 }, 30);
-    tick(match, { aimX: 1 });
+    // The release starts the wind-up; the ball is struck three ticks later.
+    tick(match, { aimX: 1 }, 4);
     expect(match.ball.ownerId).toBeNull();
     // The ball travels towards a point well beyond the runner.
     const heading = match.ball.vy / match.ball.vx;
@@ -95,7 +96,7 @@ describe('Gameplay actions', () => {
     Object.assign(runner, { x: 96, y: 34, vx: 0, vy: 0, decisionCooldown: 99, intentX: 96, intentY: 34 });
     giveBall(match, crosser);
     tick(match, { lob: true, aimX: 0, aimY: -1 }, 20);
-    tick(match, { aimY: -1 });
+    tick(match, { aimY: -1 }, 5);
     expect(crosser.action).toBe('lob');
     runner.active = false;
     let heightAtRunner = 0;
@@ -135,7 +136,7 @@ describe('Gameplay actions', () => {
       Object.assign(shooter, { x: 80, y: 34, facingX: 1, facingY: 0 });
       giveBall(match, shooter);
       tick(match, { shoot: true, aimX: 1, lob: power, skill: power }, 40);
-      tick(match, { aimX: 1, lob: power, skill: power });
+      tick(match, { aimX: 1, lob: power, skill: power }, 6);
       return Math.hypot(match.ball.vx, match.ball.vy);
     });
     expect(speeds[1]).toBeGreaterThan(speeds[0] + 3);

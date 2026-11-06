@@ -70,6 +70,16 @@ export const CONTROL_BINDINGS: readonly ControlBinding[] = [
     keyboard: [{ label: 'O' }], gamepad: [{ label: 'LT' }], touch: [{ label: 'LT', tone: 'blue' }],
   },
   {
+    action: 'modifier', chapter: 'attack', title: { de: 'Modifikator: scharf / Täuschung', en: 'Modifier: sharp / feint' },
+    description: { de: 'E/L3 gehalten beim Loslassen von J/A spielt einen scharfen, flachen Pass. Beim Schuss (und während des Ausholens) täuscht E/L3 den Schuss nur an: Gegner in der Nähe können darauf hereinfallen; ein Pass wird abgebrochen. Während des Ausholens zählt ein zweiter Druck auf L/B als Timing-Abschluss (bei „Unterstützt“ aus).', en: 'Holding E/L3 when you release J/A plays a sharp, flat pass. With a shot (and during the wind-up) E/L3 only fakes the shot: nearby defenders can bite; a pass is cancelled. During the wind-up a second press of L/B counts as a timed finish (off with Assisted).' },
+    keyboard: [{ label: 'E' }], gamepad: [{ label: 'L3' }], touch: [{ label: 'MD', tone: 'yellow' }],
+  },
+  {
+    action: 'request', chapter: 'attack', title: { de: 'Lauf anfordern / Mitspieler wählen', en: 'Request run / pick player' },
+    description: { de: 'R/R3 schickt den vordersten Mitspieler in Ballnähe zwei Sekunden lang in die Tiefe. Mit T/G/V/B (oder dem rechten Stick) wählst du den Mitspieler oben/unten/links/rechts von dir direkt aus.', en: 'R/R3 sends the most advanced team-mate near the ball on a run in behind for two seconds. T/G/V/B (or the right stick) picks the team-mate above/below/left/right of you directly.' },
+    keyboard: [{ label: 'R' }], gamepad: [{ label: 'R3' }], touch: [{ label: 'RUN', tone: 'green' }],
+  },
+  {
     action: 'ultimate', chapter: 'attack', title: { de: 'Ultimate (Mythic)', en: 'Ultimate (Mythic)' },
     description: { de: 'F/Select löst die Ultimate deines Mythic-Spielers aus, sobald das Fokus-Meter voll ist: sechs Sekunden lang laufen beide Signaturen zugleich, dazu Tempo, saubere Pässe und Schüsse und härtere Tacklings. Das Meter füllt sich durch gelungene Pässe, Balleroberungen, Schüsse, Paraden und Tore.', en: 'F/Select fires the ultimate of your Mythic player once the focus meter is full: for six seconds both signatures run at once, plus pace, clean passing and shooting and harder tackling. The meter fills through completed passes, ball wins, shots, saves and goals.' },
     keyboard: [{ label: 'F' }], gamepad: [{ label: 'SELECT' }], touch: [{ label: 'ULT', tone: 'purple' }],
@@ -105,7 +115,12 @@ export const CONTROL_INPUT_MAP = {
   switch: { keyboard: ['Space'], gamepadButton: 4 },
   jockey: { keyboard: ['KeyO'], gamepadButton: 6 },
   ultimate: { keyboard: ['KeyF'], gamepadButton: 8 },
+  modifier: { keyboard: ['KeyE'], gamepadButton: 10 },
+  request: { keyboard: ['KeyR'], gamepadButton: 11 },
 } as const;
+
+/** Keys that pick the team-mate in a direction (the keyboard version of the right-stick flick). Not rebindable. */
+export const PICK_KEYS = { up: 'KeyT', down: 'KeyG', left: 'KeyV', right: 'KeyB' } as const;
 
 export const MOVEMENT_KEYS = {
   left: ['ArrowLeft', 'KeyA'], right: ['ArrowRight', 'KeyD'], up: ['ArrowUp', 'KeyW'], down: ['ArrowDown', 'KeyS'],

@@ -291,6 +291,8 @@ canvas { display: block; width: 100%; height: 100%; image-rendering: auto; touch
   .touch-actions .sw { left: 0; bottom: 8px; border-radius: 0; background: #273556; }
   .touch-actions .rt { left: 48px; bottom: 0; border-radius: 0; background: #204f63; }
   .touch-actions .lt { left: 48px; top: 5px; border-radius: 0; background: #1f5a4b; }
+  .touch-actions .md { right: 0; top: 0; background: #7a5f1c; }
+  .touch-actions .rq { right: 90px; top: 0; background: #1d6a45; }
   .device-chip { bottom: auto; top: 10px; }
   .auto-chip { top: 10px; right: 10px; bottom: auto; }
 }
@@ -368,6 +370,8 @@ canvas { display: block; width: 100%; height: 100%; image-rendering: auto; touch
   .touch-actions .b { right: 0; bottom: 27px; }
   .touch-actions .x { right: 76px; bottom: 27px; }
   .touch-actions .y { right: 38px; top: 0; }
+  .touch-actions .md { right: 0; top: 0; }
+  .touch-actions .rq { right: 76px; top: 0; }
   .touch-actions .sk,
   .touch-actions .sw,
   .touch-actions .rt,
