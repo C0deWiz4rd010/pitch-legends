@@ -410,7 +410,9 @@ export class TrainingService {
 
   /** Base 5 %, better grounds and a driven character make it likelier. */
   private breakthroughChance(player: Player, facility: number): number {
-    return Math.min(0.25, 0.05 + facility * 0.01 + (player.personality === 'driven' ? 0.04 : 0));
+    const base = 0.05 + facility * 0.01 + (player.personality === 'driven' ? 0.04 : 0);
+    // Traits such as Quick Learner raise the chance through the growthChance hook.
+    return Math.min(0.25, resolveHook(buildStatBlock(player), 'growthChance', base, 0));
   }
 
   private injuryChance(drill: TrainingDrill, intensity: TrainingIntensity, medicalLevel: number, loadRatio: number, player?: Player): number {

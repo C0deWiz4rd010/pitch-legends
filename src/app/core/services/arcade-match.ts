@@ -1685,6 +1685,7 @@ export class ArcadeMatch {
       actor.contact = {tick:this.tick,x:this.ball.x,y:this.ball.y,z:this.ball.z,kind:'foot',foot:'right'};
       this.stats(actor.side).tacklesWon++;
       this.ratings[actor.player.id] = clamp((this.ratings[actor.player.id] ?? 6.5) + 0.09, 1, 10);
+      this.adjustRating(owner.player.id, -0.06);
       this.startRecovery(actor, 6);
       return;
     }
@@ -1716,6 +1717,7 @@ export class ArcadeMatch {
       this.contributions[defender.player.id].yellows++;
       eventType = 'yellow';
     }
+    this.adjustRating(defender.player.id, eventType === 'red' ? -1.4 : eventType === 'yellow' ? -0.25 : -0.05);
     const victimDirection = this.attackDirection(victim.side);
     const inBox = Math.abs(victim.y - FIELD_WIDTH / 2) <= PITCH.penaltyHalfWidth && (victimDirection > 0 ? victim.x > FIELD_LENGTH - PITCH.penaltyDepth : victim.x < PITCH.penaltyDepth);
     const params = { player: playerName(defender.player) };
@@ -1747,6 +1749,20 @@ export class ArcadeMatch {
     if (actor.player.foot === 'Both') return touch % 2 ? 'left' : 'right';
     const strong = actor.player.foot === 'Left' ? 'left' : 'right';
     return touch === 2 ? (strong === 'left' ? 'right' : 'left') : strong;
+  }
+
+  /** Changes a live match rating, for players who have one (those who took part). */
+  private adjustRating(playerId: string, delta: number): void {
+    const current = this.ratings[playerId];
+    if (current !== undefined) this.ratings[playerId] = clamp(current + delta, 1, 10);
+  }
+
+  /** A goal against marks the keeper most, the defenders a little, the midfield hardly. */
+  private penaliseConceding(side: Side): void {
+    for (const actor of this.actors) {
+      if (!actor.active || actor.side !== side) continue;
+      this.adjustRating(actor.player.id, actor.player.positionGroup === 'GK' ? -0.3 : actor.player.positionGroup === 'DEF' ? -0.12 : actor.player.positionGroup === 'MID' ? -0.05 : 0);
+    }
   }
 
   private updateBall(dt: number): void {
@@ -2030,6 +2046,7 @@ export class ArcadeMatch {
           this.addFocus(candidate.side, 0.5);
           this.ratings[this.lastPasser.id] = clamp((this.ratings[this.lastPasser.id] ?? 6.5) + 0.025, 1, 10);
         } else if (candidate.side !== this.lastPasser.side) {
+          this.adjustRating(this.lastPasser.id, -0.04);
           this.lastPasser = null;
           this.stats(candidate.side).interceptions++;
           this.addFocus(candidate.side, 3);
@@ -2172,6 +2189,7 @@ export class ArcadeMatch {
       this.contributions[assister.player.id].assists++;
       this.ratings[assister.player.id] = clamp(this.ratings[assister.player.id] + 0.65, 1, 10);
     }
+    this.penaliseConceding(this.opposite(side));
     if (ownGoal && lastToucher) {
       this.events.push({
         minute: this.footballMinute, type: 'goal', side, playerId: null, ownGoal: true,
@@ -2499,6 +2517,14 @@ export class ArcadeMatch {
     this.phase = 'fulltime';
     this.rule = this.newRule('fulltime', null, this.ball.x, this.ball.y);
     this.events.push({ minute: 90, type: 'fulltime', side: null, playerId: null, messageKey: 'match.fulltime', params: { home: this.home.shortName, away: this.away.shortName, homeScore: this.homeScore, awayScore: this.awayScore } });
+    // A clean sheet is worth something to the keeper and the back line.
+    for (const side of ['home', 'away'] as const) {
+      if ((side === 'home' ? this.awayScore : this.homeScore) !== 0) continue;
+      for (const actor of this.actors) {
+        if (actor.side !== side) continue;
+        this.adjustRating(actor.player.id, actor.player.positionGroup === 'GK' ? 0.4 : actor.player.positionGroup === 'DEF' ? 0.25 : 0);
+      }
+    }
     const motm = [...this.actors].filter((actor) => actor.active || this.ratings[actor.player.id] !== undefined).sort((a, b) => (this.ratings[b.player.id] ?? 0) - (this.ratings[a.player.id] ?? 0))[0]?.player.id ?? null;
     this.finalResult = {
       id: this.matchId,

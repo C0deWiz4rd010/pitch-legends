@@ -33,6 +33,10 @@
           <strong>{{ moraleIcon(p.morale) }} {{ p.morale }}</strong>
         </div>
         <div class="meta-cell">
+          <span class="muted">{{ i18n.pick('Form', 'Form') }}</span>
+          <strong [title]="i18n.pick('Entwicklung der letzten Spiele', 'Trend of the last matches')">{{ formSymbol(p) }} {{ p.form > 0 ? '+' : '' }}{{ p.form }}</strong>
+        </div>
+        <div class="meta-cell">
           <span class="muted">{{ i18n.pick('Fitness', 'Fitness') }}</span>
           <strong>{{ p.fitness }}%</strong>
         </div>
@@ -67,11 +71,11 @@
             <p class="eyebrow">{{ i18n.pick('Eigenschaften', 'Traits') }}</p>
             <div class="trait-list">
               @for (t of ownedTraits(); track t.id) {
-                <div class="trait owned" [title]="t.description">ON {{ t.name }}</div>
+                <div class="trait owned" [title]="i18n.pick(t.descriptionDe ?? t.description, t.description)">ON {{ i18n.pick(t.nameDe ?? t.name, t.name) }}</div>
               }
               @for (t of lockedTraits(); track t.id) {
-                <button class="trait locked" [disabled]="!canUnlock(t.id)" (click)="unlockTrait(t.id)" [title]="t.description">
-                  {{ canUnlock(t.id) ? 'OPEN' : 'LOCK' }} {{ t.name }}
+                <button class="trait locked" [disabled]="!canUnlock(t.id)" (click)="unlockTrait(t.id)" [title]="i18n.pick(t.descriptionDe ?? t.description, t.description)">
+                  {{ canUnlock(t.id) ? 'OPEN' : 'LOCK' }} {{ i18n.pick(t.nameDe ?? t.name, t.name) }}
                   <small>Lv {{ t.unlockLevel }} · 4 SP</small>
                 </button>
               }

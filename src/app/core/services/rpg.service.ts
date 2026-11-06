@@ -12,6 +12,7 @@ import { TRAITS, getTrait } from '../../data/traits';
 import { clamp } from '../util';
 import { TalentNode, getTalent, talentsFor } from '../../data/talents';
 import { ManagerProfile } from '../../models/game.model';
+import { buildStatBlock, resolveHook } from '../rpg/stat-block';
 
 export interface LevelUpResult {
   levelsGained: number;
@@ -26,7 +27,8 @@ export interface LevelUpResult {
 export class RpgService {
   /** Grant XP and process any resulting level-ups. */
   awardXp(player: Player, amount: number): LevelUpResult {
-    if (player.traitIds.includes('wonderkid')) amount = Math.round(amount * 1.25);
+    // Wonderkid, Quick Learner and friends scale the gain through the effect pipeline instead of a hard-coded trait check.
+    amount = Math.round(resolveHook(buildStatBlock(player), 'xpGain', amount, 0));
     player.xp += Math.max(0, Math.round(amount));
 
     let levelsGained = 0;

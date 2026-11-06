@@ -7,6 +7,7 @@ import { FormsModule } from '@angular/forms';
 import { GameStateService } from '../../core/services/game-state.service';
 import { PlayerDetailComponent } from '../../shared/components/player-detail.component';
 import { ratingColor, moraleIcon, formatCoins } from '../../shared/rating-color';
+import { formSymbol } from '../../core/rpg/form';
 import { PositionGroup } from '../../models/enums';
 import { Player } from '../../models/player.model';
 import { PlayerPortraitComponent } from '../../shared/components/player-portrait.component';
@@ -30,6 +31,7 @@ export class SquadPage {
   protected readonly i18n = inject(I18nService);
   protected readonly ratingColor = ratingColor;
   protected readonly moraleIcon = moraleIcon;
+  protected readonly formSymbol = formSymbol;
   protected readonly formatCoins = formatCoins;
 
   protected readonly filter = signal<Filter>('ALL');

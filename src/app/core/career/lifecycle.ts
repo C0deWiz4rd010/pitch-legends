@@ -4,6 +4,7 @@ import { AttributeKey, Position } from '../../models/enums';
 import { GameState } from '../../models/game.model';
 import { Player, emptySeasonStats } from '../../models/player.model';
 import { Team } from '../../models/team.model';
+import { createPersonalGoal } from '../rpg/personal-goal';
 import { OVERALL_WEIGHTS, computeOverall, marketValueFor, playerName, weeklySalaryFor } from '../ratings';
 import { MAX_SQUAD_SIZE, MIN_SQUAD_SIZE } from '../transfer-engine';
 import { Rng, clamp } from '../util';
@@ -100,6 +101,8 @@ export function rollOverSquads(game: GameState): { retired: Player[]; left: Play
     let removed = 0;
     for (const player of team.players) {
       addCareerStats(player, team.shortName);
+      // A new season brings a new goal, drawn from what suits his position (rating and appearances goals included).
+      player.personalGoal = createPersonalGoal(player, rng);
       if (retiring.has(player.id)) { if (own) retired.push(player); removed++; continue; }
       if (player.contractWeeks <= 0) {
         const keyPlayer = player.overall >= team.strength - 3 && player.age <= 31;

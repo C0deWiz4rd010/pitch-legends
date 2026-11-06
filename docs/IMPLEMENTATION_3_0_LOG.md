@@ -2,7 +2,7 @@
 
 Fortschritt je Phase des [3.0-Plans](PITCH_LEGENDS_3_0_PLAN.md): was geändert wurde, wie es geprüft wurde und was offen bleibt. Jede Phase endet mit einem Eintrag nach dem Muster des [2.0-Logs](IMPLEMENTATION_2_0_LOG.md).
 
-Stand: Plan freigegeben am 2026-11-06, Phasen 0 bis 6 umgesetzt.
+Stand: Plan freigegeben am 2026-11-06, Phasen 0 bis 7 umgesetzt.
 
 | Phase | Thema | Stand |
 | --- | --- | --- |
@@ -13,7 +13,7 @@ Stand: Plan freigegeben am 2026-11-06, Phasen 0 bis 6 umgesetzt.
 | 4 | Animation 2.0 (Hybrid) | umgesetzt, Rest siehe unten |
 | 5 | Grafik-Politur und Präsentation | teilweise umgesetzt, Rest siehe unten |
 | 6 | Leistung und Mobile | teilweise umgesetzt, Rest siehe unten |
-| 7 | RPG I: Spieler vertiefen | offen |
+| 7 | RPG I: Spieler vertiefen | teilweise umgesetzt, Rest siehe unten |
 | 8 | RPG II: Trainer und Verein | offen |
 | 9 | Meta und Sammeln | offen |
 | 10 | QA, Balance, Release 3.0 | offen |
@@ -235,3 +235,22 @@ Stand: Plan freigegeben am 2026-11-06, Phasen 0 bis 6 umgesetzt.
   - Die neuen Zeilen auf der Einstellungsseite habe ich nicht gesehen, weil die Seite einen Spielstand braucht; geprüft sind Übersetzung und Funktion über den Dienst und den Renderer.
   - Die Pixel-Zeitmessung im Test-Browser meldete beim ersten Versuch unplausible 1,7 s, bevor ich die Anlaufphase verwerfen ließ; echte Werte auf echter Hardware stehen aus.
 - **Hinweis zum Testen:** Der Ton muss schon vor dem Laden der Spielseite stumm sein (neues Browserfenster = leerer Speicher); das ist als Regel gespeichert.
+
+## Phase 7 – RPG I: Spieler vertiefen (2026-11-06)
+
+- **Dynamische Form** (`core/rpg/form.ts`): Die Form bewegt sich nach jedem Spiel ein Viertel des Wegs zu dem, was die Note sagt (8,0 zeigt auf +5, 5,8 auf −3), bleibt zwischen −5 und +5 und kühlt pro Woche um 6 % ab (`decayForm` im Wochenabschluss). Vorher wurde sie nur bei der Erzeugung gesetzt, obwohl die Oberfläche Änderungen versprach. Die letzten fünf Noten (`Player.recentRatings`) ergeben einen Trendpfeil (▲ ▼ ▬) im Kader und mit Form-Wert in der Spielerakte.
+- **Live-Noten mit Abzügen:** Ein verlorenes Duell kostet den Ballführer 0,06, ein abgefangener Pass den Passgeber 0,04, ein Gegentor den Torwart 0,3, die Abwehr 0,12 und das Mittelfeld 0,05, ein Foul 0,05, Gelb 0,25 und Rot 1,4; zu null Gegentoren gibt es 0,4 für den Torwart und 0,25 für die Abwehr. Vorher konnten Noten fast nur steigen, die Note in der XP-Formel war selten negativ. Die XP-Formel selbst blieb.
+- **Hooks:** Die Erfahrung läuft jetzt über den Hook `xpGain` (Wunderkind ×1,25, neue Schnelle Auffassung ×1,1, zusammen ×1,38) statt über eine feste Prüfung auf „wonderkid“. `growthChance` verändert die Durchbruchchance im Training. Für alle 20 abgeleiteten Hooks gibt es jetzt mindestens eine Datenquelle; ein Test prüft das über Traits, Talente, Signaturen, Eigenheiten und Trainingsprogramme.
+- **Zehn neue Traits** für die in Phase 2 verdrahteten Hooks (Kanone, Effet-Künstler, Visionär, Samtpfote, Ballschirm, Kopfballungeheuer, Lange Arme, Schnelle Erholung, Gelassen) und Schnelle Auffassung. Ihre Werte liegen in den Grenzen von `EFFECT_CAPS` (Test). Fund nebenbei: `getTrait` las eine Karte, die vor den neuen Einträgen gebaut war; die Karte wird jetzt mitgepflegt.
+- **Traits auf Deutsch und Englisch:** Alle 22 Traits haben deutsche Namen und Beschreibungen (`nameDe`, `descriptionDe`), die Spielerakte zeigt sie je nach Sprache. Die Beschreibung des Geborenen Anführers behauptete, das ganze Team zu heben, während er nur dem Spieler selbst +2 auf drei Attribute gibt; der Text stimmt jetzt.
+- **Computer gebaute Spieler** (`core/rpg/auto-build.ts`): Spieler, die kein Mensch führt, geben ihre Skillpunkte selbst aus. Erst Talente (Wurzel, dann ein Zweig und sein Elite-Knoten; der Zweig steht pro Spieler fest), dann Haupt- und Nebenattribut des Archetyps innerhalb des Potenzials, dann bis zu vier Traits nach Positionsvorliebe. Das geschieht bei jedem Level-up in Spielen der KI-Vereine und bei der Erzeugung (`grantStartingBuild`: nur Talente, passend zu den verdienten Punkten). Vorher horteten KI-Spieler ihre Punkte ungenutzt und ein gewechselter Spieler brachte sie mit. Der Zehn-Saisons-Lauf prüft jetzt, dass die mittleren ungenutzten Punkte der KI-Spieler unter 14 liegen.
+- **Level-up im Verein:** Erreicht ein Spieler des eigenen Vereins ein neues Level, steht eine Meldung in den Nachrichten (Deutsch und Englisch).
+- **Persönliche Ziele jede Saison neu** (`core/rpg/personal-goal.ts`): beim Saisonwechsel bekommt jeder Spieler ein neues Ziel, auch vom Typ „Einsätze“ und „Durchschnittsnote“, die das Modell kannte, aber nie vergab.
+- **Balance** (500 Matches): 2,94 Tore, 66,9 % Pässe, 24,0 % Remis, 46,4 % Heimsiege, 2,10 Abseits, 522 ms; alles im Korridor, obwohl Startkader jetzt Talente tragen.
+- **Nachweis:** 435 Unit-Tests (15 neu in `rpg-v3.spec.ts`). Drei bestehende Tests mussten wissen, dass erzeugte Spieler Talente mitbringen (`app.spec`, `ultimate.spec`) beziehungsweise ihre Schussgrenze im Käfig anheben (`balance-qa.spec`, 92 statt 80 bei 3 Spielen und etwa 86 gemessen; die ungefixte Engine hatte über 100). Typecheck, Style-, i18n-, Format-Check und Build grün.
+- **Nicht umgesetzt:**
+  - Talentbaum mit 8 bis 9 Knoten, Vorschau mit Bestätigen und Umverteilung pro Saison.
+  - Talente, die echte Aktionen freischalten (Trivela, Rabona …) und Ausrüstung mit Zielkonflikt.
+  - Zeremonie für Evolutionen als Vorher-/Nachher-Bildschirm, Signatur-Partikelschweif im Match, Quirks abtrainieren, Quirk-Evolutionen über die Quest-Infrastruktur, Trainings-Minispiel mit Note.
+  - Signatur-Fortschritt für KI-Vereine; die Talente deutsch zu benennen (die Namen werden aus Vorlagen erzeugt); Spielerakte aus Transfermarkt und Legends-Karten öffnen.
+  - Die neuen Zeilen in Kader und Spielerakte habe ich nicht im Browser gesehen (sie brauchen einen Spielstand); geprüft sind Übersetzungen und Build.

@@ -358,3 +358,11 @@ export function talentsFor(archetype: PlayerArchetype): TalentNode[] {
 export function getTalent(id: string): TalentNode | undefined {
   return TALENT_NODES.find((node) => node.id === id);
 }
+
+/** The two attributes an archetype grows around; the root talent and the auto-build both follow them. */
+export function archetypeProfile(
+  archetype: PlayerArchetype,
+): { primary: AttributeKey; secondary: AttributeKey } | undefined {
+  const entry = definition.find((candidate) => candidate.archetype === archetype);
+  return entry ? { primary: entry.primary, secondary: entry.secondary } : undefined;
+}

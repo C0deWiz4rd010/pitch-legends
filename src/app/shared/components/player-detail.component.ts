@@ -22,6 +22,7 @@ import { AttributeKey, ATTRIBUTE_KEYS, ATTRIBUTE_LABELS } from '../../models/enu
 import { attributeUpgradeCost } from '../../core/progression';
 import { RadarChartComponent } from './radar-chart.component';
 import { ratingColor, moraleIcon } from '../rating-color';
+import { formSymbol } from '../../core/rpg/form';
 import { TRAITS, getTrait } from '../../data/traits';
 import { DevelopmentPlan, RehabPlan, Trait } from '../../models/player.model';
 import { TalentNode } from '../../data/talents';
@@ -73,6 +74,7 @@ export class PlayerDetailComponent {
   protected readonly labels = ATTRIBUTE_LABELS;
   protected readonly ratingColor = ratingColor;
   protected readonly moraleIcon = moraleIcon;
+  protected readonly formSymbol = formSymbol;
   protected readonly developmentPlans: DevelopmentPlan[] = ['balanced', 'technical', 'physical', 'position'];
 
   protected readonly i18n = inject(I18nService);

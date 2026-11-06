@@ -17,6 +17,9 @@ export interface Trait {
   effects?: EffectSpec[];
   /** Level at which the trait becomes available to unlock. */
   unlockLevel: number;
+  /** German name and description; the English ones above are the fallback. */
+  nameDe?: string;
+  descriptionDe?: string;
 }
 
 export type PlayerAttributes = Record<AttributeKey, number>;
@@ -186,6 +189,8 @@ export interface Player {
   fitness: number;
   /** Recent form, -5 (poor) .. +5 (excellent). */
   form: number;
+  /** The last few match ratings, newest last; they give form its trend arrow. */
+  recentRatings?: number[];
   /** Weeks remaining until injury heals; 0 = fit. */
   injuryWeeks: number;
   medical: PlayerMedicalState;

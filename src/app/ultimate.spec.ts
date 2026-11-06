@@ -52,6 +52,9 @@ describe('Mythic ultimate', () => {
     const mythic = makeMythic(home);
     const common = structuredClone(mythic);
     common.dna = dnaForRarity(common, 'epic');
+    // Generated players start with the talents their level earned; this check is about the ultimate alone.
+    common.talentRanks = {};
+    mythic.talentRanks = {};
     expect(resolveHook(buildStatBlock(mythic), 'passError', 1, Cond.ultimate | Cond.signature | Cond.signature2)).toBeLessThan(resolveHook(buildStatBlock(common), 'passError', 1, Cond.signature | Cond.signature2));
     expect(resolveHook(buildStatBlock(common), 'passError', 1, Cond.ultimate)).toBe(1);
   });

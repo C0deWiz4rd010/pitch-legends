@@ -1,4 +1,7 @@
 import { applySignatureProgress, ascendPlayers } from '../rpg/evolution';
+import { autoSpend } from '../rpg/auto-build';
+import { decayForm, recordMatchForm } from '../rpg/form';
+import { Player } from '../../models/player.model';
 import { RARITY_DEFS } from '../../data/rarity';
 import { StoryBeat, recordMatchStory } from '../rpg/story';
 import { getQuirk } from '../../data/quirks';
@@ -226,8 +229,11 @@ export class SeasonService {
     const away = draft.teams.find((t) => t.id === result.awayTeamId);
     if (!home || !away) return;
     const rng = new Rng(hash32(`${result.fixtureId ?? result.id}|apply`));
-    const homeGrowth = this.applyToTeam(home, result, result.homeScore, result.awayScore, draft.league.season, rng);
-    const awayGrowth = this.applyToTeam(away, result, result.awayScore, result.homeScore, draft.league.season, rng);
+    const levelUps: { player: Player; level: number }[] = [];
+    const homeGrowth = this.applyToTeam(home, result, result.homeScore, result.awayScore, draft.league.season, rng, home.id === draft.clubId, levelUps);
+    const awayGrowth = this.applyToTeam(away, result, result.awayScore, result.homeScore, draft.league.season, rng, away.id === draft.clubId, levelUps);
+    // A level gained by one of the managed club's players is worth a line in the news.
+    for (const up of levelUps) this.pushNews(draft, 'star', 'news.levelup.title', 'news.levelup.body', { player: playerName(up.player), level: up.level });
     if (competition === 'league') {
       book(draft, home, 'gate', gateIncome(home, tierOfTeam(draft, home.id)));
       book(draft, home, 'prizes', matchPrize(result.homeScore, result.awayScore, tierOfTeam(draft, home.id)));
@@ -251,7 +257,7 @@ export class SeasonService {
     }
   }
 
-  private applyToTeam(team: Team, result: MatchResult, goalsFor: number, goalsAgainst: number, season: number, rng: Rng): number {
+  private applyToTeam(team: Team, result: MatchResult, goalsFor: number, goalsAgainst: number, season: number, rng: Rng, managed: boolean, levelUps: { player: Player; level: number }[]): number {
     const won = goalsFor > goalsAgainst;
     const drew = goalsFor === goalsAgainst;
     const cleanSheet = goalsAgainst === 0;
@@ -264,6 +270,7 @@ export class SeasonService {
 
       p.seasonStats.appearances++;
       p.seasonStats.ratingSum += rating;
+      recordMatchForm(p, rating);
       p.seasonStats.goals += c.goals;
       p.seasonStats.assists += c.assists;
       p.seasonStats.yellowCards += c.yellows;
@@ -290,6 +297,7 @@ export class SeasonService {
         Math.round((rating - 6.5) * 22) +
         (won ? 25 : drew ? 10 : 0) +
         (p.id === result.manOfTheMatchId ? 20 : 0);
+      const levelBefore = p.level;
       levelsGained += this.rpg.awardXp(p, Math.max(10, xp)).levelsGained;
       const goal = p.personalGoal;
       goal.progress =
@@ -303,6 +311,9 @@ export class SeasonService {
         this.rpg.awardXp(p, goal.rewardXp);
         p.morale = clamp(p.morale + 10, 0, 100);
       }
+      // The human spends the managed club's points; every other club's players build themselves.
+      if (managed) { if (p.level > levelBefore) levelUps.push({ player: p, level: p.level }); }
+      else if (p.skillPoints > 0) autoSpend(p);
     }
     return levelsGained;
   }
@@ -378,6 +389,7 @@ export class SeasonService {
           p.fitness = clamp(p.fitness + recovery, 0, 100);
         }
         p.morale = clamp(p.morale + Math.sign(70 - p.morale) * 2, 15, 100);
+        decayForm(p);
         if (p.contractWeeks > 0) {
           p.contractWeeks--;
           if (p.contractWeeks === 0 && team.id === draft.clubId) {

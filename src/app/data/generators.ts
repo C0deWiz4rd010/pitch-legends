@@ -20,6 +20,7 @@ import { createFormation } from './formations';
 import { ClubIdentity } from './names';
 import { TRAITS } from './traits';
 import { ARCHETYPES_BY_GROUP } from './talents';
+import { grantStartingBuild } from '../core/rpg/auto-build';
 import { enforceMythicCap, generateDna } from '../core/rpg/player-dna';
 import { createClubVisualIdentity, createManagerVisualIdentity, createPlayerVisualIdentity, hash32 } from '../core/visual-identity';
 import { ClubVisualIdentity } from '../models/visual.model';
@@ -122,7 +123,7 @@ export function generatePlayer(
   const dna = generateDna({ id, archetype, potential });
   const marketValue = marketValueFor(overall, age, potential, dna);
 
-  return {
+  const player: Player = {
     id,
     firstName: identity.firstName,
     lastName: identity.lastName,
@@ -158,6 +159,9 @@ export function generatePlayer(
     seasonStats: emptySeasonStats(),
     dna,
   };
+  // The talents his level would have earned, so a veteran does not start as a blank slate.
+  grantStartingBuild(player);
+  return player;
 }
 
 export function generateSquad(rng: Rng, teamStrength: number, teamKey = 'team', worldSeed?: number): Player[] {

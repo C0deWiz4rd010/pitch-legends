@@ -118,6 +118,7 @@
           <span class="mini-bar"><i [style.width.%]="p.fitness" [style.background]="ratingColor(p.fitness)"></i></span>
         </div>
         <div class="cond-item mor" [title]="i18n.pick('Moral', 'Morale')">{{ moraleIcon(p.morale) }}</div>
+        <div class="cond-item" [title]="i18n.pick('Form: Entwicklung der letzten Spiele', 'Form: trend of the last matches')">{{ formSymbol(p) }}</div>
       </div>
 
       <div class="money hide-md">

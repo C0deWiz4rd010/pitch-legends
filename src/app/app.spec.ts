@@ -137,6 +137,8 @@ describe('career progression', () => {
     const player = game.teams[0].players[0];
     player.level = 10;
     player.skillPoints = 10;
+    // Generated players already carry the talents of their level; start this one from nothing.
+    player.talentRanks = {};
     const service = new RpgService();
     const talent = service.availableTalents(player)[0];
 

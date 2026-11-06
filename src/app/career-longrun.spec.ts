@@ -27,6 +27,8 @@ interface SeasonSnapshot {
   maxCoins: number;
   ownCoins: number;
   transfers: number;
+  /** Mean unspent skill points of the players no human manages. */
+  aiSkillPoints: number;
   medianIncome: number;
   medianExpenses: number;
 }
@@ -52,6 +54,7 @@ function snapshot(state: GameState, transfers = 0): SeasonSnapshot {
     maxCoins: coins[coins.length - 1],
     ownCoins: state.teams.find((team) => team.id === state.clubId)!.coins,
     transfers,
+    aiSkillPoints: Math.round(state.teams.filter((team) => team.id !== state.clubId).flatMap((team) => team.players).reduce((sum, player, _, all) => sum + player.skillPoints / all.length, 0) * 10) / 10,
     medianIncome: median(previous.map((totals) => INCOME_KINDS.reduce((sum, kind) => sum + totals![kind], 0))),
     medianExpenses: median(previous.map((totals) => EXPENSE_KINDS.reduce((sum, kind) => sum + totals![kind], 0))),
   };
@@ -113,6 +116,8 @@ describe('Career long run: ten seasons without a human', () => {
       expect(entry.minCoins).toBeGreaterThan(0);
       expect(entry.maxCoins).toBeLessThan(entry.medianCoins * 12);
       expect(entry.transfers).toBeGreaterThan(0);
+      // Computer-built players spend what they earn; before, their points piled up unused for years.
+      expect(entry.aiSkillPoints).toBeLessThan(14);
     }
     // No rating inflation or collapse over a decade.
     const last = history[history.length - 1];
