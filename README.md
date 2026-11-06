@@ -70,7 +70,8 @@ squad sizes, ratings, ages and club finances over a decade.
 
 See the [implementation log](docs/IMPLEMENTATION_2_0_LOG.md) for what each phase changed, how it was
 verified and what is still open, and the [masterplan](docs/PITCH_LEGENDS_2_0_MASTERPLAN.md) for the
-original 2.0 plan.
+original 2.0 plan. The roadmap for 3.0 (game feel, animation, graphics, RPG depth) is in the
+[3.0 plan](docs/PITCH_LEGENDS_3_0_PLAN.md), its progress in the [3.0 log](docs/IMPLEMENTATION_3_0_LOG.md).
 
 ## License
 

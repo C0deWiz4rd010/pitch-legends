@@ -267,3 +267,6 @@ Nach der sichtbaren 3D-Umstellung priorisiert der Nutzer ausdrücklich weitere G
 
 Die RPG-Erweiterung (Effekt-Pipeline, Training 2.0, Seltenheit, Signaturen, Quirks, Evolutionen, Spielerakte, Save v7) ist in `RPG_SYSTEM_DESIGN.md` beschrieben, ihr Fortschritt je Phase in `IMPLEMENTATION_2_0_LOG.md`. Sie ergänzt den Masterplan, besonders Phase 9 (Training und Talente erklären, wo ein Attribut im Spiel wirkt), und ersetzt keine seiner Abnahmekriterien.
 
+## Nachtrag 06.11.2026: Folgeplan 3.0
+
+Die weitere Arbeit an Spielgefühl, Animation, Grafik und RPG-Tiefe steht in [PITCH_LEGENDS_3_0_PLAN.md](PITCH_LEGENDS_3_0_PLAN.md), der Fortschritt in `IMPLEMENTATION_3_0_LOG.md`. Dieser Masterplan bleibt Referenz für die 2.0-Abnahmekriterien.
