@@ -6,6 +6,8 @@ import { resolveMatchKits, MatchKitSelection } from '../../core/kit-visuals';
 import { hash32 } from '../../core/visual-identity';
 import { MatchRenderFrame, MatchRenderState, MatchSnapshot, PlayerRuntimeSnapshot } from '../../models/match.model';
 import { MATCH_TICK } from '../../core/football/match-types';
+import { RefereeRig } from './animation/referee';
+import { createPlayerVisualIdentity } from '../../core/visual-identity';
 import { createProceduralFootballer, poseFootballer, ProceduralFootballer } from './three-player.factory';
 import { interpolateThreeFrame, playerInCameraSpace, RenderInterpolationScratch } from './three-render-state';
 import { usesSoftwareGraphics } from './graphics-capabilities';
@@ -113,6 +115,8 @@ export class ThreePitchRenderer {
   private readonly camIntro = new THREE.Vector3();
   /** Simulation time shown so far: pose blends and the ball roll follow it, so slow motion slows them too. */
   private poseClock = 0;
+  /** The referee is only drawn: no part of the simulation. */
+  private referee: RefereeRig | null = null;
   private lastStateTick = -1;
   private readonly hud: HTMLCanvasElement;
   private readonly hudContext: CanvasRenderingContext2D | null;
@@ -466,6 +470,10 @@ export class ThreePitchRenderer {
     this.selection.visible = !!this.models.get(state.controlledPlayerId)?.mesh.visible;
     this.arrow.visible = this.selection.visible;
     this.updateBall(state, dt, simDt, !!replay);
+    if (this.referee) {
+      this.referee.model.mesh.visible = this.quality !== 'low';
+      if (this.quality !== 'low') this.referee.update((state.ball.x - FIELD_LENGTH / 2) * mirror, state.ball.y - FIELD_WIDTH / 2, simDt, this.poseClock, state.tick, match.config.camera.reducedMotion);
+    }
     this.updateAtmosphere(match, dt);
     this.updateTurf(dt);
     if (this.bloom) this.bloom.strength = 0.25 + Math.max(0, 1 - (this.time - this.goalTime) / 1.5) * 0.45;
@@ -531,6 +539,8 @@ export class ThreePitchRenderer {
     this.hud.remove();
     for (const model of this.models.values()) model.destroy();
     this.models.clear();
+    this.referee?.destroy();
+    this.referee = null;
     disposeTree(this.scene);
     this.sun.shadow.dispose();
     this.renderer.renderLists.dispose();
@@ -700,6 +710,8 @@ export class ThreePitchRenderer {
       this.kits = resolveMatchKits(match.home, match.away);
       for (const model of this.models.values()) model.destroy();
       this.models.clear();
+      this.referee?.destroy();
+      this.referee = null;
       this.auraRarity.clear();
       disposeTree(this.stadium);
       this.stadium.clear();
@@ -721,6 +733,12 @@ export class ThreePitchRenderer {
       this.scene.add(model.mesh);
       const rarity = dnaOf(actor.player).rarity;
       if (atLeast(rarity, AURA_FROM)) this.auraRarity.set(actor.player.id, rarity);
+    }
+    if (!this.referee && !this.software && this.quality !== 'low') {
+      const black = { ...this.kits!.home, shirt: '#151515', secondary: '#151515', trim: '#e9c46a', shorts: '#151515', socks: '#151515', number: '#151515' };
+      const model = createProceduralFootballer(createPlayerVisualIdentity(`referee-${match.matchId}`), black, 0, false, false, this.software, '');
+      this.scene.add(model.mesh);
+      this.referee = new RefereeRig(model);
     }
   }
 

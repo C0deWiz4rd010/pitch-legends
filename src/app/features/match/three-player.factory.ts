@@ -6,6 +6,7 @@ import { hash32 } from '../../core/visual-identity';
 import { blendJointSkin } from './joint-skinning';
 import { createLimbSurface } from './limb-surface';
 import { ACTION_DURATION_TICKS } from '../../core/football/action-timing';
+import { advanceGait, GaitMemory, newGait, strideFor, turnStepAmount } from './animation/locomotion';
 
 const SKIN = ['#f5d0a9', '#e9b989', '#d99a68', '#bf7b50', '#9b5c3d', '#75422f', '#573126', '#35221f'];
 const HAIR = ['#17141d', '#2c1b18', '#4b2e24', '#71462b', '#9b673d', '#c89b62', '#d9c6a2', '#702c32'];
@@ -52,6 +53,8 @@ export interface ProceduralFootballer {
   thighLength: number;
   shinLength: number;
   footedness: 1 | -1;
+  /** Goalkeepers use the keeper poses; outfield players use the same action names for throw-ins. */
+  goalkeeper: boolean;
   destroy(): void;
 }
 
@@ -296,7 +299,11 @@ export function createProceduralFootballer(identity: PlayerVisualIdentity, kit: 
   for (const side of ['left', 'right'] as const) {
     blend('chest', `${side}Arm`, .09, .12);
     blend(`${side}Thigh`, `${side}Shin`, .105, .11);
+    // Groin and ankle: the legs no longer fold open or crack at the boot.
+    blend('hips', `${side}Thigh`, .09, .13);
+    blend(`${side}Shin`, `${side}Foot`, .05, .08);
   }
+  blend('chest', 'head', .06, .1);
   const material = footballerMaterial(compact);
   const mesh = new THREE.SkinnedMesh(geometry, material);
   mesh.name = `footballer-${recipe.seed}`;
@@ -312,7 +319,7 @@ export function createProceduralFootballer(identity: PlayerVisualIdentity, kit: 
   mesh.receiveShadow = false;
   // Animated bounds can extend beyond the bind pose during diving and jumping.
   mesh.frustumCulled = false;
-  return { mesh, joints, recipe, hipHeight: hip, thighLength: thigh, shinLength: shin, footedness: leftFooted ? -1 : 1,
+  return { mesh, joints, recipe, hipHeight: hip, thighLength: thigh, shinLength: shin, footedness: leftFooted ? -1 : 1, goalkeeper,
     destroy() {
       geometry.dispose(); mesh.skeleton.dispose(); mesh.removeFromParent();
       if (backPrint) { backPrint.geometry.dispose(); backPrint.material.map?.dispose(); backPrint.material.dispose(); }
@@ -368,6 +375,7 @@ interface PoseMemory {
   time: number;
   yawRate: number;
   initialised: boolean;
+  gait: GaitMemory;
 }
 const POSE_MEMORY = new WeakMap<ProceduralFootballer, PoseMemory>();
 function poseMemory(model: ProceduralFootballer): PoseMemory {
@@ -375,7 +383,7 @@ function poseMemory(model: ProceduralFootballer): PoseMemory {
   if (!memory) {
     const count = jointList(model).length;
     memory = { action: '', previous: Array.from({ length: count }, () => new THREE.Quaternion()), previousHips: new THREE.Vector3(),
-      from: Array.from({ length: count }, () => new THREE.Quaternion()), fromHips: new THREE.Vector3(), blendStart: -1, facing: 0, time: 0, yawRate: 0, initialised: false };
+      from: Array.from({ length: count }, () => new THREE.Quaternion()), fromHips: new THREE.Vector3(), blendStart: -1, facing: 0, time: 0, yawRate: 0, initialised: false, gait: newGait() };
     POSE_MEMORY.set(model, memory);
   }
   return memory;
@@ -394,14 +402,15 @@ export function poseFootballer(model: ProceduralFootballer, state: PlayerRuntime
   const memory = poseMemory(model);
   const speed = Math.hypot(state.vx, state.vy);
   const run = THREE.MathUtils.clamp(speed / 7.8, 0, 1);
-  // Taller players take longer strides.
-  const stride = 3 * model.recipe.height / 1.82;
+  // Taller players take longer strides, and every player a longer one the faster he runs.
+  const stride = strideFor(speed, model.recipe.height);
   // Facing change per second drives a lean into turns.
   const facing = Math.atan2(state.facingX, state.facingY);
   const elapsed = time - memory.time;
+  let turnAngle = 0;
   if (memory.initialised && elapsed > 0 && elapsed < 0.25) {
-    const turn = Math.atan2(Math.sin(facing - memory.facing), Math.cos(facing - memory.facing));
-    memory.yawRate += (turn / elapsed - memory.yawRate) * Math.min(1, elapsed * 10);
+    turnAngle = Math.atan2(Math.sin(facing - memory.facing), Math.cos(facing - memory.facing));
+    memory.yawRate += (turnAngle / elapsed - memory.yawRate) * Math.min(1, elapsed * 10);
   } else if (!memory.initialised || elapsed < 0) memory.yawRate = 0;
   // Start a cross-fade from the last shown pose whenever the action changes.
   if (memory.initialised && memory.action !== state.action && time >= memory.time) {
@@ -410,13 +419,14 @@ export function poseFootballer(model: ProceduralFootballer, state: PlayerRuntime
     memory.blendStart = time;
   }
   memory.action = state.action;
-  const cycle = (state.animationDistance ?? 0) / stride;
+  // A slow player who turns steps on the spot instead of rotating with his feet nailed to the turf.
+  const cycle = advanceGait(memory.gait, state.animationDistance ?? 0, speed, model.recipe.height, speed < 1 ? Math.abs(turnAngle) * 0.28 : 0);
   const phase = cycle * TAU;
   const age = Math.max(0, (tick - state.actionStartedTick) / 60);
   const actionDuration = (ACTION_DURATION_TICKS[state.action] ?? 12) / 60;
   const breath = reducedMotion ? 0 : Math.sin(time * 2.2 + model.recipe.seed % 11) * 0.005;
   for (const joint of jointList(model)) joint.rotation.set(0, 0, 0);
-  const moving = Math.min(1, speed / 0.8);
+  const moving = Math.max(Math.min(1, speed / 0.8), turnStepAmount(memory.yawRate, speed));
   const maximumReach = model.thighLength + model.shinLength - 0.014;
   const stanceHalf = stride * 0.25 / 2;
   const hipDrop = model.hipHeight - (0.11 + Math.sqrt(maximumReach * maximumReach - stanceHalf * stanceHalf));
@@ -483,11 +493,32 @@ export function poseFootballer(model: ProceduralFootballer, state: PlayerRuntime
     j.spine.rotation.x-=power*.09;
     j.leftArm.rotation.z+=power*.35;j.rightArm.rotation.z-=power*.35;
   }
+  // The foot on the side the ball is on does the work; without a ball position it is the strong foot.
+  let ballSide: 'left' | 'right' = model.footedness > 0 ? 'right' : 'left';
+  if (lookAt) {
+    const lateral = (lookAt.x - state.x) * state.facingY - (lookAt.y - state.y) * state.facingX;
+    if (Math.abs(lateral) > 0.12 && Math.hypot(lookAt.x - state.x, lookAt.y - state.y) < 3) ballSide = lateral > 0 ? 'left' : 'right';
+  }
+  const ballOther = ballSide === 'right' ? 'left' : 'right';
+  const ballSign = ballSide === 'right' ? 1 : -1;
   if (state.action === 'receive' || state.action === 'close-control' || state.action === 'ball-roll' || state.action === 'drag-back') {
     const envelope=Math.sin(Math.min(age/actionDuration,1)*Math.PI) ** 2;
-    j.rightThigh.rotation.x -= envelope * 0.38;
-    j.rightFoot.rotation.y = -0.42 * envelope;
+    j[`${ballSide}Thigh`].rotation.x -= envelope * 0.38;
+    j[`${ballSide}Foot`].rotation.y = -0.42 * envelope * ballSign;
     j.spine.rotation.x += 0.12 * envelope;
+  }
+  if (state.action === 'stumble' || state.action === 'heavy-touch') {
+    // A stumble throws the arms out and buckles a knee; a heavy touch is the same, only slighter.
+    const strong = state.action === 'stumble' ? 1 : 0.45;
+    const envelope = Math.sin(Math.min(age / actionDuration, 1) * Math.PI) ** 1.5;
+    const trailing = model.recipe.seed % 2 ? 'left' : 'right';
+    j.hips.rotation.x += envelope * 0.30 * strong;
+    j.hips.position.y -= envelope * 0.10 * strong;
+    j.spine.rotation.x += envelope * 0.32 * strong;
+    j.leftArm.rotation.z += envelope * 0.8 * strong; j.rightArm.rotation.z -= envelope * 0.8 * strong;
+    j.leftArm.rotation.x -= envelope * 0.4 * strong; j.rightArm.rotation.x -= envelope * 0.4 * strong;
+    j[`${trailing}Thigh`].rotation.x -= envelope * 0.55 * strong;
+    j[`${trailing}Shin`].rotation.x += envelope * 0.7 * strong;
   }
   if (state.action === 'body-feint' || state.action === 'skill-failed') {
     const envelope = Math.sin(Math.min(age / actionDuration, 1) * Math.PI);
@@ -504,26 +535,42 @@ export function poseFootballer(model: ProceduralFootballer, state: PlayerRuntime
   }
   if (state.action === 'standing-tackle' && age < actionDuration) {
     const extend = Math.sin(Math.min(age / actionDuration, 1) * Math.PI) ** 2;
-    j.rightThigh.rotation.x = THREE.MathUtils.lerp(j.rightThigh.rotation.x,-0.85,extend);
-    j.rightShin.rotation.x = THREE.MathUtils.lerp(j.rightShin.rotation.x,0.15,extend);
+    j[`${ballSide}Thigh`].rotation.x = THREE.MathUtils.lerp(j[`${ballSide}Thigh`].rotation.x,-0.85,extend);
+    j[`${ballSide}Shin`].rotation.x = THREE.MathUtils.lerp(j[`${ballSide}Shin`].rotation.x,0.15,extend);
     j.spine.rotation.x += 0.2 * extend;
   }
-  if (state.action === 'slide' || state.action === 'stumble' || state.action === 'injured') {
+  if (state.action === 'slide' || state.action === 'injured') {
     // Injured players go down, stay down and get up again before limping on.
     const envelope = state.action === 'injured' ? Math.min(1, age / .35, Math.max(0, actionDuration - age) / .6) : Math.sin(Math.min(age / actionDuration, 1) * Math.PI) ** 2;
     j.hips.position.y -= envelope * 0.62;
     j.hips.rotation.x = -envelope * 0.8;
-    j.rightThigh.rotation.x = THREE.MathUtils.lerp(j.rightThigh.rotation.x,-1.0,envelope);
-    j.leftThigh.rotation.x = THREE.MathUtils.lerp(j.leftThigh.rotation.x,-0.6,envelope);
-    j.leftShin.rotation.x = THREE.MathUtils.lerp(j.leftShin.rotation.x,1.4,envelope);
+    // The leg on the ball's side leads the slide, the other folds underneath.
+    j[`${ballSide}Thigh`].rotation.x = THREE.MathUtils.lerp(j[`${ballSide}Thigh`].rotation.x,-1.0,envelope);
+    j[`${ballOther}Thigh`].rotation.x = THREE.MathUtils.lerp(j[`${ballOther}Thigh`].rotation.x,-0.6,envelope);
+    j[`${ballOther}Shin`].rotation.x = THREE.MathUtils.lerp(j[`${ballOther}Shin`].rotation.x,1.4,envelope);
   }
   if (state.action === 'header') {
     const jump = Math.sin(Math.min(age / actionDuration, 1) * Math.PI) ** 2;
-    j.hips.position.y += jump * 0.45;
-    j.spine.rotation.x += jump * 0.24;
+    // Leap as high as the header is struck (a ball at 2.8 m takes a real jump), arch back and thrust through the ball.
+    const lift = state.contact?.kind === 'head' ? THREE.MathUtils.clamp(state.contact.z - (model.hipHeight + 0.78), 0.1, 1.15) : 0.45;
+    const thrust = THREE.MathUtils.smoothstep(age, 0.05, 0.16);
+    j.hips.position.y += jump * lift;
+    j.spine.rotation.x += (thrust * 0.42 - 0.22 * (1 - thrust)) * jump;
     j.head.rotation.x += jump * 0.30;
     j.leftArm.rotation.z = THREE.MathUtils.lerp(j.leftArm.rotation.z,0.68,jump);
     j.rightArm.rotation.z = THREE.MathUtils.lerp(j.rightArm.rotation.z,-0.68,jump);
+  }
+  // An outfield player taking a throw-in: the ball goes back over the head with both hands, then forward.
+  const throwIn = state.action === 'keeper-throw' && !model.goalkeeper;
+  if (throwIn) {
+    const t = Math.min(age / actionDuration, 1);
+    const arms = Math.sin(t * Math.PI);
+    const release = THREE.MathUtils.smoothstep(t, 0.35, 0.6);
+    j.leftArm.rotation.x = j.rightArm.rotation.x = -2.8 * arms;
+    j.leftArm.rotation.z = 0.12; j.rightArm.rotation.z = -0.12;
+    j.leftForearm.rotation.x = j.rightForearm.rotation.x = -0.35 * arms - 0.45 * release * arms;
+    j.spine.rotation.x += (-0.3 * (1 - release) + 0.26 * release) * arms;
+    j.head.rotation.x -= 0.2 * arms;
   }
   // Look at the ball: head first, chest partially; a carrier looks down at the ball.
   if (lookAt && state.action !== 'celebrate' && !state.action.startsWith('keeper-')) {
@@ -554,7 +601,7 @@ export function poseFootballer(model: ProceduralFootballer, state: PlayerRuntime
     for (let i = 0; i < joints.length; i++) memory.previous[i].copy(joints[i].quaternion);
     memory.previousHips.copy(j.hips.position);
   }
-  if (state.action.startsWith('keeper-') && state.action !== 'keeper-kick' && state.action !== 'keeper-rush') {
+  if (state.action.startsWith('keeper-') && !throwIn && state.action !== 'keeper-kick' && state.action !== 'keeper-rush') {
     j.hips.position.y-=.12;
     j.spine.rotation.x=.16;
     j.leftArm.rotation.z=.27;j.rightArm.rotation.z=-.27;
@@ -680,4 +727,35 @@ function pointHand(model:ProceduralFootballer,side:'left'|'right',target:THREE.V
   };
   aim(arm,elbow,elbowTarget);aim(elbow,hand,destination);
   arm.quaternion.copy(IK_OLD_ARM.slerp(arm.quaternion,weight));elbow.quaternion.copy(IK_OLD_ELBOW.slerp(elbow.quaternion,weight));
+}
+
+/**
+ * Largest drift of a planted foot against the ground, in metres per `step` of travel (0 = perfectly planted).
+ * The figure runs straight along +Z at `speed`; a foot counts as planted while it is in the stance part of its
+ * cycle in both of two consecutive poses. The Player Studio and the tests use it to catch foot sliding.
+ */
+export function measureFootSlide(model: ProceduralFootballer, base: PlayerRuntimeSnapshot, speed: number, step = 0.05, samples = 120): number {
+  const memory = poseMemory(model);
+  memory.gait = newGait();
+  const world = new THREE.Vector3();
+  const feet = [model.joints.leftFoot, model.joints.rightFoot];
+  let previous: { z: number; stance: boolean }[] | null = null;
+  let worst = 0;
+  for (let i = 0; i < samples; i++) {
+    const distance = i * step;
+    model.mesh.position.set(0, 0, distance);
+    model.mesh.updateMatrixWorld(true);
+    poseFootballer(model, { ...base, vx: 0, vy: speed, facingX: 0, facingY: 1, animationDistance: distance, action: 'jog' }, 60, 1 + distance / Math.max(speed, 0.1), true);
+    model.mesh.updateMatrixWorld(true);
+    const cycle = memory.gait.cycle;
+    const current = feet.map((foot, index) => {
+      const t = (((cycle + (index === 0 ? 0 : 0.5)) % 1) + 1) % 1;
+      foot.getWorldPosition(world);
+      return { z: world.z, stance: t < 0.22 };
+    });
+    if (previous) current.forEach((now, index) => { if (now.stance && previous![index].stance) worst = Math.max(worst, Math.abs(now.z - previous![index].z)); });
+    previous = current;
+  }
+  model.mesh.position.set(0, 0, 0);
+  return worst;
 }

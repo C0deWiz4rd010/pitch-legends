@@ -1023,7 +1023,8 @@ export class ArcadeMatch {
     const shielding = !!input.jockey && this.ball.ownerId === actor.player.id;
     this.moveActor(actor, worldX, input.moveY, input.sprint && !shielding, dt, shielding ? 0.62 : 1);
     const moving = len2(worldX, input.moveY) > 0.1;
-    this.setAction(actor, !moving ? 'idle' : input.sprint && !shielding ? 'sprint' : this.ball.ownerId === actor.player.id ? 'carry' : 'jog');
+    // A shielding carrier shows the wide, low stance of a defender with his back to the opponent.
+    this.setAction(actor, shielding ? 'jockey' : !moving ? 'idle' : input.sprint ? 'sprint' : this.ball.ownerId === actor.player.id ? 'carry' : 'jog');
     if (input.skill && !this.previousInput.skill) this.performSkill(actor, worldX, input.moveY);
   }
 
@@ -1740,6 +1741,14 @@ export class ArcadeMatch {
     if (!defender.active && defender.player.id === this.selectedPlayerId) this.selectedPlayerId = this.bestControlledActor().player.id;
   }
 
+  /** Dribbling alternates feet like running does: the strong foot takes two touches in three, a two-footed player alternates. */
+  private dribbleFoot(actor: ArcadeActor): 'left' | 'right' {
+    const touch = Math.floor(this.tick / 11) % 3;
+    if (actor.player.foot === 'Both') return touch % 2 ? 'left' : 'right';
+    const strong = actor.player.foot === 'Left' ? 'left' : 'right';
+    return touch === 2 ? (strong === 'left' ? 'right' : 'left') : strong;
+  }
+
   private updateBall(dt: number): void {
     const owner = this.owner();
     this.ball.controlledTouch += dt;
@@ -1771,7 +1780,7 @@ export class ArcadeMatch {
           this.ball.vy = correction.y;
           this.ball.vz = speed > 1 ? 0.35 : 0;
           this.ball.controlledTouch = 0;
-          owner.contact = { tick: this.tick, x: this.ball.x, y: this.ball.y, z: this.ball.z, kind: 'foot', foot: owner.player.foot === 'Left' ? 'left' : 'right', dribble: true };
+          owner.contact = { tick: this.tick, x: this.ball.x, y: this.ball.y, z: this.ball.z, kind: 'foot', foot: this.dribbleFoot(owner), dribble: true };
           this.ball.lastTouch = owner.side;
           this.ball.lastTouchPlayerId = owner.player.id;
         }

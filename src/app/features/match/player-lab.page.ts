@@ -78,6 +78,7 @@ export class PlayerLabPage implements AfterViewInit, OnDestroy {
     { value:'keeper-ready',label:'Torwart · bereit' }, { value:'keeper-catch',label:'Torwart · fangen' },
     { value:'keeper-dive',label:'Torwart · hechten' }, { value:'celebrate',label:'Torjubel' },
     { value:'keeper-parry',label:'Torwart · abwehren' }, { value:'keeper-throw',label:'Torwart · abwerfen' },
+    { value:'heavy-touch',label:'Schwere Annahme' }, { value:'jockey',label:'Abschirmen / Stellen' },
   ];
   private renderer?: THREE.WebGLRenderer;
   private readonly scene = new THREE.Scene();

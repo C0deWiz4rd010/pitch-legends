@@ -2,7 +2,7 @@
 
 Fortschritt je Phase des [3.0-Plans](PITCH_LEGENDS_3_0_PLAN.md): was geändert wurde, wie es geprüft wurde und was offen bleibt. Jede Phase endet mit einem Eintrag nach dem Muster des [2.0-Logs](IMPLEMENTATION_2_0_LOG.md).
 
-Stand: Plan freigegeben am 2026-11-06, Phasen 0 bis 3 umgesetzt.
+Stand: Plan freigegeben am 2026-11-06, Phasen 0 bis 4 (ohne Clip-Import) umgesetzt.
 
 | Phase | Thema | Stand |
 | --- | --- | --- |
@@ -10,7 +10,7 @@ Stand: Plan freigegeben am 2026-11-06, Phasen 0 bis 3 umgesetzt.
 | 1 | Steuerung und Reaktionsgefühl | umgesetzt, Rest siehe unten |
 | 2 | Ball, Aktionen, Torwart, Standards | teilweise umgesetzt, Rest siehe unten |
 | 3 | KI mit Fußballverständnis | umgesetzt, Rest siehe unten |
-| 4 | Animation 2.0 (Hybrid) | offen |
+| 4 | Animation 2.0 (Hybrid) | prozeduraler Teil umgesetzt, Clip-Import wartet auf Freigabe |
 | 5 | Grafik-Politur und Präsentation | offen |
 | 6 | Leistung und Mobile | offen |
 | 7 | RPG I: Spieler vertiefen | offen |
@@ -160,3 +160,25 @@ Stand: Plan freigegeben am 2026-11-06, Phasen 0 bis 3 umgesetzt.
   - Die Zusatzeinstellung ist nur in der Einstellungsseite zu sehen; ich habe sie nicht im Browser angeschaut.
   - Die Taktikregler (Pressing, Breite, Mentalität) sind nicht über eine eigene Telemetrie-Kennzahl im Balance-Check nachgewiesen; die Unit-Tests belegen die neuen Auslöser, nicht die gemittelten Laufwege.
 - **Offen:** Playwright-E2E nicht gelaufen, kein Spielgefühl-Test durch einen Menschen.
+
+## Phase 4 – Animation 2.0, prozeduraler Teil (2026-11-06)
+
+- **Gangart** (neu `features/match/animation/locomotion.ts`):
+  - Die Schrittlänge hängt vom Tempo ab (`strideFor`: 1,5 m beim Gehen bis 4,4 m im Sprint, skaliert mit der Körpergröße). Vorher waren es immer 3 m, deshalb wirkte das Joggen zu langsam und der Sprint zu hektisch.
+  - Die Phase wird aus der zurückgelegten Strecke aufsummiert (`advanceGait`) statt aus der Gesamtstrecke berechnet, ein Tempowechsel lässt sie also nie springen. Ein Rücksprung (Replay) oder ein großer Sprung setzt sie neu.
+  - Ein langsamer Spieler, der sich dreht, tritt auf der Stelle (`turnStepAmount`) statt mit festgenagelten Füßen mitzurotieren.
+  - `measureFootSlide` misst die Drift eines Standfußes gegen den Boden. Für 3, 5 und 8 m/s liegt sie unter 3 cm pro 5 cm Laufweg (Test).
+- **Füße:**
+  - Annahme, Zweikampf und Grätsche nutzen den Fuß auf der Seite, auf der der Ball liegt (aus dem Blickpunkt des Balls in Kamerakoordinaten, deshalb auch nach dem Seitenwechsel richtig); vorher immer den rechten.
+  - Die Dribbelberührung wechselt den Fuß (`dribbleFoot`: der starke Fuß zwei von drei Berührungen, ein beidfüßiger Spieler abwechselnd); vorher immer der starke.
+- **Neue und überarbeitete Posen:**
+  - Stolpern (Arme heraus, Körper nach vorn, ein Knie knickt) hat eine eigene Pose und teilt sie nicht mehr mit Grätsche und Verletzung; die schwere Annahme zeigt dieselbe Pose in schwächerer Form.
+  - Einwurf für Feldspieler: beide Arme über den Kopf, Rücken gebogen, Wurf nach vorn (Torwart bleibt bei seinem Abwurf; neues Modellfeld `goalkeeper`).
+  - Abschirmen: Ein menschlicher Ballführer mit gehaltener Jockey-Taste zeigt die breite, tiefe Haltung (`jockey`).
+  - Kopfball: Der Sprung folgt der Höhe des Kontakts (ein Ball auf 2,8 m braucht einen echten Sprung), dazu Rückbeuge und Nackenstoß.
+- **Gelenke:** Die Skin-Gewichte sind jetzt auch an Leiste (Hüfte ↔ Oberschenkel), Knöchel (Schienbein ↔ Fuß) und Hals (Brust ↔ Kopf) gemischt. Die Testfiguren zeigen im Studio keine Brüche; eine Sichtabnahme aller 128 Identitäten steht aus.
+- **Schiedsrichter** (`features/match/animation/referee.ts`): eine rein visuelle schwarze Figur aus derselben Spielerfabrik, die dem Ball etwa 9 m versetzt folgt und von derselben Gangart bewegt wird. Nicht Teil der Simulation, auf niedriger Qualität und Software-GL ausgeblendet.
+- **Studio:** Die Bewegungsliste enthält „Schwere Annahme“ und „Abschirmen / Stellen“.
+- **Nachweis:** 403 Unit-Tests (14 neu in `animation-v3.spec.ts`: Schrittlänge, stetige Phase, Rücksprung, Drehschritt, Fußrutsch bei drei Tempi, Fußseite, Stolpern, Einwurf, Kopfballsprung, normierte Gewichte, Schiedsrichter, Dribbelfuß, Abschirmen). Typecheck, Style-, i18n-, Format-Check und Build grün. Im Browser (stumm geschaltet): Spiel mit Schiedsrichter ohne Konsolenfehler, das Studio zeigt die Stolper-Pose wie vorgesehen.
+- **Nicht umgesetzt – wartet auf eine Entscheidung:** Der Import von Clips (Quaternius Universal Animation Library, CC0) mit `tools/bake-animations.mjs` und `clip-store.ts` ist nicht begonnen. Er erfordert einen Download (Datei, Quelle und Größe müssen vorher freigegeben werden) und ein Retargeting auf das 16-Knochen-Skelett, dessen Qualität erst im Studio beurteilt werden kann. Die Architektur ist vorbereitet: Gangart, Aktionsposen und Kontakt-IK sind getrennt, die Posen bleiben Rückfallebene.
+- **Weitere offene Punkte:** Humpeln nach einer Verletzung (der Renderzustand kennt die Verletzung nicht), Volley- und Fallrückzieherpose (keine Auslöser in der Engine), springende Mauer, Ausholphase (Kontakt-Tick der Simulation, siehe Phase 1) und die Fußrutsch-Anzeige im Studio (die Messung existiert als Funktion und Test, aber noch nicht als Anzeige). Kein Chrome-Test der Bildabstände.
