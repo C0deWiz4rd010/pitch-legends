@@ -21,6 +21,39 @@ export function wallSize(rule: RuleState, goalDistance: number, lateral: number)
   return Math.max(1, base - (lateral > 14 ? 2 : lateral > 9 ? 1 : 0));
 }
 
+/** Corners, and free kicks too far out or too wide for a shot, are crossed into the box. */
+export function isCrossedRestart(rule: RuleState, goalDistance: number, lateral: number): boolean {
+  if (rule.phase === 'corner') return true;
+  return rule.phase === 'freeKick' && wallSize(rule, goalDistance, lateral) === 0 && goalDistance > 17 && goalDistance < 40;
+}
+
+/** Where the attackers wait in the box for a delivery: [metres in front of the goal line, offset from the centre towards the ball side]. */
+const BOX_SPOTS: readonly (readonly [number, number])[] = [[11, 0], [5.5, 3.2], [7.5, -3.8], [16.5, -1.5], [13, 8]];
+
+/** Corners and free kicks that will be crossed: attackers take up positions in the box, the defenders go goal-side of them. */
+function placeBoxPlayers(taker: ArcadeActor, ball: ArcadeBall, actors: readonly ArcadeActor[], goalX: number, direction: 1 | -1, claimed: readonly ArcadeActor[]): void {
+  const side = Math.sign(ball.y - FIELD_WIDTH / 2) || 1;
+  const strength = (actor: ArcadeActor) => (actor.attrs?.physical ?? 60) + (actor.attrs?.shooting ?? 60) * 0.3;
+  const attackers = actors.filter(actor => actor.active && actor.side === taker.side && actor !== taker && actor.player.positionGroup !== 'GK' && !claimed.includes(actor))
+    .sort((a, b) => strength(b) - strength(a)).slice(0, BOX_SPOTS.length);
+  const defenders = actors.filter(actor => actor.active && actor.side !== taker.side && actor.player.positionGroup !== 'GK' && !claimed.includes(actor))
+    .sort((a, b) => ((b.attrs?.defending ?? 60) + (b.attrs?.physical ?? 60) * 0.5) - ((a.attrs?.defending ?? 60) + (a.attrs?.physical ?? 60) * 0.5)).slice(0, BOX_SPOTS.length + 1);
+  const put = (actor: ArcadeActor, depth: number, offset: number, faceX: number) => {
+    actor.x = clamp(goalX - direction * depth, .4, FIELD_LENGTH - .4);
+    actor.y = clamp(FIELD_WIDTH / 2 + side * offset, .4, FIELD_WIDTH - .4);
+    actor.vx = actor.vy = 0;
+    actor.facingX = faceX; actor.facingY = 0;
+    actor.intentX = actor.x; actor.intentY = actor.y;
+    actor.decisionCooldown = Math.max(actor.decisionCooldown, 1.2);
+  };
+  attackers.forEach((actor, index) => put(actor, BOX_SPOTS[index][0], BOX_SPOTS[index][1], direction));
+  // Each defender stands a step goal-side of "his" attacker; the extra one covers the near post.
+  defenders.forEach((actor, index) => {
+    const spot = BOX_SPOTS[Math.min(index, BOX_SPOTS.length - 1)];
+    put(actor, spot[0] - 1.1, spot[1] * 0.9 + (index >= BOX_SPOTS.length ? side * 1.6 : 0), -direction);
+  });
+}
+
 /** Places taker, ball and both teams legally for the restart (kick-off halves, 9.15 m, penalty arc, goal-kick box). */
 export function arrangeRestart(taker: ArcadeActor, rule: RuleState, ball: ArcadeBall, actors: readonly ArcadeActor[], attackDirection: (actor: ArcadeActor) => 1 | -1): void {
   const direction = attackDirection(taker);
@@ -70,4 +103,7 @@ export function arrangeRestart(taker: ArcadeActor, rule: RuleState, ball: Arcade
       actor.y = clamp(ball.y + dy / length * separation, .4, FIELD_WIDTH - .4);
     }
   }
+  // A delivery into the box: corners, and free kicks too far out or too wide for a shot.
+  const crossed = rule.phase === 'corner' || (rule.phase === 'freeKick' && !wallPlayers.length && Math.abs(goalX - ball.x) < 40 && Math.abs(goalX - ball.x) > 17);
+  if (crossed) placeBoxPlayers(taker, ball, actors, goalX, direction, wallPlayers);
 }

@@ -11,7 +11,9 @@ export const BALL_PHYSICS = {
   magnus: 0.048,
   /** Vertical dip (topspin) or lift (backspin) per unit of spin and metre per second. */
   topspinDip: 0.012,
-  airDrag: 0.16,
+  /** Air drag is partly quadratic in speed: the sum equals the old constant 0.16 at 25 m/s, fast balls slow more and slow balls carry further. */
+  airDrag: 0.064,
+  airDragQuadratic: 0.0038,
   airSpinDecay: 0.8,
   groundSpinDecay: 0.35,
   restitution: 0.48,
@@ -40,7 +42,7 @@ export function integrateBall(ball: SpinningBall, h: number, wet: boolean): void
     ball.vx -= ball.vy * lateral;
     ball.vy += vx * lateral;
     ball.vz -= ball.topspin * speed * p.topspinDip * h;
-    const drag = Math.exp(-p.airDrag * h);
+    const drag = Math.exp(-(p.airDrag + p.airDragQuadratic * speed) * h);
     ball.vx *= drag;
     ball.vy *= drag;
     const decay = Math.pow(p.airSpinDecay, h);

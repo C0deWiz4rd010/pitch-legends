@@ -113,6 +113,8 @@ export interface ActiveShot {
   xG: number;
   targetY: number;
   checkedKeeper: boolean;
+  /** The keeper's fixed form for this shot (0-1), drawn the first time he is in range. */
+  keeperQuality?: number;
 }
 
 /** Vector length. `Math.hypot` guards against overflow the match never needs and is several times slower. */

@@ -133,6 +133,16 @@ export const EFFECT_CAPS: Partial<Record<EffectHook, EffectCap>> = {
   staminaDrain: { add: [-0.3, 0.3], mul: [0.4, 1.4] },
   acceleration: { add: [-2, 4], mul: [0.8, 1.25] },
   sprintBurst: { add: [-1, 2], mul: [0.85, 1.2] },
+  // Hooks wired in Phase 2; their data sources follow with the RPG phases.
+  shotPower: { add: [-2, 3], mul: [0.92, 1.12] },
+  curve: { add: [-0.4, 0.6], mul: [0.7, 1.4] },
+  throughLead: { add: [-2, 3], mul: [0.8, 1.3] },
+  firstTouch: { add: [-10, 12], mul: [0.85, 1.2] },
+  shielding: { add: [-0.08, 0.18], mul: [0.7, 1.4] },
+  aerial: { add: [-12, 15], mul: [0.85, 1.2] },
+  keeperReach: { add: [-0.2, 0.35], mul: [0.9, 1.2] },
+  staminaRecovery: { add: [-0.02, 0.05], mul: [0.5, 2] },
+  composure: { add: [-0.2, 0.15], mul: [0.75, 1.25] },
 };
 
 export function capFor(hook: EffectHook, isAttribute: boolean): EffectCap {

@@ -2,13 +2,13 @@
 
 Fortschritt je Phase des [3.0-Plans](PITCH_LEGENDS_3_0_PLAN.md): was geändert wurde, wie es geprüft wurde und was offen bleibt. Jede Phase endet mit einem Eintrag nach dem Muster des [2.0-Logs](IMPLEMENTATION_2_0_LOG.md).
 
-Stand: Plan freigegeben am 2026-11-06, Phase 0 und Phase 1 umgesetzt.
+Stand: Plan freigegeben am 2026-11-06, Phasen 0 bis 2 umgesetzt.
 
 | Phase | Thema | Stand |
 | --- | --- | --- |
 | 0 | Messbasis und Quick-Wins für Flüssigkeit | umgesetzt, Rest siehe unten |
 | 1 | Steuerung und Reaktionsgefühl | umgesetzt, Rest siehe unten |
-| 2 | Ball, Aktionen, Torwart, Standards | offen |
+| 2 | Ball, Aktionen, Torwart, Standards | teilweise umgesetzt, Rest siehe unten |
 | 3 | KI mit Fußballverständnis | offen |
 | 4 | Animation 2.0 (Hybrid) | offen |
 | 5 | Grafik-Politur und Präsentation | offen |
@@ -89,3 +89,34 @@ Stand: Plan freigegeben am 2026-11-06, Phase 0 und Phase 1 umgesetzt.
   - Der Rechte-Stick-Wechsel ist nur für Gamepads umgesetzt (kein Tastatur- oder Touch-Weg).
   - Playwright-E2E nicht gelaufen (Browser nicht installiert). Im E2E-Test `three-playground` nimmt J den Anstoß, andere Tests, die auf den Anstoß warten, wurden nicht geprüft.
   - Die 5-Minuten-Spielprobe durch einen Menschen steht aus; ob die Defensive mit den neuen Zeiten gut spielbar ist, ist nur durch die Balance-Zahlen belegt.
+
+## Phase 2 – Ball, Aktionen, Torwart, Standards (2026-11-06)
+
+- **Alle neun Hooks sind verdrahtet** und haben Grenzen in `EFFECT_CAPS` (`core/rpg/effects.ts`):
+  - `shotPower` (Schussgeschwindigkeit), `curve` (Effet bei Schüssen und Flanken), `throughLead` (Vorlage des Steilpasses), `firstTouch` (Annahme), `shielding` (Tackling-Schutz), `aerial` (Luftduell), `keeperReach` (Reichweite des Torwarts), `staminaRecovery` (Erholung im Stehen) und `composure` (Streuung der Schüsse).
+  - `injuryRisk` wirkt jetzt auch bei Kontaktverletzungen im Match (`injuryChance`, direkt über `resolveHook`, weil er ein Hook außerhalb des Platzes ohne Zwischenspeicher bleibt).
+  - Noch gibt es für die neun Hooks keine Datenquellen (Traits, Talente, Signaturen); das folgt in Phase 7. Der Test belegt, dass ein Modifier wirkt.
+- **Ball:** Der Luftwiderstand ist teils quadratisch (`airDrag 0,064 + 0,0038 × Geschwindigkeit`; bei 25 m/s wie vorher). Schnelle Bälle verlieren mehr, langsame tragen weiter. Flanken und Ecken haben Effet nach innen (`3` Spin, über den Hook `curve`).
+- **Torwart** (`handlePostsAndKeeper`): Statt eines einzigen Würfelwurfs, sobald der Ball in Reichweite kommt, hat jeder Schuss eine feste Torwartform (`ActiveShot.keeperQuality`). In jedem Teilschritt wird der Ball an der wirklich erreichbaren Reichweite (Reichweite × `0,55 + Reaktion × 0,3 + Form × 0,3 − Tempo × 0,004`) gemessen. Ein Ball, der nah vorbeigeht, trifft immer eine Hand; ein zu weiter nie. Neu: hohe Schüsse werden zur Hälfte über die Latte gelenkt (Ecke). Beim Elfmeter wählt ein menschlicher Torwart die Ecke mit dem Stick (hoch oder runter); ohne Stick bleibt er in der Mitte.
+- **Flanken:** Der Stick wählt das Ziel: Richtung wählt den Läufer in dieser Richtung, Zurückziehen sucht den Rückpass an den Strafraumrand (9 bis 30 m vor dem Tor).
+- **Ecken und Standards:** Ecken sind echte Flanken in den Strafraum. Beide Mannschaften nehmen vor Ecken und Freistößen aus 17 bis 40 m ohne Mauer Positionen im Strafraum ein (`placeBoxPlayers`: Elfmeterpunkt, kurzer und langer Pfosten, Strafraumrand; Verteidiger stehen eine Stufe tormitte-wärts). Freistöße dieser Art werden ebenfalls geflankt (`isCrossedRestart`).
+- **Luftduell:** Die Sprunghöhe hängt von Physis und `aerial` ab (2,2 bis 2,9 m; vorher für alle 2,45 m), den Zweikampf entscheiden Luftkraft, Position und ein Zufallsanteil.
+- **Balance:** Die erste Fassung mit gemessener Torwartreichweite ließ 3,26 Tore pro Spiel zu (die alte Würfelei fing fast jeden Ball im Radius). `KEEPER_REACH_BASE` steht nach drei Läufen bei 0,55.
+
+  | Wert | Phase 1 | Phase 2 | Ziel |
+  | --- | --- | --- | --- |
+  | Tore pro Spiel | 2,79 | 2,92 | 2,2–3,4 |
+  | Schüsse pro Team | 13,2 | 13,7 | 8–18 |
+  | Passquote | 67,7 % | 67,8 % | 65–88 % |
+  | Unentschieden | 25,4 % | 27,4 % | 20–32 % |
+  | Heimsiege | 45,0 % | 43,6 % | 42–52 % |
+  | Abseits | 1,89 | 1,74 | 1,5–3 |
+  | Rechenzeit | 552 ms | 538 ms | ≤ 600 |
+- **Nachweis:** 379 Unit-Tests (11 neu in `gameplay-balls-v3.spec.ts`: Luftwiderstand, Torwart-Reichweite und -Mehrfachprüfung, Abfälschen über die Latte, Elfmeter-Stick, Hook-Grenzen und -Wirkung, Luftduell, Rückpass, Strafraumpositionen und geflankte Ecke, Verletzungsrisiko). Typecheck, Style-, i18n-, Format-Check und Produktionsbuild grün.
+- **Nicht umgesetzt (verschoben oder gestrichen):**
+  - Scharfer Flachpass, „Lauf anfordern“, KI-Doppelpässe, Fake-Schuss und Pass-Abbruch, Timing-Abschluss, Flugkopfball sowie Seitfall- und Fallrückzieher: noch offen für eine spätere Gameplay-Runde, weil jede Aktion eine eigene Eingabe und Animation braucht (Phase 4).
+  - Torwart: Fausten bei Flanken, Abtauchen im 1-gegen-1; der Strafstoß ist im Match weiter ein echter Schuss mit Würfelwurf für die KI-Torwartecke.
+  - Netzphysik und Netzbeule (Renderer, Phase 5), Zielhilfe mit Bogenvorschau und Effet-Eingabe bei Standards (HUD), springende Mauer (Animation, Phase 4).
+  - Regeln: Fouls von Angreifern beim Abschirmen und am Torwart sowie die verzögerte Karte bei Vorteil (rein kosmetisch).
+  - Echte Volleys gab es schon; ein eigener Volley-Modus fehlt.
+- **Offen:** Playwright-E2E nicht gelaufen; die Wirkung der Strafraumpositionen bei Standards ist nur durch Tests, nicht in einem echten Spiel gesehen.
