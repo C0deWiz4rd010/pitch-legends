@@ -47,6 +47,14 @@
       </div>
     </div>
     <div class="setting">
+      <span>{{ 'settings.teammateAi' | t }}</span>
+      <div class="mini-seg">
+        @for (d of difficulties; track d) {
+          <button [class.active]="(gs.game()?.settings?.teammateAi ?? 'normal') === d" (click)="setTeammateAi(d)">{{ ('difficulty.' + d) | t }}</button>
+        }
+      </div>
+    </div>
+    <div class="setting">
       <span>{{ 'settings.halfLength' | t }}</span>
       <div class="mini-seg">
         @for (duration of durations; track duration) {

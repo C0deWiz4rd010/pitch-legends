@@ -91,6 +91,8 @@ export interface MatchConfig {
   seed: number;
   fixtureId?: string;
   difficulty: 'easy' | 'normal' | 'hard';
+  /** How well the player's own AI team-mates play; omitted means normal. */
+  teammateAi?: 'easy' | 'normal' | 'hard';
   assist: AssistPreset;
   autoSwitch?: 'receivers' | 'assisted' | 'manual';
   playerLockId: string | null;

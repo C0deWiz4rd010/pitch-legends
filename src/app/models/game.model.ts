@@ -133,6 +133,8 @@ export interface CareerObjective {
 
 export interface GameSettings {
   difficulty: Difficulty;
+  /** Quality of the AI team-mates of the player's side; omitted means normal. */
+  teammateAi?: Difficulty;
   soundEnabled: boolean;
   autoSave: boolean;
   locale: Locale;

@@ -42,6 +42,7 @@ import { PlayerCollisionGrid } from '../football/collisions';
 import { actorSnapshot, applyActorSnapshot, ballSnapshot, fnv1aHex, writeBallSnapshot, writePlayers } from '../football/match-snapshot';
 import { keeperDiveTarget, keeperPositionIntent } from '../football/keeper-ai';
 import { arrangeRestart, chooseRestartTaker, isCrossedRestart } from '../football/set-pieces';
+import { actionValue, dribbleSuccess, expectedThreat, passCompletion } from '../football/xt';
 import { shootoutConversionChance } from '../football/penalty';
 import { Aim, KickOutcome, ShootoutHost, ShootoutPrompt, ShootoutSession } from '../football/shootout';
 import { AttributeKey } from '../../models/enums';
@@ -125,7 +126,9 @@ const RESTART_AUTO_SECONDS = 8;
 /** Share of the normal speed while a kick or tackle is still being recovered from. */
 const RECOVERY_SPEED = 0.55;
 /** Share of a keeper's reach he covers with a poor read; reaction and the shot's roll add the rest. */
-const KEEPER_REACH_BASE = 0.55;
+const KEEPER_REACH_BASE = 0.45;
+/** Value an AI passer subtracts from a team-mate who may be offside. */
+const OFFSIDE_PASS_COST = 0.006;
 /** How far away a slide may start, and how long a missed one (or a missed standing tackle) keeps the player slow. */
 const SLIDE_LUNGE_REACH = 3.2;
 const SLIDE_MISS_TICKS = 48;
@@ -1110,6 +1113,11 @@ export class ArcadeMatch {
       const perk = actor.side === this.controlledSide ? 1 - clamp(this.managerTacticsRank, 0, 5) * 0.04 : 1;
       actor.decisionCooldown = (base + this.rng.float(0, spread)) * tempoFactor * perk;
     }
+    // A player who is closing the ball down keeps re-aiming at it every tick instead of running to a spot chosen up to half a second ago.
+    if (actor.action === 'press' && this.ball.ownerId !== actor.player.id && this.aiLevel(actor.side) !== 'easy') {
+      actor.intentX = clamp(this.ball.x + this.ball.vx * .22, 1, FIELD_LENGTH - 1);
+      actor.intentY = clamp(this.ball.y + this.ball.vy * .22, 1, FIELD_WIDTH - 1);
+    }
     const dx = actor.intentX - actor.x;
     const dy = actor.intentY - actor.y;
     // A carrier in open space sprints; before, the 8 m target ahead never reached the 14 m sprint threshold.
@@ -1165,12 +1173,31 @@ export class ArcadeMatch {
         this.shoot(actor, this.rng.float(.50,.93), direction, clamp(farCorner+this.rng.float(-accuracy,accuracy),-1,1), goalDistance > 18 && this.stat(actor,'shooting') > 72, goalDistance < 14);
       } else if (this.tryAiSkill(actor, pressureDistance)) {
         // Took the defender on.
-      } else if (pressured || this.rng.bool(patience+(captain?.03:0)) || (shotValue >= shotThreshold && goalDistance < shotRange)) {
-        const cross = goalDistance < 26 && Math.abs(actor.y-FIELD_WIDTH/2) > Math.min(16, FIELD_WIDTH/4);
-        if (cross && this.cross(actor, this.rng.bool(.3), .7)) return;
-        const through = team.tactics.counterAttack && this.rng.bool(.25);
-        const long = cross || team.tactics.buildUp === 'long-ball' && this.rng.bool(.3);
-        this.pass(actor, through, long, long?.76:team.tactics.passing==='short'?.38:.60, direction, cross ? (FIELD_WIDTH/2-actor.y)/25 : this.rng.float(-.4,.4));
+      } else {
+        // Options are weighed by expected threat: what a pass or a dribble gains, how likely it works, what a lost ball costs.
+        const option = this.bestPassOption(actor, direction);
+        const here = expectedThreat(actor.x, actor.y, direction);
+        const dribble = actionValue(dribbleSuccess(this.stat(actor,'dribbling'), pressureDistance), expectedThreat(openLane.x, openLane.y, direction) - here, here);
+        // Patient teams pass later, fast ones earlier; a captain keeps the ball moving.
+        const bias = .003 + (team.tactics.tempo === 'slow' ? .003 : team.tactics.tempo === 'fast' ? -.003 : 0) - (captain ? .001 : 0);
+        const passes = !!option && option.value > dribble + bias;
+        if (pressured || passes || (shotValue >= shotThreshold && goalDistance < shotRange)) {
+          const cross = goalDistance < 26 && Math.abs(actor.y-FIELD_WIDTH/2) > Math.min(16, FIELD_WIDTH/4);
+          if (cross && this.cross(actor, this.rng.bool(.3), .7)) return;
+          if (option) {
+            const target = option.target;
+            const gap = distance(actor, target);
+            const forward = (target.x - actor.x) * direction;
+            // A ball behind the line for a runner is a through ball; far targets are played long.
+            const through = (forward > 16 && len2(target.vx, target.vy) > 4) || (team.tactics.counterAttack && forward > 8 && this.rng.bool(.25));
+            const long = gap > 30 || (team.tactics.buildUp === 'long-ball' && forward > 15);
+            this.pass(actor, through, long, clamp(.25 + gap * .012, .3, .85), target.x - actor.x, target.y - actor.y, target);
+          } else {
+            const through = team.tactics.counterAttack && this.rng.bool(.25);
+            const long = team.tactics.buildUp === 'long-ball' && this.rng.bool(.3);
+            this.pass(actor, through, long, long?.76:team.tactics.passing==='short'?.38:.60, direction, this.rng.float(-.4,.4));
+          }
+        }
       }
       return;
     }
@@ -1190,7 +1217,7 @@ export class ArcadeMatch {
       this.setAction(actor,'receive');
       return;
     }
-    const intent = tacticalIntent(actor, owner, this.ball, this.actors, team, direction, this.tick);
+    const intent = tacticalIntent(actor, owner, this.ball, this.actors, team, direction, this.tick, this.aiLevel(actor.side));
     this.setAction(actor, intent.action);
     actor.intentX = intent.x;
     actor.intentY = intent.y;
@@ -1324,7 +1351,7 @@ export class ArcadeMatch {
     return clamp(0.3 + value / maximum * 0.7, 0.3, 1);
   }
 
-  private pass(actor: ArcadeActor, through: boolean, lob: boolean, power: number, aimX: number, aimY: number): void {
+  private pass(actor: ArcadeActor, through: boolean, lob: boolean, power: number, aimX: number, aimY: number, forced?: ArcadeActor): void {
     if (this.ball.ownerId !== actor.player.id) return;
     const aimLength = len2(aimX, aimY) || 1;
     const nx = aimX / aimLength;
@@ -1348,9 +1375,9 @@ export class ArcadeMatch {
     const assistedOptions = humanPass
       ? targetOptions.filter(({ angle, length }) => angle <= assistCone[this.config.assist] && length < 50)
       : targetOptions.filter(({ length, lanePressure }) => length < (lob ? 48 : 36) && lanePressure === 0);
-    const target = humanPass
+    const target = forced ?? (humanPass
       ? this.config.assist === 'manual' ? undefined : assistedOptions[0]?.candidate
-      : (assistedOptions.length ? assistedOptions : targetOptions)[0]?.candidate;
+      : (assistedOptions.length ? assistedOptions : targetOptions)[0]?.candidate);
     const manualTarget = { x: actor.x + nx * (8 + power * 24), y: actor.y + ny * (8 + power * 24) };
     const rawDistance = target ? distance(actor, target) : len2(manualTarget.x - actor.x, manualTarget.y - actor.y);
     const travelEstimate = rawDistance / 19;
@@ -1535,6 +1562,26 @@ export class ArcadeMatch {
     const keeper = this.actors.find(other => other.active && other.side !== actor.side && other.player.positionGroup === 'GK');
     const offLine = keeper ? clamp(Math.abs(keeper.y - (FIELD_WIDTH / 2 + (actor.y - FIELD_WIDTH / 2) * 0.12)) / 3, 0, 1) : 1;
     return xG * Math.pow(0.4, blockers) * (1 + offLine * 0.35);
+  }
+
+  /** The team-mate whose pass gains most threat once the chance of losing the ball is counted, or null when nobody is a sound option. */
+  private bestPassOption(actor: ArcadeActor, direction: 1 | -1): { target: ArcadeActor; value: number } | null {
+    const here = expectedThreat(actor.x, actor.y, direction);
+    let best: { target: ArcadeActor; value: number } | null = null;
+    for (const mate of this.actors) {
+      if (!mate.active || mate.side !== actor.side || mate === actor || mate.player.positionGroup === 'GK') continue;
+      const gap = distance(actor, mate);
+      if (gap < 4 || gap > 36) continue;
+      const lane = this.passLanePressure(actor, mate);
+      if (lane >= 1) continue;
+      // The receiver is judged where he will be a moment later.
+      const there = expectedThreat(clamp(mate.x + mate.vx * 0.6, 1, FIELD_LENGTH - 1), clamp(mate.y + mate.vy * 0.6, 1, FIELD_WIDTH - 1), direction);
+      const completion = passCompletion(lane, gap, closestOpponentDistance(mate, this.actors));
+      // A target who looks offside is still found now and then (attackers hover on the line), at a price.
+      const value = actionValue(completion, there - here, here) - (this.isOffside(mate, actor) ? OFFSIDE_PASS_COST : 0);
+      if (!best || value > best.value) best = { target: mate, value };
+    }
+    return best;
   }
 
   /** A clearly better chance for a free team-mate turns a speculative shot into a cut-back. */
@@ -1770,7 +1817,9 @@ export class ArcadeMatch {
     // really reach with that form, so a ball that passes close always meets a hand and one that is too far never does.
     let form = 0.5;
     if (shot) form = shot.keeperQuality ??= this.rng.next();
-    const effectiveReach = this.keeperReach(keeper) * clamp(KEEPER_REACH_BASE + reaction * 0.3 + form * 0.3 - speed * 0.004, 0.45, 1);
+    const keeperLevel = this.aiLevel(keeper.side);
+    const levelSkill = keeperLevel === 'hard' ? 0.04 : keeperLevel === 'easy' ? -0.05 : 0;
+    const effectiveReach = this.keeperReach(keeper) * clamp(KEEPER_REACH_BASE + levelSkill + reaction * 0.3 + form * 0.3 - speed * 0.004, 0.45, 1);
     if (reachDistance > 0.4 && reachDistance > effectiveReach) return;
     if (!this.legalRestartTouch(keeper)) return;
     if (shot) shot.checkedKeeper = true;
@@ -2650,7 +2699,7 @@ export class ArcadeMatch {
   }
 
   aiLevel(side: Side): Difficulty {
-    return side === this.controlledSide ? 'normal' : this.config.difficulty;
+    return side === this.controlledSide ? this.config.teammateAi ?? 'normal' : this.config.difficulty;
   }
 
   private teamOf(side: Side): Team {

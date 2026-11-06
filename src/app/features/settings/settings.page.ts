@@ -38,6 +38,9 @@ export class SettingsPage {
   protected setDifficulty(d: GameSettings['difficulty']): void {
     this.gs.patchSettings((settings) => (settings.difficulty = d));
   }
+  protected setTeammateAi(d: GameSettings['difficulty']): void {
+    this.gs.patchSettings((settings) => (settings.teammateAi = d));
+  }
   protected toggleSound(): void {
     this.gs.patchSettings((settings) => (settings.soundEnabled = !settings.soundEnabled));
     this.audio.click();

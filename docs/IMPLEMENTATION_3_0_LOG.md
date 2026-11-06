@@ -2,14 +2,14 @@
 
 Fortschritt je Phase des [3.0-Plans](PITCH_LEGENDS_3_0_PLAN.md): was geändert wurde, wie es geprüft wurde und was offen bleibt. Jede Phase endet mit einem Eintrag nach dem Muster des [2.0-Logs](IMPLEMENTATION_2_0_LOG.md).
 
-Stand: Plan freigegeben am 2026-11-06, Phasen 0 bis 2 umgesetzt.
+Stand: Plan freigegeben am 2026-11-06, Phasen 0 bis 3 umgesetzt.
 
 | Phase | Thema | Stand |
 | --- | --- | --- |
 | 0 | Messbasis und Quick-Wins für Flüssigkeit | umgesetzt, Rest siehe unten |
 | 1 | Steuerung und Reaktionsgefühl | umgesetzt, Rest siehe unten |
 | 2 | Ball, Aktionen, Torwart, Standards | teilweise umgesetzt, Rest siehe unten |
-| 3 | KI mit Fußballverständnis | offen |
+| 3 | KI mit Fußballverständnis | umgesetzt, Rest siehe unten |
 | 4 | Animation 2.0 (Hybrid) | offen |
 | 5 | Grafik-Politur und Präsentation | offen |
 | 6 | Leistung und Mobile | offen |
@@ -120,3 +120,43 @@ Stand: Plan freigegeben am 2026-11-06, Phasen 0 bis 2 umgesetzt.
   - Regeln: Fouls von Angreifern beim Abschirmen und am Torwart sowie die verzögerte Karte bei Vorteil (rein kosmetisch).
   - Echte Volleys gab es schon; ein eigener Volley-Modus fehlt.
 - **Offen:** Playwright-E2E nicht gelaufen; die Wirkung der Strafraumpositionen bei Standards ist nur durch Tests, nicht in einem echten Spiel gesehen.
+
+## Phase 3 – KI mit Fußballverständnis (2026-11-06)
+
+- **Entscheidung des Ballführers** (neu `core/football/xt.ts`, `ArcadeMatch.bestPassOption`):
+  - Ein statisches 12×8-Raster für Expected Threat (auf die Platzmaße skaliert, auch im Käfig) bewertet Pass, Dribbling und Verlust: `actionValue = Erfolgschance × Gewinn − (1 − Chance) × (0,012 + 0,5 × Gefahr am Ball)`.
+  - Die Passchance kommt aus Passweg, Länge und dem Raum des Empfängers (`passCompletion`), das Dribbling aus Dribbelwert und Abstand zum nächsten Gegner (`dribbleSuccess`).
+  - Der Münzwurf (16–40 % je Entscheidung) ist weg. Gepasst wird, wenn die Passoption das Dribbling um einen Tempowert schlägt, bei Druck oder wenn ein Schuss sinnvoll ist. Die gewählte Anspielstation wird als `forced` an `pass()` übergeben, vorher wählte `pass()` das Ziel noch einmal nach eigener Regel.
+  - Steilpass bei einem Läufer, der mehr als 16 m voraus ist und schneller als 4 m/s läuft; lang ab 30 m. Mögliche Abseitsziele werden mit einem Preis (`OFFSIDE_PASS_COST`) noch gefunden, sonst hätte die KI kaum Abseits (0,3 pro Spiel).
+- **Ohne Ball** (`core/football/tactical-intent.ts`):
+  - **Passwege zustellen:** Ein Verteidiger oder Mittelfeldspieler ohne Pressing-Aufgabe und ohne Manndeckung stellt sich zu 60 % auf die Linie zwischen Ballführer und dem gefährlichsten Gegner seiner Zone.
+  - **Pressing-Auslöser:** Ein Ballführer an der Seitenlinie (letzte 6 m) oder nach verlorener Kontrolle (`heavy-touch`) bekommt einen zusätzlichen Presser.
+  - **Überlaufen und Aufbau:** Außenverteidiger (`fb`) laufen an einem Flügelspieler vorbei, der den Ball auf ihrer Seite hat; die nächsten Innenverteidiger bieten beim Aufbau aus dem eigenen Drittel schräge Optionen hinter dem Ballführer an.
+  - **Manndeckung:** Eine gierige Zuordnung nimmt die engsten Paare zuerst, kein Gegner bekommt zwei Bewacher (vorher nahm jeder Verteidiger den Gegner, der seinem Posten am nächsten war).
+  - **Ziel pro Tick:** Wer den Ball jagt (`press`), zielt jeden Tick neu auf ihn, statt zu einem bis zu 0,5 s alten Punkt zu laufen.
+- **Schwierigkeit:** Passwege zustellen, Pressing-Auslöser und Überlaufen gibt es nicht gegen „leicht“; der Torwart liest Schüsse bei „schwer“ etwas besser (+0,04) und bei „leicht“ schlechter (−0,05). Neu: Einstellung „Mitspieler-KI“ (`GameSettings.teammateAi`, `MatchConfig.teammateAi`, Einstellungsseite), vorher spielten die eigenen Mitspieler immer „normal“.
+- **Leistung:**
+  - Die Teamdaten einer Seite (Gegner, Mitspieler, Pressing-Reihenfolge, Deckungszuordnung, Abseitslinie) werden je Tick und Seite einmal berechnet und wiederverwendet (`frameFor`), ohne neue Listen im Normalfall.
+  - `isOffsidePosition` findet den vorletzten Verteidiger in einem Durchlauf statt mit Filter und Sortierung; ein Test vergleicht gegen die alte Fassung.
+  - `betterPlacedTeammate` ist unverändert (wird nur bei Schussentscheidungen gerufen).
+- **Balance:** Die neue KI verteidigt besser (weniger Tore, mehr Paraden). `KEEPER_REACH_BASE` ist von 0,55 auf 0,45 gesenkt, damit die Tore wieder im Korridor liegen.
+
+  | Wert | Phase 2 | Phase 3 | Ziel |
+  | --- | --- | --- | --- |
+  | Tore pro Spiel | 2,92 | 2,41 | 2,2–3,4 |
+  | Schüsse pro Team | 13,7 | 12,0 | 8–18 |
+  | Passquote | 67,8 % | 67,6 % | 65–88 % |
+  | Pässe pro Team | 94,7 | 93,1 | – |
+  | Unentschieden | 27,4 % | 27,2 % | 20–32 % |
+  | Heimsiege | 43,6 % | 43,8 % | 42–52 % |
+  | Abseits | 1,74 | 1,81 | 1,5–3 |
+  | Rechenzeit | 538 ms | 550 ms | ≤ 600 |
+
+  Auf dem Weg dahin lag die Passquote bei 62 % (die Optionen bevorzugten lange Steilpässe), Abseits bei 0,3 und die Tore bei 2,1; Passweite und Dribbel-Vorzug wurden nachgezogen.
+- **Nachweis:** 389 Unit-Tests (10 neu in `gameplay-ai-v3.spec.ts`: Expected Threat, Aktionswerte, freie gegen blockierte Anspielstation, gewählter Pass, eindeutige Manndeckung, Pressing-Auslöser, Passweg-Deckung, Neuausrichtung beim Pressing, Mitspieler-KI, Abseitslinie gegen die Referenz). Ein Test aus Phase 2 musste in der Geometrie angepasst werden. Typecheck, Style-, i18n-, Format-Check und Build grün.
+- **Nicht umgesetzt:**
+  - Läufe des dritten Mannes und gezielte Rückwärtsläufe nach Ballverlust (der Rückzug über die bestehende Tiefenbegrenzung bleibt).
+  - Anspieldreiecke für den Angriff über Mittelfeld und Innenverteidiger hinaus.
+  - Die Zusatzeinstellung ist nur in der Einstellungsseite zu sehen; ich habe sie nicht im Browser angeschaut.
+  - Die Taktikregler (Pressing, Breite, Mentalität) sind nicht über eine eigene Telemetrie-Kennzahl im Balance-Check nachgewiesen; die Unit-Tests belegen die neuen Auslöser, nicht die gemittelten Laufwege.
+- **Offen:** Playwright-E2E nicht gelaufen, kein Spielgefühl-Test durch einen Menschen.

@@ -577,6 +577,7 @@ export class MatchPage implements OnDestroy {
       halfMinutes: this.exhibition?.halfMinutes ?? settings?.matchDuration ?? 3,
       seed: this.exhibition?.seed ?? this.stableSeed(fixture.id),
       difficulty: settings?.difficulty ?? 'normal',
+      teammateAi: settings?.teammateAi ?? 'normal',
       assist: this.assist(),
       autoSwitch: this.switchPolicy(),
       playerLockId: lockId,

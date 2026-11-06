@@ -54,7 +54,7 @@ describe('Phase 2 – goalkeeper', () => {
     const { match, placed } = stage([{ side: 'away', index: 0, x: 40, y: 34 }]);
     const keeper = keeperOf(match, 'home');
     Object.assign(keeper, { active: true, x: 1.5, y: 34, vx: 0, vy: 0, decisionCooldown: 100 });
-    Object.assign(match.ball, { ownerId: null, x: 2.6, y: 34 + distanceToKeeper, z, vx: -12, vy: 0, vz: 0, controlledTouch: 1, lastTouch: 'away', lastTouchPlayerId: placed[0].player.id });
+    Object.assign(match.ball, { ownerId: null, x: 1.9, y: 34 + distanceToKeeper, z, vx: -12, vy: 0, vz: 0, controlledTouch: 1, lastTouch: 'away', lastTouchPlayerId: placed[0].player.id });
     internals(match)['activeShot'] = { shooterId: placed[0].player.id, side: 'away', xG: 0.3, targetY: 34, checkedKeeper: false, keeperQuality: 0.5 };
     internals(match)['handlePostsAndKeeper']();
     return { match, keeper, handled: internals(match)['activeShot'] === null };
