@@ -60,11 +60,13 @@ test('Legends Team, quick five-a-side and a challenge run without touching the c
   await page.locator('.card').filter({ hasText: /elfmeter|penalties/i }).getByRole('button', { name: /starten|start/i }).click();
   await enterMatch(page);
   await expect(page.locator('.challenge-hud')).toBeVisible();
-  for (let kick = 0; kick < 5; kick++) {
+  // Set pieces in a challenge wait for the taker (they are never taken automatically), so tap until the five kicks are done;
+  // a tap that lands in a goal replay or between two attempts is simply lost.
+  for (let tap = 0; tap < 120 && !(await page.locator('.challenge-result').isVisible()); tap++) {
     await page.keyboard.press('KeyL');
-    await page.waitForTimeout(3_200);
+    await page.waitForTimeout(700);
   }
-  await expect(page.locator('.challenge-result')).toBeVisible({ timeout: 40_000 });
+  await expect(page.locator('.challenge-result')).toBeVisible({ timeout: 10_000 });
   await expect.poll(async () => (await readStore(page, 'pitch-legends:challenges:v1'))?.penalty.attempts).toBe(1);
 
   // None of it created or changed a career.

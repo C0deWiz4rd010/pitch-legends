@@ -36,7 +36,7 @@ export const CONTROL_BINDINGS: readonly ControlBinding[] = [
   },
   {
     action: 'pass', chapter: 'pass', title: { de: 'Kurzpass / Stellungstackling', en: 'Short pass / standing tackle' },
-    description: { de: 'J/A halten und loslassen zum Passen; nach 0,8 Sekunden ist die Kraft voll. Sprint + Pass startet einen Doppelpasslauf. Kurz vor der Annahme loslassen ermöglicht direktes Weiterspielen. Gegen den Ball löst J/A sofort beim Drücken ein Stellungstackling aus.', en: 'Hold and release J/A to pass; power is full after 0.8 seconds. Sprint + pass starts a give-and-go run. Release just before receiving to play first time. Against the ball J/A triggers a standing tackle the moment you press it.' },
+    description: { de: 'J/A halten und loslassen zum Passen; nach 0,8 Sekunden ist die Kraft voll. Der Spieler holt kurz aus: Der Ball wird nach etwa 50 Millisekunden getroffen. Sprint + Pass startet einen Doppelpasslauf. Kurz vor der Annahme loslassen ermöglicht direktes Weiterspielen. Gegen den Ball löst J/A sofort beim Drücken ein Stellungstackling aus.', en: 'Hold and release J/A to pass; power is full after 0.8 seconds. The player winds up briefly: the ball is struck after about 50 milliseconds. Sprint + pass starts a give-and-go run. Release just before receiving to play first time. Against the ball J/A triggers a standing tackle the moment you press it.' },
     keyboard: [{ label: 'J', asset: `${ASSET}key-j.png` }], gamepad: [{ label: 'A', asset: `${ASSET}gamepad-a.png` }], touch: [{ label: 'A', tone: 'green' }],
   },
   {
@@ -51,7 +51,7 @@ export const CONTROL_BINDINGS: readonly ControlBinding[] = [
   },
   {
     action: 'shoot', chapter: 'attack', title: { de: 'Schuss / Befreiung', en: 'Shoot / clearance' },
-    description: { de: 'L/B halten, zielen und loslassen. Kurzes Antippen schießt flach, nach 0,9 Sekunden ist die Kraft voll. Beim Loslassen: I/RB halten für einen angeschnittenen Schuss (der starke Fuß bestimmt die Kurve), U/X für einen Lupfer, beide zusammen für einen Kraftschuss. Hohe Bälle werden als Volley genommen.', en: 'Hold L/B, aim and release. A quick tap shoots low; full power takes 0.9 seconds. On release hold I/RB for a finesse shot (the stronger foot sets the curl), U/X for a chip, or both for a driven power shot. High balls are struck as volleys.' },
+    description: { de: 'L/B halten, zielen und loslassen. Kurzes Antippen schießt flach, nach 0,9 Sekunden ist die Kraft voll. Der Ball wird nach dem Ausholen getroffen (etwa 80 Millisekunden). Beim Loslassen: I/RB halten für einen angeschnittenen Schuss (der starke Fuß bestimmt die Kurve), U/X für einen Lupfer, beide zusammen für einen Kraftschuss. Hohe Bälle werden als Volley genommen.', en: 'Hold L/B, aim and release. A quick tap shoots low; full power takes 0.9 seconds. The ball is struck after the wind-up (about 80 milliseconds). On release hold I/RB for a finesse shot (the stronger foot sets the curl), U/X for a chip, or both for a driven power shot. High balls are struck as volleys.' },
     keyboard: [{ label: 'L', asset: `${ASSET}key-l.png` }], gamepad: [{ label: 'B', asset: `${ASSET}gamepad-b.png` }], touch: [{ label: 'B', tone: 'red' }],
   },
   {

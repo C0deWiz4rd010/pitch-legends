@@ -74,7 +74,8 @@ test.describe('mobile landscape match chrome', () => {
     expect(layout.contentScroll).toEqual({ top: 0, left: 0, width: 844, clientWidth: 844, height: 390, clientHeight: 390 });
     expect(layout.documentOverflow).toEqual({ horizontal: false, vertical: false });
     expect(layout.overlaps).toBe(false);
-    expect(layout.interactiveRatio).toBeLessThan(0.05);
+    // Eleven controls since the modifier and the run request joined the nine (they are the small 30 px kind): under 6 % of the screen.
+    expect(layout.interactiveRatio).toBeLessThan(0.06);
 
     for (const control of [layout.fullscreen, layout.auto, layout.stick, ...layout.actionButtons]) {
       expect(control.left).toBeGreaterThanOrEqual(0);

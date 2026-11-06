@@ -347,3 +347,33 @@ Alles, was in den Einträgen oben als „nicht umgesetzt“ oder „offen“ sta
   - Karten der Legends-Spieler sammeln Erfahrung nur in Division Rivals, nicht im Draft (dessen Karten gehören nicht zur Sammlung).
   - Erfolge aus der Zeit vor Phase 9 werden nicht nachträglich vergeben: Die Zähler beginnen bei null; nur die Größe der Sammlung wird beim nächsten Pack, Verkauf oder Abgabe gemeldet.
   - Das Löschen des Meta-Stands ist nur im Code (`MetaService.reset`), nicht in den Einstellungen.
+
+## Phase 10 – QA, Balance, Release-Vorbereitung (2026-11-06)
+
+- **Balance** (500 Matches, Standardlauf, nach Phase 9 ohne Engine-Änderung seit dem letzten Lauf):
+
+  | Wert | mit Effekten | ohne Effekte | Ziel |
+  | --- | --- | --- | --- |
+  | Tore pro Spiel | 3,09 | 2,28 | 2,2–3,4 |
+  | Schüsse pro Team | 14,3 | 11,4 | 8–18 |
+  | Passquote | 67,1 % | 67,5 % | 65–88 % |
+  | Unentschieden | 23,0 % | 23,4 % | 20–32 % |
+  | Heimsiege | 45,2 % | 45,2 % | 42–52 % |
+  | Abseits | 2,07 | 1,64 | 1,5–3 |
+  | Rechenzeit | 572 ms | 513 ms | ≤ 600 |
+
+  Alles liegt im Korridor. Auffällig ist der Abstand von fast 0,8 Toren zwischen den beiden Läufen: Die erzeugten Spieler tragen jetzt Talente (Phase 7), und deren Effekte (Schussgenauigkeit, Schusskraft, Torwart) machen Tore wahrscheinlicher. Das ist gewollt, die Tore ohne Effekte liegen nur knapp über der Untergrenze. Die Telemetrie der Taktikregler besteht (hohe Linie +9 m, breite Aufstellung +5,7 m Streuung, Pressing 0,45 m näher). Die Rechenzeit liegt mit 572 ms nah an der Grenze von 600 ms und hängt von der Maschine ab.
+- **Zehn Saisons** (`career-longrun.spec.ts`, Teil der Unit-Tests): Kader, Alter, Wertungen, Kassen, Teamgeist und Wechselwünsche, KI-Skillpunkte, Meta-Zähler und Archiv-Rückblicke bleiben in ihren Bändern.
+- **E2E mit dem installierten Chrome** (`PLAYWRIGHT_PRODUCTION=1`, `PLAYWRIGHT_CHROMIUM_EXECUTABLE`; 29 Tests): Beim ersten Lauf überhaupt (die Tests waren in den Phasen davor nie gelaufen) fielen drei auf, keiner ein Fehler der Spielmechanik:
+  1. Das Elfmeter-Training klopfte alle 3,2 s auf Schießen, weil Standards früher nach 3 s von selbst ausgeführt wurden; in Herausforderungen warten sie seit Phase 1 auf den Schützen. Der Test tippt jetzt, bis das Ergebnis da ist.
+  2. Der Atlas-Test erwartete Spielstandversion 6, es ist 8.
+  3. Die mobile Touch-Fläche: Mit den zwei neuen Tasten (Modifikator, Lauf) lag der Anteil bedienbarer Fläche bei 5,7 % statt unter 5 %. Die neuen Tasten sind auf kleinen Bildschirmen jetzt so klein wie die anderen der linken Gruppe (30 px), der Anteil liegt bei 5,5 %, die Grenze steht bei 6 %.
+  Danach laufen alle 29 durch; die renderbezogenen Tests (`three-playground`, `presentation`, `sprite-renderer`, `match-audio`) laufen auch im Profil mit Software-GL.
+- **Steuerung:** Alle Tasten der Eingabekarte sind im Handbuch dokumentiert (Test), keine Taste hat zwei Aufgaben (Test über Tasten, Bewegung, Wahltasten T/G/V/B und Gamepad-Tasten), Pass und Schuss nennen die Ausholzeit.
+- **README:** Merkmale von 3.0 (Aktionen, Optik, RPG-Tiefe, Trainerbüro, Meta), Balance-Befehle, Verweise auf Plan, Log und Drittassets.
+- **Release:** Die Versionen stehen unverändert auf 1.11.0 (`version:check` grün); Release Please erzeugt die 3.0.0 aus den Commits, `Release-As: 3.0.0` kommt erst in den Commit, wenn der Release freigegeben ist. Das ist noch nicht geschehen.
+- **Offen vor dem Release:**
+  - Läufe in Firefox und WebKit (`PLAYWRIGHT_CROSS_BROWSER=1`): Die beiden Browser sind nicht installiert (`npx playwright install firefox webkit` lädt sie aus dem Netz).
+  - Messungen auf einem Pixel 6a und einem iPhone 12 und die 5-Minuten-Spielprobe durch einen Menschen (Ausholphase, Verteidigen, neue Aktionen, Kameras).
+  - Die Zeichnung von Balldesign, Jubel, Trikotmuster und Dekor im laufenden Spiel und der neuen Legends-Teile (Phase 9) im Browser.
+  - Neue Screenshots für die Dokumentation (die vorhandenen stammen aus 2.0).

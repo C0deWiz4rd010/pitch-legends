@@ -21,7 +21,7 @@ test('seeded league atlas exposes clubs, cities, routes and individual coaches',
 
   await expect.poll(() => readStore(page, 'pitch-legends:save:v6')).not.toBeNull();
   const state = await readStore(page, 'pitch-legends:save:v6');
-  expect(state.version).toBe(6);
+  expect(state.version).toBe(8);
   expect(state.world.seed).toBe(441407);
   // Two divisions of twelve; the map shows the player's division.
   expect(state.world.cities).toHaveLength(24);
