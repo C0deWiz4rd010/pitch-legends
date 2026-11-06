@@ -2,7 +2,7 @@
 
 Fortschritt je Phase des [3.0-Plans](PITCH_LEGENDS_3_0_PLAN.md): was geändert wurde, wie es geprüft wurde und was offen bleibt. Jede Phase endet mit einem Eintrag nach dem Muster des [2.0-Logs](IMPLEMENTATION_2_0_LOG.md).
 
-Stand: Plan freigegeben am 2026-11-06, Phasen 0 bis 4 (ohne Clip-Import) umgesetzt.
+Stand: Plan freigegeben am 2026-11-06, Phasen 0 bis 4 umgesetzt.
 
 | Phase | Thema | Stand |
 | --- | --- | --- |
@@ -10,7 +10,7 @@ Stand: Plan freigegeben am 2026-11-06, Phasen 0 bis 4 (ohne Clip-Import) umgeset
 | 1 | Steuerung und Reaktionsgefühl | umgesetzt, Rest siehe unten |
 | 2 | Ball, Aktionen, Torwart, Standards | teilweise umgesetzt, Rest siehe unten |
 | 3 | KI mit Fußballverständnis | umgesetzt, Rest siehe unten |
-| 4 | Animation 2.0 (Hybrid) | prozeduraler Teil umgesetzt, Clip-Import wartet auf Freigabe |
+| 4 | Animation 2.0 (Hybrid) | umgesetzt, Rest siehe unten |
 | 5 | Grafik-Politur und Präsentation | offen |
 | 6 | Leistung und Mobile | offen |
 | 7 | RPG I: Spieler vertiefen | offen |
@@ -182,3 +182,19 @@ Stand: Plan freigegeben am 2026-11-06, Phasen 0 bis 4 (ohne Clip-Import) umgeset
 - **Nachweis:** 403 Unit-Tests (14 neu in `animation-v3.spec.ts`: Schrittlänge, stetige Phase, Rücksprung, Drehschritt, Fußrutsch bei drei Tempi, Fußseite, Stolpern, Einwurf, Kopfballsprung, normierte Gewichte, Schiedsrichter, Dribbelfuß, Abschirmen). Typecheck, Style-, i18n-, Format-Check und Build grün. Im Browser (stumm geschaltet): Spiel mit Schiedsrichter ohne Konsolenfehler, das Studio zeigt die Stolper-Pose wie vorgesehen.
 - **Nicht umgesetzt – wartet auf eine Entscheidung:** Der Import von Clips (Quaternius Universal Animation Library, CC0) mit `tools/bake-animations.mjs` und `clip-store.ts` ist nicht begonnen. Er erfordert einen Download (Datei, Quelle und Größe müssen vorher freigegeben werden) und ein Retargeting auf das 16-Knochen-Skelett, dessen Qualität erst im Studio beurteilt werden kann. Die Architektur ist vorbereitet: Gangart, Aktionsposen und Kontakt-IK sind getrennt, die Posen bleiben Rückfallebene.
 - **Weitere offene Punkte:** Humpeln nach einer Verletzung (der Renderzustand kennt die Verletzung nicht), Volley- und Fallrückzieherpose (keine Auslöser in der Engine), springende Mauer, Ausholphase (Kontakt-Tick der Simulation, siehe Phase 1) und die Fußrutsch-Anzeige im Studio (die Messung existiert als Funktion und Test, aber noch nicht als Anzeige). Kein Chrome-Test der Bildabstände.
+
+### Phase 4 – Nachtrag: aufgenommene Clips (2026-11-06)
+
+- **Quelle:** Quaternius „Universal Animation Library [Standard]“ (CC0), von OpenGameArt geladen (14,5 MB, etwas mehr als die geschätzten 10 MB; SHA-256 und Quelle stehen in `docs/THIRD_PARTY_ASSETS.md`). Das Archiv liegt nicht im Repository.
+- **Inhalt des Pakets:** 46 Clips auf einem 53-Knochen-Skelett. Es gibt keine Fußballaktionen und keine Seit- oder Rückwärtsbewegung (die „120+“ der Beschreibung gehören zur Pro-Fassung). Verwendet werden Idle, Walk, Jog, Sprint und Dance.
+- **Backwerkzeug** (`tools/bake-animations.mjs`, ohne zusätzliche Abhängigkeit, nur `three`): liest das GLB selbst, tastet die Clips mit 30 fps ab und übersetzt sie auf das 16-Knochen-Skelett. Rumpf, Brust und Kopf übernehmen die Änderung ihrer Weltrotation gegenüber der Bindepose, Gliedmaßen die Weltrichtung jedes Knochens (Hüfte → Knie → Knöchel → Zeh, Schulter → Ellbogen → Hand), geschwungen aus der Ruhehaltung der Spielerfigur; Proportionen und Bindepose der Quelle spielen so keine Rolle. Die Gangarten sind so rotiert, dass Bild 0 der Fersenkontakt des linken Fußes ist, damit sie sich überblenden lassen. Ergebnis: `public/assets/anim/clips.json` und `clips.bin`, zusammen 52 KB.
+- **Warum nur Oberkörper:** Die Schrittlängen des Pakets sind kurz (Sprint 2,2 m pro Zyklus bei 0,67 s, also eine Grundgeschwindigkeit von 3,3 m/s; die Spieler laufen bis 9,4 m/s). Die Beine aus den Clips würden bei Spielertempo rutschen oder mit absurder Schrittfrequenz laufen. Deshalb treiben die Clips Arme, Rumpf, Kopf und das Auf und Ab der Hüfte, die Beine bleiben die Fuß-verriegelte prozedurale Gangart (`measureFootSlide` bleibt unter 3 cm).
+- **Laufzeit** (`features/match/animation/clip-store.ts`, Anwendung in `three-player.factory.ts`):
+  - Gewichte nach Tempo für Idle (bis 0,3 m/s), Walk (bis 2 m/s), Jog (bis 5 m/s) und Sprint; alle Gangarten teilen die Phase der Schrittuhr, Idle läuft je Spieler auf eigener Uhr (Seed).
+  - Vorwärts und Stehen folgen dem Clip; Seitschritte und Rückwärtslaufen (die es im Paket nicht gibt) blenden mit Gewicht innerhalb von etwa 0,2 s zurück auf die prozedurale Pose, ohne zu springen. Die Neigung in Kurven und Seitschritten bleibt obenauf.
+  - Aktionsposen (Pass, Schuss, Tackling, Kopfball …) liegen weiter über der Basis; Grätsche, Verletzung und Jubel ersetzen sie ganz. Torhüter nutzen die Clips nicht.
+  - Der Tanz ist die sechste Jubelvariante (ganzer Körper); ohne Clips oder bei reduzierter Bewegung hebt der Spieler die Arme.
+  - Laden: Der Renderer lädt die Clips in `prepare()`, ein Fehlschlag ist nicht fatal; der Service Worker legt sie wie alle Dateien unter `/assets/**` vorab ab.
+- **Studio:** Neuer Schalter „Aufgenommene Clips“ (A/B-Vergleich). Im Browser gesehen: Der Sprint mit Clips ist kompakter mit Vorlage und angewinkelten Armen, ohne Clips steht die Figur aufrechter mit weit schwingenden Armen; der Tanz erscheint als lesbare Jubelpose.
+- **Nachweis:** 410 Unit-Tests (7 neu in `animation-clips.spec.ts` mit handgemachten Clips: Gewichte, Mischung, Schleife, Mittelwert der Hüfte, Oberkörper aus dem Clip statt prozedural, Torwart unberührt, Beine unverändert, weiches Zurückblenden, Tanz mit und ohne Clips). Zwei Anpassungen: Jubelvarianten höchstens 5 statt 4 (`presentation-v2.spec`), Baseline des i18n-Checks für das Studio um einen Text auf 24.
+- **Nicht gemacht:** Eine Sichtabnahme aller 128 Identitäten mit Clips, ein Test der echten Dateien in den Unit-Tests (sie sind im Browser nur geladen und angeschaut), und die Clips für Hechten, Fallen oder Aufstehen (das Standardpaket hat keine fußballtypischen).

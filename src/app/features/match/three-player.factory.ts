@@ -7,6 +7,7 @@ import { blendJointSkin } from './joint-skinning';
 import { createLimbSurface } from './limb-surface';
 import { ACTION_DURATION_TICKS } from '../../core/football/action-timing';
 import { advanceGait, GaitMemory, newGait, strideFor, turnStepAmount } from './animation/locomotion';
+import { boneSlot, clipSet, ClipSet, sampleLocomotion, sampleSingle } from './animation/clip-store';
 
 const SKIN = ['#f5d0a9', '#e9b989', '#d99a68', '#bf7b50', '#9b5c3d', '#75422f', '#573126', '#35221f'];
 const HAIR = ['#17141d', '#2c1b18', '#4b2e24', '#71462b', '#9b673d', '#c89b62', '#d9c6a2', '#702c32'];
@@ -351,6 +352,63 @@ export function placeFoot(model: ProceduralFootballer, side: 'left' | 'right', x
   j[`${side}Foot`].rotation.set(leg.ankle, 0, -tilt);
 }
 
+/** Actions whose pose covers the whole body; the baked locomotion must not be laid under them. */
+const NO_CLIP_ACTIONS: ReadonlySet<string> = new Set(['slide', 'injured', 'celebrate']);
+const CLIP_UPPER_BODY = ['spine', 'chest', 'head', 'leftArm', 'leftForearm', 'rightArm', 'rightForearm'] as const;
+const CLIP_FRAME: { data: Float32Array | null } = { data: null };
+const CLIP_QUATERNION = new THREE.Quaternion(), CLIP_LEAN = new THREE.Quaternion(), AXIS_Z = new THREE.Vector3(0, 0, 1);
+
+function clipFrame(set: ClipSet): Float32Array {
+  return CLIP_FRAME.data && CLIP_FRAME.data.length === set.frameSize ? CLIP_FRAME.data : (CLIP_FRAME.data = new Float32Array(set.frameSize));
+}
+
+/** Hips offset of a clip frame scaled from the baked character to this one's proportions. */
+function clipHipsScale(model: ProceduralFootballer, set: ClipSet): number {
+  return model.hipHeight / (set.hipHeight + 0.1);
+}
+
+/**
+ * Baked locomotion for arms, torso and head, and the bob of the hips, in place of the procedural swing. The legs stay as the
+ * foot-locked procedural gait. The weight follows how the player moves: forward and standing use the clip, sidesteps and
+ * backpedalling (which the clips do not have) fade back to the procedural pose.
+ */
+function applyClipLocomotion(model: ProceduralFootballer, memory: PoseMemory, set: ClipSet, speed: number, forwardVelocity: number, cycle: number, time: number, elapsed: number, leanZ: number): void {
+  const j = model.joints;
+  const frame = clipFrame(set);
+  const idleSeconds = set.clips['idle']?.duration ?? 2.5;
+  // Every player idles on his own clock.
+  sampleLocomotion(set, speed, cycle - Math.floor(cycle), (time + (model.recipe.seed % 97) * 0.37) / idleSeconds, frame);
+  const target = speed < 0.3 || forwardVelocity > 0.45 ? 1 : 0;
+  if (memory.clipWeight < 0) memory.clipWeight = target;
+  else memory.clipWeight += (target - memory.clipWeight) * Math.min(1, Math.max(0, elapsed) * 6);
+  const weight = memory.clipWeight;
+  if (weight < 0.001) return;
+  for (const bone of CLIP_UPPER_BODY) {
+    const slot = boneSlot(set, bone) * 4;
+    j[bone].quaternion.slerp(CLIP_QUATERNION.set(frame[slot], frame[slot + 1], frame[slot + 2], frame[slot + 3]), weight);
+  }
+  // Leaning into a sidestep or a turn is not in the clips; it stays on top.
+  if (Math.abs(leanZ) > 1e-4) j.spine.quaternion.multiply(CLIP_LEAN.setFromAxisAngle(AXIS_Z, leanZ * weight));
+  const hips = set.bones.length * 4, scale = clipHipsScale(model, set) * weight;
+  j.hips.position.x += frame[hips] * scale;
+  j.hips.position.y += frame[hips + 1] * scale;
+}
+
+/** A complete clip frame on all 16 bones, for celebrations that are danced rather than posed. */
+function poseFromClip(model: ProceduralFootballer, set: ClipSet, name: string, age: number): void {
+  const clip = set.clips[name];
+  if (!clip) return;
+  const frame = clipFrame(set);
+  sampleSingle(set, name, age / clip.duration, frame);
+  for (let bone = 0; bone < set.bones.length; bone++) {
+    const joint = model.joints[set.bones[bone] as Joint];
+    if (joint) joint.quaternion.set(frame[bone * 4], frame[bone * 4 + 1], frame[bone * 4 + 2], frame[bone * 4 + 3]);
+  }
+  const hips = set.bones.length * 4;
+  model.joints.hips.position.y = model.hipHeight + frame[hips + 1] * clipHipsScale(model, set);
+  model.joints.hips.position.x = frame[hips] * clipHipsScale(model, set);
+}
+
 /** Continuous, distance-driven locomotion and simulation-timed action poses. */
 const KICK_ACTIONS: ReadonlySet<string> = new Set(['pass', 'through-pass', 'lob', 'shot', 'low-shot', 'finesse-shot', 'chip-shot', 'keeper-kick', 'knock-on']);
 const BLEND_SECONDS = 0.14;
@@ -376,6 +434,8 @@ interface PoseMemory {
   yawRate: number;
   initialised: boolean;
   gait: GaitMemory;
+  /** How much of the upper body follows the baked clip (0 for sidesteps and backpedalling); eased, never switched. */
+  clipWeight: number;
 }
 const POSE_MEMORY = new WeakMap<ProceduralFootballer, PoseMemory>();
 function poseMemory(model: ProceduralFootballer): PoseMemory {
@@ -383,12 +443,12 @@ function poseMemory(model: ProceduralFootballer): PoseMemory {
   if (!memory) {
     const count = jointList(model).length;
     memory = { action: '', previous: Array.from({ length: count }, () => new THREE.Quaternion()), previousHips: new THREE.Vector3(),
-      from: Array.from({ length: count }, () => new THREE.Quaternion()), fromHips: new THREE.Vector3(), blendStart: -1, facing: 0, time: 0, yawRate: 0, initialised: false, gait: newGait() };
+      from: Array.from({ length: count }, () => new THREE.Quaternion()), fromHips: new THREE.Vector3(), blendStart: -1, facing: 0, time: 0, yawRate: 0, initialised: false, gait: newGait(), clipWeight: -1 };
     POSE_MEMORY.set(model, memory);
   }
   return memory;
 }
-const CELEBRATIONS = 5;
+const CELEBRATIONS = 6;
 export function celebrationVariant(model: ProceduralFootballer): number { return model.recipe.seed % CELEBRATIONS; }
 const JOINT_LISTS = new WeakMap<ProceduralFootballer, THREE.Bone[]>();
 function jointList(model: ProceduralFootballer): THREE.Bone[] {
@@ -442,7 +502,8 @@ export function poseFootballer(model: ProceduralFootballer, state: PlayerRuntime
   const lean = reducedMotion ? 0 : THREE.MathUtils.clamp(-memory.yawRate * run * 0.06, -0.22, 0.22);
   j.spine.rotation.z += lean;
   j.hips.rotation.z = lean * 0.5;
-  if (speed < 0.3 && !reducedMotion && (state.action === 'idle' || state.action === 'formation')) {
+  const clips = model.goalkeeper ? null : clipSet();
+  if (!clips && speed < 0.3 && !reducedMotion && (state.action === 'idle' || state.action === 'formation')) {
     // Idle life: weight shifts and a look around, different for every player.
     const seed = model.recipe.seed % 97;
     j.hips.position.x = Math.sin(time * 0.8 + seed) * 0.025;
@@ -461,6 +522,7 @@ export function poseFootballer(model: ProceduralFootballer, state: PlayerRuntime
     j[`${side}Arm`].rotation.z = sign * (0.10 + run * 0.04);
     j[`${side}Forearm`].rotation.x = -0.22 - run * 0.78;
   }
+  if (clips && !NO_CLIP_ACTIONS.has(state.action)) applyClipLocomotion(model, memory, clips, speed, forwardVelocity, cycle, time, elapsed, j.spine.rotation.z);
   const kick = KICK_ACTIONS.has(state.action);
   const kickEnd = Math.min(.50, actionDuration);
   if (kick && age < kickEnd) {
@@ -660,17 +722,23 @@ export function poseFootballer(model: ProceduralFootballer, state: PlayerRuntime
       foot.quaternion.copy(CONTACT_OLD[2].slerp(foot.quaternion, weight));
     }
   }
-  if (state.action === 'celebrate') poseCelebration(model, age, reducedMotion);
+  if (state.action === 'celebrate') poseCelebration(model, age, reducedMotion, clips);
   memory.facing = facing;
   memory.time = time;
   memory.initialised = true;
 }
 
 /** Five seeded celebrations: arms up, knee slide, aeroplane, fist pump, point to the sky. */
-function poseCelebration(model: ProceduralFootballer, age: number, reducedMotion: boolean): void {
+function poseCelebration(model: ProceduralFootballer, age: number, reducedMotion: boolean, clips: ClipSet | null): void {
   const j = model.joints;
   const motion = reducedMotion ? 0 : 1;
   switch (celebrationVariant(model)) {
+    case 5:
+      // The baked dance, whole body; without clips (or with reduced motion) this player simply raises his arms.
+      if (clips && !reducedMotion) { poseFromClip(model, clips, 'dance', age); break; }
+      j.leftArm.rotation.z = 2.50; j.rightArm.rotation.z = -2.50;
+      j.leftForearm.rotation.x = j.rightForearm.rotation.x = -0.2;
+      break;
     case 0:
       j.leftArm.rotation.z = 2.50; j.rightArm.rotation.z = -2.50;
       j.leftForearm.rotation.x = j.rightForearm.rotation.x = -0.2;

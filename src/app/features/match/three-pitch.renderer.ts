@@ -7,6 +7,7 @@ import { hash32 } from '../../core/visual-identity';
 import { MatchRenderFrame, MatchRenderState, MatchSnapshot, PlayerRuntimeSnapshot } from '../../models/match.model';
 import { MATCH_TICK } from '../../core/football/match-types';
 import { RefereeRig } from './animation/referee';
+import { loadClipSet } from './animation/clip-store';
 import { createPlayerVisualIdentity } from '../../core/visual-identity';
 import { createProceduralFootballer, poseFootballer, ProceduralFootballer } from './three-player.factory';
 import { interpolateThreeFrame, playerInCameraSpace, RenderInterpolationScratch } from './three-render-state';
@@ -318,6 +319,9 @@ export class ThreePitchRenderer {
 
   /** Call before releasing the kickoff screen, including after a new fixture loads. */
   async prepare(match: ArcadeMatch): Promise<void> {
+    if (this.disposed) return;
+    // The baked animation clips are optional: without them the procedural poses carry on.
+    await loadClipSet();
     if (this.disposed) return;
     this.ensureMatch(match);
     this.updateCamera(match, match.renderState(), 1, false);

@@ -7,6 +7,7 @@ import { createPlayerVisualIdentity } from '../../core/visual-identity';
 import { PortraitService } from '../../core/services/portrait.service';
 import { PlayerActionState, PlayerRuntimeSnapshot } from '../../models/match.model';
 import { createAppearanceRecipe, createProceduralFootballer, poseFootballer, ProceduralFootballer } from './three-player.factory';
+import { clipsEnabled, loadClipSet, setClipsEnabled } from './animation/clip-store';
 
 @Component({
   selector: 'app-player-lab', imports: [FormsModule, RouterLink], changeDetection: ChangeDetectionStrategy.OnPush,
@@ -28,7 +29,7 @@ import { createAppearanceRecipe, createProceduralFootballer, poseFootballer, Pro
         <label>Bewegung <select aria-label="Bewegung" [ngModel]="action()" (ngModelChange)="action.set($event)">@for (clip of clips; track clip.value) { <option [value]="clip.value">{{ clip.label }}</option> }</select></label>
         <label>Tempo <select aria-label="Tempo" [ngModel]="timeScale()" (ngModelChange)="timeScale.set(+$event)"><option [ngValue]="1">Normal</option><option [ngValue]="0.25">Zeitlupe · ¼</option><option [ngValue]="0.1">Kontaktstudie · ¹⁄₁₀</option></select></label>
         <label>Bewegungsablauf · {{ cursor().toFixed(2) }} s <input aria-label="Bewegungsablauf" type="range" min="0" max="2.19" step=".01" [ngModel]="cursor()" (ngModelChange)="seek(+$event)" /></label>
-        <details><summary>Animationswerkzeuge</summary><label><input type="checkbox" [ngModel]="skeletonVisible()" (ngModelChange)="skeletonVisible.set($event)" /> Skelett zeigen</label><label><input type="checkbox" [ngModel]="contactsVisible()" (ngModelChange)="contactsVisible.set($event)" /> Kontaktpunkt zeigen</label><p>Rezept v{{ recipe().version }} · Seed {{ recipe().seed }}</p></details>
+        <details><summary>Animationswerkzeuge</summary><label><input type="checkbox" [ngModel]="skeletonVisible()" (ngModelChange)="skeletonVisible.set($event)" /> Skelett zeigen</label><label><input type="checkbox" [ngModel]="contactsVisible()" (ngModelChange)="contactsVisible.set($event)" /> Kontaktpunkt zeigen</label><label><input type="checkbox" [ngModel]="clipsOn()" (ngModelChange)="setClips($event)" /> Aufgenommene Clips</label><p>Rezept v{{ recipe().version }} · Seed {{ recipe().seed }}</p></details>
         <div class="gallery-head"><h2>Identitäten</h2><button [disabled]="galleryPage() === 0" (click)="galleryPage.set(galleryPage() - 1)" aria-label="Vorherige Identitäten">←</button><span>{{ galleryPage() + 1 }} / 8</span><button [disabled]="galleryPage() === 7" (click)="galleryPage.set(galleryPage() + 1)" aria-label="Nächste Identitäten">→</button></div>
         <div class="gallery">@for (entry of gallery(); track entry.seed) { <button [class.active]="entry.seed === seed()" (click)="selectSeed(entry.seed)" [attr.aria-label]="'Spieler ' + (entry.seed + 1)">@if (entry.src) { <img [src]="entry.src" alt="" /> }<span>{{ entry.seed + 1 }}</span></button> }</div>
       </aside>
@@ -61,6 +62,8 @@ export class PlayerLabPage implements AfterViewInit, OnDestroy {
   readonly cursor = signal(0);
   readonly action = signal<PlayerActionState>('jog');
   readonly skeletonVisible = signal(false);
+  readonly clipsOn = signal(clipsEnabled());
+  protected setClips(value: boolean): void { setClipsEnabled(value); this.clipsOn.set(value); }
   readonly contactsVisible = signal(false);
   readonly galleryPage = signal(0);
   readonly error = signal('');
@@ -118,6 +121,7 @@ export class PlayerLabPage implements AfterViewInit, OnDestroy {
   private playerFor(seed: number) { return {...this.teams.home.players.find(player => player.positionGroup !== 'GK')!,id:`studio-${seed}`,kitNumber:seed%99+1,visuals:createPlayerVisualIdentity(`studio-${seed}`)}; }
   ngAfterViewInit(): void {
     document.body.classList.add('player-studio');
+    void loadClipSet();
     try {
       const canvas=this.stage().nativeElement;
       this.renderer=new THREE.WebGLRenderer({canvas,antialias:true,alpha:true});

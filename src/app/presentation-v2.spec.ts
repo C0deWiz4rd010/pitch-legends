@@ -73,6 +73,6 @@ describe('Presentation 2', () => {
     const { home } = createPracticeTeams();
     const variants = new Set(home.players.map(player => celebrationVariant(createProceduralFootballer(player.visuals, home.visuals.kits.home, 1, false, false, true))));
     expect(variants.size).toBeGreaterThanOrEqual(3);
-    for (const variant of variants) expect(variant).toBeLessThan(5);
+    for (const variant of variants) expect(variant).toBeLessThan(6);
   });
 });

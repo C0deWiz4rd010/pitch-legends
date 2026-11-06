@@ -6,7 +6,16 @@
 - Source: https://github.com/mrdoob/three.js
 - License: MIT, bundled with the dependency and production license report.
 - Usage: locally bundled WebGL 2 stadium, skinned footballers and animation. No CDN or runtime asset API.
-- All 3D player geometry, rigs, kit panels, football poses, stadium meshes and pitch textures currently used are original procedural code. No Quaternius files have been imported; the library remains a researched reference, not an undeclared dependency.
+- All 3D player geometry, rigs, kit panels, football poses, stadium meshes and pitch textures are original procedural code. The only imported animation data are the baked clips described in the next section.
+
+## Quaternius Universal Animation Library (baked clips, since Phase 4 of 3.0)
+
+- Pack: *Universal Animation Library [Standard]* by Quaternius (<https://quaternius.com/packs/universalanimationlibrary.html>).
+- License: CC0 1.0 Universal (public domain dedication); the pack's `License.txt` says so. No attribution is required; the author is credited here anyway.
+- Downloaded on 2026-11-06 from the author's upload on OpenGameArt: `https://opengameart.org/sites/default/files/universal_animation_librarystandard.zip`, 14,541,205 bytes, SHA-256 `18ff1a7215f4852b320203e8aaf02a1578b5c8eef9027fbaedfcedc7b85a3ac2`. The archive is not part of the repository.
+- Used file: `Godot/AnimationLibrary_Godot_Standard.glb` (53-bone rig, 46 clips). The Standard pack contains no football actions and no sideways or backwards movement.
+- What ships: `public/assets/anim/clips.json` and `clips.bin` (about 52 KB), produced by `tools/bake-animations.mjs` from the clips Idle_Loop, Walk_Loop, Jog_Fwd_Loop, Sprint_Loop and Dance_Loop. The tool retargets them to the 16-bone footballer rig by world direction and rotation change, not by copying local rotations (see the comment at the top of the tool). Re-running it on the same file reproduces the data.
+- Use in the game: the gaits drive arms, torso, head and the hips' bob; the legs stay procedural and foot-locked because the pack's strides are short for this game's running speeds. The dance is one of six celebrations. Without the files the game plays its procedural poses.
 
 Pitch Legends remains offline-capable. Runtime graphics are generated locally and no avatar or asset API is contacted.
 
