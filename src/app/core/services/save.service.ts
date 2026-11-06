@@ -12,6 +12,7 @@ import { emptyTeamFinance } from '../../models/career.model';
 import { createCup } from '../career/cup';
 import { emptyDressingRoom } from '../../models/dressing-room.model';
 import { emptyStaffState } from '../../models/staff.model';
+import { takeRpgBaseline } from '../career/rpg-recap';
 
 export const CAREER_KEY = 'pitch-legends:save:v6';
 const V5_STORAGE_KEY = 'pitch-legends:save:v5';
@@ -263,6 +264,7 @@ export class SaveService {
       game.dressingRoom = room;
     }
     game.manager.attributes.media ??= 55;
+    game.rpgBaseline ??= takeRpgBaseline(game);
     for (const key of Object.keys(game.manager.attributes) as (keyof GameState['manager']['attributes'])[]) {
       game.manager.attributes[key] = Math.min(99, Math.max(1, Math.round(game.manager.attributes[key] ?? 55)));
     }

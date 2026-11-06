@@ -58,6 +58,8 @@ export interface ProceduralFootballer {
   footedness: 1 | -1;
   /** Goalkeepers use the keeper poses; outfield players use the same action names for throw-ins. */
   goalkeeper: boolean;
+  /** A cheer chosen by the player (Legends Path): the celebration number this figure always uses. */
+  cheer?: number;
   destroy(): void;
 }
 
@@ -452,7 +454,7 @@ function poseMemory(model: ProceduralFootballer): PoseMemory {
   return memory;
 }
 const CELEBRATIONS = 6;
-export function celebrationVariant(model: ProceduralFootballer): number { return model.recipe.seed % CELEBRATIONS; }
+export function celebrationVariant(model: ProceduralFootballer): number { return model.cheer ?? model.recipe.seed % CELEBRATIONS; }
 const JOINT_LISTS = new WeakMap<ProceduralFootballer, THREE.Bone[]>();
 function jointList(model: ProceduralFootballer): THREE.Bone[] {
   let list = JOINT_LISTS.get(model);

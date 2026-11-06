@@ -26,6 +26,9 @@ import { VignetteShader } from 'three/addons/shaders/VignetteShader.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { MatchCameraPreset } from '../../models/match.model';
 import { WEAR_HEIGHT, WEAR_WIDTH, stampWear } from './pitch-wear';
+import { CosmeticDef } from '../../core/meta/legend-path';
+import { CosmeticSlot } from '../../models/meta.model';
+import { KitPattern } from '../../models/visual.model';
 import { BALL_RADIUS, netBallMotion, netBulge, netHitStrength, netSlack, netStopDepth, NET_REST_POCKET } from './net-physics';
 
 /** Camera angle (degrees above the pitch), lens and framing per broadcast preset. */
@@ -37,6 +40,8 @@ export const CAMERA_PRESETS: Record<MatchCameraPreset, { pitch: number; fov: num
   player: { pitch: 36, fov: 44, width: 0.52, follow: 1 },
 };
 const AURA_FLASH = new THREE.Color('#ffffff');
+const BALL_PANEL = '#1c3651';
+const BALL_BODY = '#fcfaf1';
 
 /** Colour grading before tone mapping: a tint, a saturation and a contrast, chosen per atmosphere and weather. */
 const GradeShader = {
@@ -133,6 +138,10 @@ export class ThreePitchRenderer {
   private readonly models = new Map<string, ProceduralFootballer>();
   private readonly matrixDummy = new THREE.Object3D();
   private readonly shadow: THREE.InstancedMesh;
+  /** Which triangles of the ball are dark panels, so a ball design can repaint it. */
+  private readonly ballPanels: boolean[] = [];
+  /** What the Legends Path wears in matches: only drawn, never read by the simulation. */
+  private cosmetics: { ball?: string; cheer?: number; decor?: string; kit?: KitPattern } = {};
   /** Under floodlights every player throws four faint shadows, one away from each mast: soft ellipses instead of more shadow maps. */
   private readonly mastShadows: THREE.InstancedMesh;
   private floodlit = false;
@@ -323,7 +332,8 @@ export class ThreePitchRenderer {
       const cy = (pos.getY(i) + pos.getY(i + 1) + pos.getY(i + 2)) * 1.307;
       const cz = (pos.getZ(i) + pos.getZ(i + 1) + pos.getZ(i + 2)) * 1.307;
       const panel = Math.sin(cx * 15) * Math.sin(cy * 15) * Math.sin(cz * 15) > 0.37;
-      const color = new THREE.Color(panel ? '#1c3651' : '#fcfaf1');
+      this.ballPanels.push(panel);
+      const color = new THREE.Color(panel ? BALL_PANEL : BALL_BODY);
       for (let n = 0; n < 3; n++) colors.push(color.r, color.g, color.b);
     }
     ballGeometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
@@ -693,6 +703,30 @@ export class ThreePitchRenderer {
     this.gradePass.uniforms['contrast'].value = this.grade.contrast;
   }
 
+  /** The colour of the worn ground decor: the club's shirt for 'club', a fixed colour otherwise, nothing without one. */
+  private decorColor(match: ArcadeMatch): string | null {
+    const decor = this.cosmetics.decor;
+    return !decor ? null : decor === 'club' ? match.home.visuals.kits.home.shirt : decor;
+  }
+
+  /** The worn rewards of the Legends Path. Call before `prepare`; the ball is repainted at once. */
+  setCosmetics(worn: Partial<Record<CosmeticSlot, CosmeticDef>>): void {
+    this.cosmetics = {
+      ball: worn.ball?.value,
+      cheer: worn.cheer ? Number(worn.cheer.value) : undefined,
+      decor: worn.decor?.value,
+      kit: worn.kit?.value as KitPattern | undefined,
+    };
+    const [panel, body] = (this.cosmetics.ball ?? `${BALL_PANEL}|${BALL_BODY}`).split('|');
+    const colors = this.ball.geometry.getAttribute('color') as THREE.BufferAttribute;
+    const panelColor = new THREE.Color(panel), bodyColor = new THREE.Color(body);
+    this.ballPanels.forEach((isPanel, triangle) => {
+      const color = isPanel ? panelColor : bodyColor;
+      for (let n = 0; n < 3; n++) colors.setXYZ(triangle * 3 + n, color.r, color.g, color.b);
+    });
+    colors.needsUpdate = true;
+  }
+
   destroy(): void {
     if (this.disposed) return;
     this.disposed = true;
@@ -921,7 +955,11 @@ export class ThreePitchRenderer {
       const kit = actor.player.positionGroup === 'GK'
         ? actor.side === 'home' ? this.kits!.homeGoalkeeper : this.kits!.awayGoalkeeper
         : actor.side === 'home' ? this.kits!.home : this.kits!.away;
-      const model = createProceduralFootballer(actor.player.visuals, kit, actor.player.kitNumber, actor.player.positionGroup === 'GK', actor.player.foot === 'Left',this.software, actor.player.lastName);
+      // The managed club's outfield players may wear a kit pattern and a cheer from the Legends Path.
+      const mine = actor.side === match.controlledSide && actor.player.positionGroup !== 'GK';
+      const shown = mine && this.cosmetics.kit ? { ...kit, pattern: this.cosmetics.kit } : kit;
+      const model = createProceduralFootballer(actor.player.visuals, shown, actor.player.kitNumber, actor.player.positionGroup === 'GK', actor.player.foot === 'Left',this.software, actor.player.lastName);
+      if (actor.side === match.controlledSide && this.cosmetics.cheer !== undefined) model.cheer = this.cosmetics.cheer;
       this.models.set(actor.player.id, model);
       this.scene.add(model.mesh);
       const rarity = dnaOf(actor.player).rarity;
@@ -1098,7 +1136,7 @@ export class ThreePitchRenderer {
       const flag = new THREE.Group();
       const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 1.6, 5), new THREE.MeshStandardMaterial({ color: '#eeeac9' }));
       pole.position.y = 0.8;
-      const cloth = new THREE.Mesh(new THREE.PlaneGeometry(0.6, 0.38), new THREE.MeshStandardMaterial({ color: '#ffd967', side: THREE.DoubleSide }));
+      const cloth = new THREE.Mesh(new THREE.PlaneGeometry(0.6, 0.38), new THREE.MeshStandardMaterial({ color: this.decorColor(match) ?? '#ffd967', side: THREE.DoubleSide }));
       // Pivot at the pole so the cloth waves around it.
       cloth.geometry.translate(0.3, 0, 0);
       cloth.position.set(0, 1.36, 0);
@@ -1128,7 +1166,7 @@ export class ThreePitchRenderer {
         else if (pattern === 'halves' || pattern === 'quarters') ctx.fillRect(x < 512 ? 0 : 512, 0, 512, 4), ctx.fillRect(x < 512 ? 512 : 0, 60, 512, 4);
         else ctx.fillRect(0, 0, 1024, 4), ctx.fillRect(0, 60, 1024, 4);
       }
-      ctx.fillStyle = '#f4e5ac'; ctx.font = 'bold 25px sans-serif'; ctx.textAlign = 'center';
+      ctx.fillStyle = this.decorColor(match) ?? '#f4e5ac'; ctx.font = 'bold 25px sans-serif'; ctx.textAlign = 'center';
       ctx.fillText(text, 512, 41, 1000);
     }
     const bannerTexture = new THREE.CanvasTexture(bannerCanvas);

@@ -1,6 +1,7 @@
 import { EffectSpec } from './effects';
 import { scaleEffect } from './signatures';
 import { Player } from '../../models/player.model';
+import { COSMETICS } from '../meta/legend-path';
 
 /**
  * Boots with a trade-off. The type decides what a player gains and what he gives up; the tier (from the club's
@@ -84,6 +85,12 @@ export const BOOT_LOOKS: { id: string; name: [string, string]; color: string }[]
   { id: 'gold', name: ['Gold', 'Gold'], color: '#ffc83d' },
   { id: 'sunset', name: ['Abendrot', 'Sunset'], color: '#ff6a3d' },
   { id: 'ice', name: ['Eisblau', 'Ice blue'], color: '#52d1ff' },
+  // The rest are rewards of the Legends Path (core/meta/legend-path.ts): open from the level that gives them.
+  ...COSMETICS.filter((cosmetic) => cosmetic.slot === 'boots').map((cosmetic) => ({
+    id: cosmetic.id,
+    name: cosmetic.name,
+    color: cosmetic.value,
+  })),
 ];
 
 /** What the supplier tier does to the gain of the boots: the cheap deal is a little weaker, the premium one a little stronger. */

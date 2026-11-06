@@ -6,6 +6,7 @@ import { Rng } from '../util';
 import { hash32 } from '../visual-identity';
 import { PACKS, TIER_ORDER, createCard, drawTier, legendsWorld, packTiers, quickSellValue } from './cards';
 import { autoBuild, cardsToTeam, slotPositions, squadView } from './squad';
+import { WeeklySbc, draftOpponentStrength, suggestWeekly, weeklySbc } from './progression';
 
 export const LEGENDS_VERSION = 1;
 export const RIVALS_SEASON_MATCHES = 10;
@@ -133,7 +134,7 @@ export function setFormation(state: LegendsState, formationId: string): void {
 
 export function ownTeam(state: LegendsState): Team {
   const division = state.rivals.division;
-  return cardsToTeam({ id: 'legends-own', name: state.clubName, short: state.clubName.replace(/[^a-z]/gi, '').slice(0, 3).toUpperCase() || 'LEG', primary: '#ffd34e', secondary: '#151a33', squad: state.squad, cards: state.cards, stadium: division <= 3 ? 4 : division <= 6 ? 3 : 2 });
+  return cardsToTeam({ id: 'legends-own', name: state.clubName, short: state.clubName.replace(/[^a-z]/gi, '').slice(0, 3).toUpperCase() || 'LEG', primary: '#ffd34e', secondary: '#151a33', squad: state.squad, cards: state.cards, cardXp: state.cardXp, stadium: division <= 3 ? 4 : division <= 6 ? 3 : 2 });
 }
 
 // ── Division Rivals ─────────────────────────────────────────────────────────
@@ -246,7 +247,8 @@ export function draftOpponent(state: LegendsState): Team | null {
   const world = legendsWorld(state.seed);
   const rng = new Rng(hash32(`${draft.id}|opponent|${draft.round}`));
   const club = world.clubs[hash32(`${draft.id}|club|${draft.round}`) % world.clubs.length];
-  const team = generateTeam(rng, { name: club.name, short: club.short, primary: club.primary, secondary: club.secondary }, 72 + draft.round * 3, false);
+  // The opponent grows with the drafted team: a stronger draft meets stronger sides.
+  const team = generateTeam(rng, { name: club.name, short: club.short, primary: club.primary, secondary: club.secondary }, draftOpponentStrength(draft.round, draftChemistry(draft).rating), false);
   team.id = `draft-opponent-${draft.round}`;
   for (const player of team.players) { player.fitness = 100; player.injuryWeeks = 0; }
   return team;
@@ -325,6 +327,8 @@ export function claimTask(state: LegendsState, taskId: string): boolean {
   const task = state.tasks.find((candidate) => candidate.id === taskId);
   if (!task || task.claimed || task.progress < task.target) return false;
   task.claimed = true;
+  // A claimed task also earns upgrade tokens: two for a weekly one, one for a daily one.
+  state.tokens = (state.tokens ?? 0) + (task.period === 'weekly' ? 2 : 1);
   state.coins += task.reward.coins;
   if (task.reward.pack) state.packs.push(task.reward.pack);
   return true;
@@ -353,19 +357,34 @@ export const SBCS: SbcDefinition[] = [
   { id: 'gold-upgrade', de: 'Gold-Upgrade', en: 'Gold upgrade', descriptionDe: '5 Gold-Karten', descriptionEn: '5 gold cards', size: 5, repeatable: true, reward: 'premium', check: (cards) => cards.every((card) => card.tier === 'gold') },
 ];
 
+/** The fixed challenges and this week's: the weekly one is new for every week and can be done once. */
+export function sbcList(state: Pick<LegendsState, 'seed'>, now = Date.now()): SbcDefinition[] {
+  const weekly = weeklySbc(state.seed, weekKey(new Date(now)));
+  return [...SBCS, { ...asSbc(weekly), repeatable: false }];
+}
+
+function asSbc(weekly: WeeklySbc): Omit<SbcDefinition, 'repeatable'> {
+  const { id, de, en, descriptionDe, descriptionEn, size, reward, check } = weekly;
+  return { id, de, en, descriptionDe, descriptionEn, size, reward, check };
+}
+
 export function sbcAvailable(state: LegendsState, sbc: SbcDefinition): boolean {
   return sbc.repeatable || !state.completedSbcs.includes(sbc.id);
 }
 
 /** Cheapest eligible cards outside the squad, or null if the collection cannot complete it. */
-export function suggestSbc(state: LegendsState, sbcId: string): string[] | null {
-  const sbc = SBCS.find((candidate) => candidate.id === sbcId);
+export function suggestSbc(state: LegendsState, sbcId: string, now = Date.now()): string[] | null {
+  const sbc = sbcList(state, now).find((candidate) => candidate.id === sbcId);
   if (!sbc || !sbcAvailable(state, sbc)) return null;
   const free = state.cards.filter((card) => !inSquad(state, card.id)).sort((a, b) => quickSellValue(a) - quickSellValue(b));
   const attempt = (pool: LegendsCard[]) => {
     const pick = pool.slice(0, sbc.size);
     return pick.length === sbc.size && sbc.check(pick) ? pick.map((card) => card.id) : null;
   };
+  if (sbcId.startsWith('weekly-')) {
+    const found = suggestWeekly(weeklySbc(state.seed, weekKey(new Date(now))), free, quickSellValue);
+    return found && sbc.check(found) ? found.map((card) => card.id) : null;
+  }
   if (sbcId === 'bronze-swap') return attempt(free.filter((card) => card.tier === 'bronze'));
   if (sbcId === 'gold-upgrade') return attempt(free.filter((card) => card.tier === 'gold'));
   if (sbcId === 'league-loyalty') {
@@ -385,8 +404,8 @@ export function suggestSbc(state: LegendsState, sbcId: string): string[] | null 
   return attempt([...seeds, ...rest]);
 }
 
-export function submitSbc(state: LegendsState, sbcId: string, cardIds: string[]): { ok: boolean; reason?: 'invalid' | 'done' } {
-  const sbc = SBCS.find((candidate) => candidate.id === sbcId);
+export function submitSbc(state: LegendsState, sbcId: string, cardIds: string[], now = Date.now()): { ok: boolean; reason?: 'invalid' | 'done' } {
+  const sbc = sbcList(state, now).find((candidate) => candidate.id === sbcId);
   if (!sbc) return { ok: false, reason: 'invalid' };
   if (!sbcAvailable(state, sbc)) return { ok: false, reason: 'done' };
   const cards = cardIds.map((id) => state.cards.find((card) => card.id === id)).filter((card): card is LegendsCard => !!card && !inSquad(state, card.id));

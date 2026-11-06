@@ -9,6 +9,7 @@ import {
 } from '../models/player.model';
 import { Team } from '../models/team.model';
 import { League, Fixture } from '../models/league.model';
+import { takeRpgBaseline } from '../core/career/rpg-recap';
 import { emptyDressingRoom } from '../models/dressing-room.model';
 import { emptyStaffState } from '../models/staff.model';
 import { GameState, ManagerProfile, SAVE_VERSION, TacticalPhilosophy, defaultSettings, emptyTrainingWeek } from '../models/game.model';
@@ -465,6 +466,7 @@ export function createNewGame(opts: NewGameOptions): GameState {
     staff: emptyStaffState(),
     dressingRoom: emptyDressingRoom(),
   };
+  game.rpgBaseline = takeRpgBaseline(game);
   game.objectives = generateSeasonObjectives(game);
   game.board.expectedPosition = game.objectives.find((objective) => objective.type === 'league-position')?.target ?? 6;
   enforceMythicCap(game);

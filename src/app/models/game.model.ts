@@ -207,6 +207,8 @@ export interface GameState {
   staff?: StaffState;
   /** Version 8: team spirit, grievances and events of the managed club's dressing room. */
   dressingRoom?: DressingRoomState;
+  /** Version 8: levels and signatures when the season started, for the RPG recap of the review. */
+  rpgBaseline?: import('../core/career/rpg-recap').RpgBaseline;
   /** Version 8: the kit supplier of the managed club; absent means the basic deal. */
   supplier?: SupplierContract;
   /** Version 8: matches the managed club's players started together, for duo chemistry. */

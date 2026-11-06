@@ -101,8 +101,8 @@
               <p class="muted">+ {{ i18n.pick(equipment.def.gain[0], equipment.def.gain[1]) }} · − {{ i18n.pick(equipment.def.loss[0], equipment.def.loss[1]) }}</p>
               <p class="eyebrow">{{ i18n.pick('Optik (ohne Wirkung)', 'Look (no effect)') }}</p>
               <div class="boot-list">
-                @for (look of bootLooks; track look.id) {
-                  <button type="button" class="trait look" [class.owned]="equipment.look === look.id" [style.border-color]="look.color" (click)="chooseLook(look.id)">{{ i18n.pick(look.name[0], look.name[1]) }}</button>
+                @for (look of bootLooks(); track look.id) {
+                  <button type="button" class="trait look" [class.owned]="equipment.look === look.id" [disabled]="look.locked" [style.border-color]="look.color" [title]="look.locked ? i18n.pick('Ab Level ' + look.level + ' des Legenden-Wegs', 'From level ' + look.level + ' of the Legends Path') : ''" (click)="chooseLook(look.id)">{{ i18n.pick(look.name[0], look.name[1]) }}@if (look.locked) { · Lv {{ look.level }} }</button>
                 }
               </div>
             </div>

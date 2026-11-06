@@ -135,6 +135,10 @@
                 <app-legends-card [card]="card" [seed]="seed()" [duplicate]="duplicateIds().has(card.id)" />
                 <small>{{ isInSquad(card) ? text('IM KADER', 'IN SQUAD') : quickSellValue(card) + ' ' + text('Münzen', 'coins') }}</small>
               </button>
+              <small class="level">{{ text('Stufe', 'Level') }} {{ levelOf(card) }}</small>
+              @if (upgradeOf(card); as up) {
+                <button type="button" class="sheet-link" [class.ready]="up.possible" [title]="up.hint" (click)="upgrade(card)">{{ text('Aufstieg', 'Upgrade') }}</button>
+              }
               <button type="button" class="sheet-link" (click)="sheetPlayer.set(card.player)">{{ text('Akte', 'Sheet') }}</button>
             </div>
           }
@@ -161,9 +165,22 @@
             </article>
           }
         </div>
+        <p class="muted">{{ text('Aufstiegsmarken', 'Upgrade tokens') }}: <b>{{ tokens() }}</b> · {{ text('Aufgaben bringen Marken: täglich eine, wöchentlich zwei.', 'Tasks give tokens: one for a daily, two for a weekly one.') }}</p>
+        <h2 class="section">ALBUM</h2>
+        <div class="sbc-grid">
+          @for (entry of album(); track entry.set.id) {
+            <article class="card sbc" [class.done]="entry.claimed">
+              <h3>{{ text(entry.set.name[0], entry.set.name[1]) }}</h3>
+              <p>{{ text(entry.set.text[0], entry.set.text[1]) }}</p>
+              <i class="album-bar"><em [style.width.%]="entry.have / entry.set.need * 100"></em></i>
+              <small>{{ entry.have }} / {{ entry.set.need }} · {{ entry.set.reward.coins ? entry.set.reward.coins + ' ' + text('Münzen', 'coins') : '' }}{{ entry.set.reward.pack ? packName(entry.set.reward.pack) : '' }}</small>
+              <button type="button" class="btn btn--ghost btn--sm" [disabled]="!entry.complete || entry.claimed" (click)="claimAlbum(entry.set.id)">{{ entry.claimed ? '✓' : text('ABHOLEN', 'CLAIM') }}</button>
+            </article>
+          }
+        </div>
         <h2 class="section">SQUAD BUILDING CHALLENGES</h2>
         <div class="sbc-grid">
-          @for (sbc of sbcs; track sbc.id) {
+          @for (sbc of sbcs(); track sbc.id) {
             <article class="card sbc" [class.done]="sbcDone(sbc.id)">
               <h3>{{ text(sbc.de, sbc.en) }}</h3>
               <p>{{ text(sbc.descriptionDe, sbc.descriptionEn) }}</p>

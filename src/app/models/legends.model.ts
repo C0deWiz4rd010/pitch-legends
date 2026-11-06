@@ -110,4 +110,10 @@ export interface LegendsState {
   tasks: LegendsTask[];
   completedSbcs: string[];
   history: LegendsHistoryEntry[];
+  /** Card experience by player (`baseId`); a card's level follows it (see core/legends/progression.ts). Absent in older saves. */
+  cardXp?: Record<string, number>;
+  /** Upgrade tokens from claimed tasks, spent when a card has no spare copies. */
+  tokens?: number;
+  /** Album sets whose reward was taken. */
+  albumClaimed?: string[];
 }

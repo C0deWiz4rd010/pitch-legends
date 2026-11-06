@@ -67,6 +67,7 @@ import { HeatmapComponent } from '../../shared/components/heatmap.component';
 import { tacticLabel } from '../../shared/tactic-labels';
 import { CUP_ROUND_LABELS } from '../../core/career/cup';
 import { ExhibitionService } from '../../core/services/exhibition.service';
+import { MetaService } from '../../core/services/meta.service';
 import { PersistentStore } from '../../core/storage/persistent-store';
 import { CHALLENGES, ChallengeController, ChallengeHud, ChallengeOutcome, loadChallengeRecords, saveChallengeResult } from '../../core/football/challenges';
 import type { ThreePitchRenderer } from './three-pitch.renderer';
@@ -107,6 +108,7 @@ export class MatchPage implements OnDestroy {
   private readonly engine = inject(MatchEngineService);
   private readonly checkpoints = inject(MatchCheckpointService);
   private readonly store = inject(PersistentStore);
+  private readonly meta = inject(MetaService);
   protected readonly controlPrefs = inject(ControlPrefsService);
   private readonly router = inject(Router);
   private readonly route = inject(ActivatedRoute);
@@ -695,6 +697,7 @@ export class MatchPage implements OnDestroy {
         const renderer = this.zone.runOutsideAngular(() => new ThreePitchRenderer(canvas, this.graphicsPrefs.prefs()));
         this.renderer = renderer;
         canvas.addEventListener('webglcontextlost', () => this.pauseFor(this.i18n.pick('Grafik unterbrochen. Nach der Wiederherstellung kannst du weiterspielen.', 'Graphics interrupted. You can continue once they are restored.')), { once: true });
+        renderer.setCosmetics(this.meta.worn());
         await renderer.prepare(match);
         if (this.disposed || this.arcade !== match || this.renderer !== renderer) return;
       } catch {
@@ -1089,6 +1092,7 @@ export class MatchPage implements OnDestroy {
     cancelAnimationFrame(this.raf);
     const outcome = challenge.outcome();
     const newBest = saveChallengeResult(this.store, outcome);
+    this.meta.record({ type: 'challenge', id: outcome.id, medal: outcome.medal });
     const definition = challenge.definition;
     this.challengeResult.set({ outcome, newBest, best: loadChallengeRecords(this.store)[outcome.id]?.best ?? outcome.score, de: definition.de, en: definition.en, unitDe: definition.unit.de, unitEn: definition.unit.en });
     this.challenge = null;
@@ -1109,6 +1113,11 @@ export class MatchPage implements OnDestroy {
     const result = this.result();
     if (!result || this.committing()) return;
     if (this.practice && this.exhibition && !this.exhibition.rematch) {
+      // A quick match counts for the meta layer; Legends matches are counted by the Legends service.
+      if (!this.exhibition.id.startsWith('legends-') && !this.exhibition.id.startsWith('draft-')) {
+        const home = this.exhibition.controlledTeamId === result.homeTeamId;
+        this.meta.record({ type: 'exhibition-match', goalsFor: home ? result.homeScore : result.awayScore, goalsAgainst: home ? result.awayScore : result.homeScore });
+      }
       this.exhibitions.report(result);
       this.reset();
       await this.router.navigateByUrl(this.exhibition.returnUrl);

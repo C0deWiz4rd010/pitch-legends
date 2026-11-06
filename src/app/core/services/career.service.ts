@@ -4,11 +4,13 @@ import { ScoutAssignment } from '../../models/career.model';
 import { MAX_SQUAD_SIZE } from '../transfer-engine';
 import { startScoutAssignment } from '../career/scouting';
 import { GameStateService } from './game-state.service';
+import { MetaService } from './meta.service';
 
 /** Academy decisions and scout assignments of the player's club. */
 @Injectable({ providedIn: 'root' })
 export class CareerService {
   private readonly gs = inject(GameStateService);
+  private readonly meta = inject(MetaService);
 
   promoteProspect(playerId: string): { ok: boolean; reason?: 'full' | 'missing' } {
     let result: { ok: boolean; reason?: 'full' | 'missing' } = { ok: false, reason: 'missing' };
@@ -24,6 +26,7 @@ export class CareerService {
       autoFillLineup(club);
       result = { ok: true };
     });
+    if (result.ok) this.meta.record({ type: 'academy-promoted' });
     return result;
   }
 

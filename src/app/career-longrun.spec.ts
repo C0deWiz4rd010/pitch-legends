@@ -4,6 +4,7 @@ import { createNewGame } from './data/generators';
 import { GameStateService } from './core/services/game-state.service';
 import { MatchEngineService } from './core/services/match-engine.service';
 import { SeasonService } from './core/services/season.service';
+import { MetaService } from './core/services/meta.service';
 import { resolveTravelEvent } from './core/travel-engine';
 import { quickSimulate } from './core/career/quick-sim';
 import { GameState } from './models/game.model';
@@ -138,6 +139,18 @@ describe('Career long run: ten seasons without a human', () => {
     expect(mostOpen).toBeLessThanOrEqual(3);
     // Requests are rare: well under three a season on average, and never in clusters.
     expect(requestsMade).toBeLessThanOrEqual(30);
+    // The meta layer followed the whole decade: every season and every match of the managed club was counted, once.
+    const meta = TestBed.inject(MetaService).state();
+    expect(meta.counters['seasons']).toBe(10);
+    expect(meta.counters['matches']).toBeGreaterThanOrEqual(150);
+    expect(meta.counters['matches']).toBeLessThanOrEqual(10 * 40);
+    expect(meta.unlocked['seasons-2']).toBeGreaterThan(0);
+    expect(meta.xp).toBeGreaterThan(500);
+    // Every archived season carries its RPG recap, and over ten seasons the squad did gain levels.
+    const archive = gs.game()!.archive;
+    expect(archive).toHaveLength(10);
+    expect(archive.every((entry) => !!entry.rpg)).toBe(true);
+    expect(archive.reduce((sum, entry) => sum + (entry.rpg?.levelsGained ?? 0), 0)).toBeGreaterThan(0);
     // No rating inflation or collapse over a decade.
     const last = history[history.length - 1];
     expect(Math.abs(last.meanOverall - first.meanOverall)).toBeLessThanOrEqual(6);

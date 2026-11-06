@@ -2,16 +2,18 @@ import { TIER_RARITY } from '../legends/cards';
 import { dnaForRarity } from '../rpg/player-dna';
 import { Injectable, computed, inject, signal } from '@angular/core';
 import { Router } from '@angular/router';
-import { LegendsState, PackId } from '../../models/legends.model';
+import { LegendsCard, LegendsState, PackId } from '../../models/legends.model';
 import { MatchResult } from '../../models/match.model';
 import {
   RivalsOutcome, applyDraftResult, applyRivalsResult, buyPack, claimDraftReward, claimTask, createLegendsState, draftOpponent,
   draftPick, draftTeam, ensureTasks, openPack, ownTeam, PackResult, rivalsOpponent, sellCards, setFormation, setSlot, startDraft,
-  submitSbc, suggestSbc, surplusDuplicates, weekKey,
+  submitSbc, suggestSbc, surplusDuplicates, weekKey, sbcList,
 } from '../legends/legends-engine';
 import { autoBuild, squadView } from '../legends/squad';
 import { PersistentStore } from '../storage/persistent-store';
 import { ExhibitionService } from './exhibition.service';
+import { MetaService } from './meta.service';
+import { albumSetsComplete, awardCardXp, claimAlbumSet, upgradeCard } from '../legends/progression';
 
 export const LEGENDS_STORAGE_KEY = 'pitch-legends:legends:v1';
 
@@ -38,6 +40,7 @@ export function ensureCardDna(state: LegendsState): void {
 export class LegendsService {
   private readonly exhibitions = inject(ExhibitionService);
   private readonly router = inject(Router);
+  private readonly meta = inject(MetaService);
   private readonly store = inject(PersistentStore);
   private readonly stateSignal = signal<LegendsState | null>(this.load());
   readonly state = this.stateSignal.asReadonly();
@@ -89,9 +92,19 @@ export class LegendsService {
 
   refreshTasks(): void { this.mutate((draft) => ensureTasks(draft)); }
   buy(packId: PackId) { return this.mutate((draft) => buyPack(draft, packId)) ?? { ok: false }; }
-  open(packId: PackId): PackResult | null { return this.mutate((draft) => openPack(draft, packId)); }
+  open(packId: PackId): PackResult | null {
+    const result = this.mutate((draft) => openPack(draft, packId));
+    if (result) { this.meta.record({ type: 'legends-pack' }); this.reportCollection(); }
+    return result;
+  }
   sell(cardIds: string[]): number { return this.mutate((draft) => sellCards(draft, cardIds)) ?? 0; }
   sellDuplicates(): number { return this.mutate((draft) => sellCards(draft, surplusDuplicates(draft))) ?? 0; }
+  /** Takes a card up a tier with spare copies or upgrade tokens. */
+  upgrade(cardId: string) { return this.mutate((draft) => upgradeCard(draft, cardId)) ?? { ok: false as const, reason: 'card' as const }; }
+  /** Claims the reward of a complete album set. */
+  claimAlbum(setId: string) { return this.mutate((draft) => claimAlbumSet(draft, setId)); }
+  /** The fixed challenges and this week's. */
+  challenges() { const state = this.stateSignal(); return state ? sbcList(state) : []; }
   duplicates(): string[] { const state = this.stateSignal(); return state ? surplusDuplicates(state) : []; }
   setSlot(slotIndex: number, cardId: string | null) { return this.mutate((draft) => setSlot(draft, slotIndex, cardId)) ?? { ok: false }; }
   setFormation(formationId: string): void { this.mutate((draft) => setFormation(draft, formationId)); }
@@ -101,7 +114,19 @@ export class LegendsService {
   draftPick(slotIndex: number, cardId: string): boolean { return this.mutate((draft) => draftPick(draft, slotIndex, cardId)) ?? false; }
   claimDraft() { return this.mutate((draft) => claimDraftReward(draft)); }
   suggestSbc(sbcId: string): string[] | null { const state = this.stateSignal(); return state ? suggestSbc(state, sbcId) : null; }
-  submitSbc(sbcId: string, cardIds: string[]) { return this.mutate((draft) => submitSbc(draft, sbcId, cardIds)) ?? { ok: false }; }
+  submitSbc(sbcId: string, cardIds: string[]) {
+    const result = this.mutate((draft) => submitSbc(draft, sbcId, cardIds)) ?? { ok: false };
+    if (result.ok) { this.meta.record({ type: 'legends-sbc' }); this.reportCollection(); }
+    return result;
+  }
+
+  /** Tells the meta layer how big the collection is and how many album sets are complete. */
+  reportCollection(): void {
+    const state = this.stateSignal();
+    if (!state) return;
+    const distinct = (tier: string) => new Set(state.cards.filter((card) => card.tier === tier).map((card) => card.baseId)).size;
+    this.meta.record({ type: 'legends-collection', cards: state.cards.length, gold: distinct('gold'), legends: distinct('legend'), albumSets: albumSetsComplete(state) });
+  }
 
   /** Opens the match page with the Legends squad against the next Rivals opponent. */
   playRivals(): void {
@@ -138,13 +163,24 @@ export class LegendsService {
   }
 
   private finishRivals(result: MatchResult, opponent: string): void {
-    const outcome = this.mutate((draft) => applyRivalsResult(draft, result.homeScore, result.awayScore, opponent));
+    const outcome = this.mutate((draft) => {
+      const rivals = applyRivalsResult(draft, result.homeScore, result.awayScore, opponent);
+      // The cards that played earn experience.
+      awardCardXp(draft, result, draft.squad.slots.map((id) => draft.cards.find((card) => card.id === id)).filter((card): card is LegendsCard => !!card));
+      return rivals;
+    });
+    this.meta.record({ type: 'legends-match', mode: 'rivals', goalsFor: result.homeScore, goalsAgainst: result.awayScore, won: result.homeScore > result.awayScore });
+    const division = this.stateSignal()?.rivals.division;
+    if (division) this.meta.record({ type: 'legends-division', division });
     this.lastReport.set({ mode: 'rivals', opponent, goalsFor: result.homeScore, goalsAgainst: result.awayScore, won: result.homeScore > result.awayScore, rivals: outcome ?? undefined });
   }
 
   private finishDraft(result: MatchResult, opponent: string): void {
     const won = result.homeScore > result.awayScore || (result.homeScore === result.awayScore && result.shootout?.winner === 'home');
     this.mutate((draft) => applyDraftResult(draft, won, result.homeScore, result.awayScore, opponent));
+    this.meta.record({ type: 'legends-match', mode: 'draft', goalsFor: result.homeScore, goalsAgainst: result.awayScore, won });
+    const run = this.stateSignal()?.draft;
+    if (run && (run.eliminated || run.round > 4)) this.meta.record({ type: 'legends-draft', winsInRun: run.wins });
     this.lastReport.set({ mode: 'draft', opponent, goalsFor: result.homeScore, goalsAgainst: result.awayScore, won });
   }
 }

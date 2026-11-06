@@ -5,6 +5,7 @@ import { SIGNING_WEEKS, candidatesFor, dismissStaff, hireStaff, staffEffect, sta
 import { GameStateService } from '../../core/services/game-state.service';
 import { I18nService } from '../../core/services/i18n.service';
 import { RpgService } from '../../core/services/rpg.service';
+import { MetaService } from '../../core/services/meta.service';
 import { playerName } from '../../core/ratings';
 import { roomEventById } from '../../data/dressing-room-events';
 import { ManagerAttributes, ManagerPerkPath } from '../../models/game.model';
@@ -73,6 +74,7 @@ export class OfficePage {
   protected readonly gs = inject(GameStateService);
   private readonly i18n = inject(I18nService);
   private readonly rpg = inject(RpgService);
+  private readonly meta = inject(MetaService);
   protected readonly formatCoins = formatCoins;
   protected readonly message = signal('');
   protected readonly signingWeeks = SIGNING_WEEKS;
@@ -176,6 +178,7 @@ export class OfficePage {
     let text = '';
     this.gs.mutate((draft) => {
       const result = answerPress(draft, style);
+      if (result.ok) this.meta.record({ type: 'press' });
       text = !result.ok ? this.text('Hier wartet keine Pressekonferenz.', 'No press conference is waiting.') : result.success ? this.text('Die Antwort kam gut an.', 'The answer went down well.') : this.text('Die Antwort ging nach hinten los.', 'The answer backfired.');
     });
     this.message.set(text);
@@ -267,6 +270,7 @@ export class OfficePage {
     let text = '';
     this.gs.mutate((draft) => {
       const result = hireStaff(draft, candidateId);
+      if (result.ok) this.meta.record({ type: 'staff-hired' });
       text = result.ok ? this.text('Verpflichtet.', 'Signed.') : result.reason === 'budget' ? this.text('Dafür fehlt das Geld.', 'You cannot afford that.') : this.text('Bewerber nicht mehr verfügbar.', 'Applicant no longer available.');
     });
     this.message.set(text);

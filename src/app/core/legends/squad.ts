@@ -7,6 +7,7 @@ import { defaultTactics } from '../../models/tactics.model';
 import { Team, defaultFacilities } from '../../models/team.model';
 import { computeOverall, groupForPosition } from '../ratings';
 import { clamp } from '../util';
+import { cardLevelFor, levelBonus } from './progression';
 import { createClubVisualIdentity, hash32 } from '../visual-identity';
 
 export const LEGENDS_FORMATIONS = FORMATION_TEMPLATES.map((template) => ({ id: template.id, name: template.name }));
@@ -84,16 +85,16 @@ export function autoBuild(cards: LegendsCard[], formationId: string): LegendsSqu
 }
 
 /** Chemistry sharpens or blunts every attribute by up to three points. */
-function withChemistry(player: Player, chemistry: number): Player {
+function withChemistry(player: Player, chemistry: number, levelPoints = 0): Player {
   const copy = structuredClone(player);
-  const bonus = Math.round((chemistry - 5) * 0.6);
+  const bonus = Math.round((chemistry - 5) * 0.6) + levelPoints;
   for (const key of Object.keys(copy.attributes) as Array<keyof Player['attributes']>) copy.attributes[key] = clamp(copy.attributes[key] + bonus, 1, 99);
   copy.overall = computeOverall(copy.attributes, copy.positionGroup);
   return copy;
 }
 
 /** The engine side for a squad of cards. */
-export function cardsToTeam(options: { id: string; name: string; short: string; primary: string; secondary: string; squad: LegendsSquad; cards: LegendsCard[]; stadium?: number }): Team {
+export function cardsToTeam(options: { id: string; name: string; short: string; primary: string; secondary: string; squad: LegendsSquad; cards: LegendsCard[]; stadium?: number; cardXp?: Record<string, number> }): Team {
   const view = squadView({ cards: options.cards, squad: options.squad });
   const formation = createFormation(options.squad.formationId);
   const players: Player[] = [];
@@ -101,7 +102,8 @@ export function cardsToTeam(options: { id: string; name: string; short: string; 
   const kitFor = (preferred: number) => { let kit = preferred; while (kits.has(kit)) kit = kit >= 99 ? 1 : kit + 1; kits.add(kit); return kit; };
   view.starters.forEach((entry, index) => {
     if (!entry.card) return;
-    const player = withChemistry(entry.card.player, entry.chemistry);
+    // A card that has played a lot is a little sharper: its level gives up to two points.
+    const player = withChemistry(entry.card.player, entry.chemistry, levelBonus(cardLevelFor(options.cardXp?.[entry.card.baseId] ?? 0)));
     player.kitNumber = kitFor(player.positionGroup === 'GK' ? 1 : index + 2);
     formation.slots[index].playerId = player.id;
     players.push(player);

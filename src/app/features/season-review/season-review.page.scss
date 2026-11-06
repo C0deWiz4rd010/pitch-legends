@@ -39,3 +39,7 @@
 .actions { display: flex; gap: 10px; justify-content: flex-end; flex-wrap: wrap; }
 .empty { max-width: 560px; }
 @media (max-width: 960px) { .review-grid { grid-template-columns: 1fr; } }
+
+.rpg-recap .line { margin: 0; font-size: 13px; }
+.rpg-recap .facts-line { margin: 0 0 6px; }
+.rpg-recap .muted { color: var(--text-mute); font-size: 12px; }

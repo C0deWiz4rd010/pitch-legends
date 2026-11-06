@@ -7,6 +7,7 @@ import { cupProgress } from './cup';
 import { allLeagues, promotionMoves, standingsFor } from './divisions';
 import { retiringPlayers } from './lifecycle';
 import { BoardVerdict, leaguePosition, objectiveMet, seasonBoardVerdict } from './objectives';
+import { RpgRecap, buildRpgRecap, recapSummary } from './rpg-recap';
 
 export interface SeasonReview {
   season: number;
@@ -21,6 +22,8 @@ export interface SeasonReview {
   board: BoardVerdict;
   clubPromoted: boolean;
   clubRelegated: boolean;
+  /** Level-ups, evolutions and the best signatures of the managed squad this season. */
+  rpg: RpgRecap;
 }
 
 function average(player: Player): number {
@@ -65,6 +68,7 @@ export function buildSeasonReview(game: GameState): SeasonReview {
     board: seasonBoardVerdict(game, clubPromoted, clubRelegated),
     clubPromoted,
     clubRelegated,
+    rpg: buildRpgRecap(game),
   };
 }
 
@@ -86,6 +90,7 @@ export function archiveEntry(game: GameState, review: SeasonReview): SeasonArchi
     },
     promotedIds: review.promotedIds,
     relegatedIds: review.relegatedIds,
+    rpg: recapSummary(review.rpg),
   };
 }
 

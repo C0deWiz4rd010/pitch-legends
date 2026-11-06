@@ -71,6 +71,8 @@ export interface SeasonArchive {
   club: { teamId: string; tier: 1 | 2; position: number; cupRound: CupRoundKey | 'winner' | null; objectivesCompleted: number; objectivesTotal: number };
   promotedIds: string[];
   relegatedIds: string[];
+  /** What the RPG recap kept of the season (see core/career/rpg-recap.ts); absent in older archives. */
+  rpg?: { levelsGained: number; evolutions: number; topClimber: string | null; bestSignature: string | null };
 }
 
 export interface BoardState {

@@ -33,6 +33,8 @@ import { processScoutAssignments } from '../career/scouting';
 import { archiveEntry, buildSeasonReview } from '../career/season-review';
 import { applyMatchToRoom, ensureRoom, moraleBaseline, weeklyRoom } from '../career/dressing-room';
 import { weeklyPress } from '../career/press-conference';
+import { takeRpgBaseline } from '../career/rpg-recap';
+import { MetaService } from './meta.service';
 import { coolRivalries, derbyHeat, derbySpirit, gateFactor, heatOf, rivalryBetween, warmRivalry } from '../career/rivalry';
 import { paySupplier, syncEquipment } from '../career/supplier';
 import { coolLinks, duoPartners, recordTogether } from '../rpg/partners';
@@ -50,6 +52,7 @@ export class SeasonService {
   private readonly engine = inject(MatchEngineService);
   private readonly rpg = inject(RpgService);
   private readonly training = inject(TrainingService);
+  private readonly meta = inject(MetaService);
 
   /** Simulate the player's upcoming fixture and return the result (not yet committed). */
   simulatePlayerMatch(): MatchResult | null {
@@ -246,6 +249,7 @@ export class SeasonService {
     if (!isPlayerMatch) { applySignatureProgress(home, result); applySignatureProgress(away, result); }
     // A level gained by one of the managed club's players is worth a line in the news.
     for (const up of levelUps) this.pushNews(draft, 'star', 'news.levelup.title', 'news.levelup.body', { player: playerName(up.player), level: up.level });
+    if (levelUps.length) this.meta.record({ type: 'level-ups', count: levelUps.length, highest: Math.max(...levelUps.map((up) => up.level)) });
     // A derby draws a bigger crowd the hotter the rivalry is, and every derby changes the heat.
     const rivalry = rivalryBetween(draft, home.id, away.id);
     if (rivalry && home.rivalTeamIds.includes(away.id)) warmRivalry(draft, home.id, away.id, derbyHeat(result.homeScore, result.awayScore));
@@ -353,6 +357,12 @@ export class SeasonService {
     }
     applyMatchToRoom(draft, won ? 'win' : drew ? 'draw' : 'loss');
     this.recordChemistry(draft, club);
+    this.meta.record({
+      type: 'career-match', goalsFor, goalsAgainst, league: competition === 'league',
+      derby: club.rivalTeamIds.includes((isHome ? away : home).id),
+      hattricks: club.players.filter((player) => (result.contributions[player.id]?.goals ?? 0) >= 3).length,
+      motm: club.players.some((player) => player.id === result.manOfTheMatchId),
+    });
     if (competition === 'cup') return;
     const opp = isHome ? away : home;
     this.pushNews(draft, won ? 'trophy' : drew ? 'handshake' : 'whistle', 'news.match.title', won ? 'news.match.win' : drew ? 'news.match.draw' : 'news.match.loss', {
@@ -551,6 +561,8 @@ export class SeasonService {
     if (!this.gs.seasonOver()) return;
     this.gs.mutate((draft) => {
       const review = buildSeasonReview(draft);
+      const ownRow = review.leagues.flatMap((league) => league.table).find((row) => row.teamId === draft.clubId);
+      this.meta.record({ type: 'career-season', points: ownRow?.points ?? 0, goalsFor: ownRow?.goalsFor ?? 0, champion: review.leagues.some((league) => league.championId === draft.clubId), promoted: review.clubPromoted });
       draft.archive = [...(draft.archive ?? []), archiveEntry(draft, review)].slice(-30);
       for (const entry of review.objectives) if (entry.met && !entry.objective.completed) {
         const objective = draft.objectives.find((candidate) => candidate.id === entry.objective.id);
@@ -604,6 +616,7 @@ export class SeasonService {
       if (ownClub) this.assignPartners(draft, ownClub);
       syncEquipment(draft);
       ensureRoom(draft);
+      draft.rpgBaseline = takeRpgBaseline(draft);
       coolRivalries(draft, true);
       for (const team of draft.teams) if (team.id !== draft.clubId) autoEvolveSignatures(team, { season: draft.league.season, week: draft.league.currentWeek });
       draft.academy = { season, prospects: academyIntake(draft) };

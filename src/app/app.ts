@@ -9,6 +9,7 @@ import { ClubCrestComponent } from './shared/components/club-crest.component';
 import { MiniKitComponent } from './shared/components/mini-kit.component';
 import { ControlHandbookComponent } from './shared/components/control-handbook.component';
 import { SystemNoticesComponent } from './shared/components/system-notices.component';
+import { MetaToastsComponent } from './shared/components/meta-toasts.component';
 import { ControlHelpService } from './core/services/control-help.service';
 import { APP_VERSION } from './core/version';
 import { I18nService } from './core/services/i18n.service';
@@ -22,7 +23,7 @@ interface NavItem {
 
 @Component({
   selector: 'app-root',
-  imports: [RouterOutlet, RouterLink, RouterLinkActive, StartComponent, I18nPipe, ClubCrestComponent, MiniKitComponent, ControlHandbookComponent, SystemNoticesComponent],
+  imports: [RouterOutlet, RouterLink, RouterLinkActive, StartComponent, I18nPipe, ClubCrestComponent, MiniKitComponent, ControlHandbookComponent, SystemNoticesComponent, MetaToastsComponent],
   templateUrl: './app.html',
   styleUrl: './app.scss',
 })
@@ -35,7 +36,7 @@ export class App {
   protected readonly version = APP_VERSION;
   protected readonly revision = signal('');
   private readonly router = inject(Router);
-  protected readonly standalonePage = signal(/\/(?:play|players)(?:[/?#]|$)/.test(location.pathname));
+  protected readonly standalonePage = signal(/\/(?:play|players|meta)(?:[/?#]|$)/.test(location.pathname));
 
   protected readonly nav: NavItem[] = [
     { path: '', labelKey: 'nav.dashboard', icon: '⌂' },
@@ -50,6 +51,7 @@ export class App {
     { path: 'finances', labelKey: 'nav.finances', icon: '¤' },
     { path: 'facilities', labelKey: 'nav.facilities', icon: '▦' },
     { path: 'legends', labelKey: 'nav.legends', icon: '★' },
+    { path: 'meta', labelKey: 'nav.meta', icon: '♛' },
     { path: 'modes', labelKey: 'nav.modes', icon: '◎' },
     { path: 'settings', labelKey: 'nav.settings', icon: '⚙' },
   ];
@@ -59,7 +61,7 @@ export class App {
     effect(() => this.document.body.classList.toggle('reduce-motion', !!this.gs.game()?.settings.reducedMotion));
     inject(GamepadMenuService).start();
     this.router.events.pipe(takeUntilDestroyed()).subscribe(event => {
-      if (event instanceof NavigationEnd) this.standalonePage.set(/^\/(?:play|players|legends|quick|challenges|modes|controls)(?:[/?#]|$)/.test(event.urlAfterRedirects));
+      if (event instanceof NavigationEnd) this.standalonePage.set(/^\/(?:play|players|legends|quick|challenges|modes|controls|meta)(?:[/?#]|$)/.test(event.urlAfterRedirects));
     });
     // Resume an existing career automatically so a page reload persists state.
     if (this.gs.hasStoredSave()) this.gs.loadFromStorage();

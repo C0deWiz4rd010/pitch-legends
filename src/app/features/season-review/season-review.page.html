@@ -25,6 +25,22 @@
         </p>
       </article>
 
+      <article class="card rpg-recap">
+        <h2>{{ text('RPG-RÜCKBLICK', 'RPG RECAP') }}</h2>
+        @if (r.rpg.levelUps.length || r.rpg.evolutions.length) {
+          <p class="facts-line"><b>{{ r.rpg.levelsGained }}</b> {{ text('Level gewonnen', 'levels gained') }} · <b>{{ r.rpg.evolutions.length }}</b> {{ text('Evolutionen', 'evolutions') }}@if (r.rpg.tamed) { · <b>{{ r.rpg.tamed }}</b> {{ text('Schwächen abtrainiert', 'drawbacks trained away') }} }</p>
+          @if (r.rpg.topClimber; as climber) { <p>{{ text('Größter Aufsteiger', 'Biggest climber') }}: <b>{{ climber.name }}</b> (+{{ climber.levels }})</p> }
+          @for (entry of r.rpg.levelUps.slice(0, 5); track entry.playerId) { <p class="line">▲ {{ entry.name }} · Lv {{ entry.from }} → {{ entry.to }}</p> }
+          @for (entry of r.rpg.evolutions; track entry.playerId + entry.signature[0]) { <p class="line">✦ {{ entry.name }} · {{ text(entry.signature[0], entry.signature[1]) }} → {{ entry.level }}</p> }
+        } @else {
+          <p class="muted">{{ text('In dieser Saison gab es keine Level-ups und keine Evolutionen.', 'There were no level-ups and no evolutions this season.') }}</p>
+        }
+        @if (r.rpg.bestSignatures.length) {
+          <h3>{{ text('Beste Signaturen', 'Best signatures') }}</h3>
+          @for (entry of r.rpg.bestSignatures; track entry.playerId + entry.signature[0]) { <p class="line">★ {{ entry.name }} · {{ text(entry.signature[0], entry.signature[1]) }} · {{ entry.power }} %</p> }
+        }
+      </article>
+
       <article class="card club-season">
         <h2>{{ text('DEIN VEREIN', 'YOUR CLUB') }}</h2>
         <div class="facts">

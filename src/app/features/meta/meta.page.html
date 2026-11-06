@@ -1,0 +1,84 @@
+<section class="meta fade-up">
+  <header class="page-head">
+    <a class="back" routerLink="/">← {{ text('Hauptmenü', 'Main menu') }}</a>
+    <span>{{ text('ALLE MODI', 'ALL MODES') }}</span>
+    <h1>{{ text('ERFOLGE & RUHMESHALLE', 'ACHIEVEMENTS & HALL OF FAME') }}</h1>
+  </header>
+
+  <div class="tabs" role="tablist">
+    <button type="button" role="tab" [attr.aria-selected]="tab() === 'achievements'" [class.active]="tab() === 'achievements'" (click)="tab.set('achievements')">{{ text('Erfolge', 'Achievements') }} {{ unlockedCount() }}/{{ total }}</button>
+    <button type="button" role="tab" [attr.aria-selected]="tab() === 'path'" [class.active]="tab() === 'path'" (click)="tab.set('path')">{{ text('Legenden-Weg', 'Legends Path') }} · Lv {{ meta.progress().level }}</button>
+    <button type="button" role="tab" [attr.aria-selected]="tab() === 'hall'" [class.active]="tab() === 'hall'" (click)="tab.set('hall')">{{ text('Ruhmeshalle', 'Hall of Fame') }}</button>
+  </div>
+
+  @switch (tab()) {
+    @case ('achievements') {
+      <div class="filters">
+        <button type="button" [class.active]="group() === 'all'" (click)="group.set('all')">{{ text('Alle', 'All') }}</button>
+        @for (entry of groups; track entry.key) {
+          <button type="button" [class.active]="group() === entry.key" (click)="group.set(entry.key)">{{ text(entry.de, entry.en) }}</button>
+        }
+      </div>
+      <div class="achievements">
+        @for (achievement of achievements(); track achievement.id) {
+          <article class="card achievement" [class.done]="achievement.unlocked">
+            <h3>{{ achievement.unlocked ? '★ ' : '' }}{{ achievement.name }} <small>+{{ achievement.xp }} XP</small></h3>
+            <p>{{ achievement.text }}</p>
+            <div class="bar" role="progressbar" [attr.aria-valuenow]="achievement.value" [attr.aria-valuemax]="achievement.target"><i [style.width.%]="achievement.percent"></i></div>
+            <small>{{ achievement.value }} / {{ achievement.target }}</small>
+          </article>
+        }
+      </div>
+    }
+    @case ('path') {
+      <article class="card">
+        <h2>{{ text('LEGENDEN-WEG', 'LEGENDS PATH') }} <small>{{ text('Level', 'Level') }} {{ meta.progress().level }} / {{ maxLevel }}</small></h2>
+        <div class="bar wide" role="progressbar" [attr.aria-valuenow]="meta.progress().percent" aria-valuemax="100"><i [style.width.%]="meta.progress().percent"></i></div>
+        @if (meta.progress().needed) { <p class="muted">{{ meta.progress().into }} / {{ meta.progress().needed }} XP</p> } @else { <p class="muted">{{ text('Höchstes Level erreicht.', 'Top level reached.') }}</p> }
+        <p class="muted">{{ text('Erfahrung kommt aus allen Modi: Karriere, Legends Team, Schnellspiel und Herausforderungen. Die Belohnungen sind reine Optik und ändern nichts an den Werten.', 'Experience comes from every mode: career, Legends Team, quick matches and challenges. The rewards are looks only and change no value.') }}</p>
+      </article>
+      @if (message()) { <p class="hint" role="status">{{ message() }}</p> }
+      @for (slot of cosmetics(); track slot.slot) {
+        <article class="card">
+          <h2>{{ slot.label }}</h2>
+          <div class="cosmetics">
+            @if (slot.slot !== 'boots') { <button type="button" class="cosmetic" [class.worn]="!slot.wornAny" (click)="wear(slot.slot, null)">{{ text('Standard', 'Default') }}</button> }
+            @for (item of slot.items; track item.id) {
+              <button type="button" class="cosmetic" [class.worn]="item.worn" [attr.aria-disabled]="!item.unlocked" [class.locked]="!item.unlocked" [style.border-color]="item.color" (click)="wear(slot.slot, item.id)">
+                {{ item.name }}<small>Lv {{ item.level }}</small>
+              </button>
+            }
+          </div>
+        </article>
+      }
+    }
+    @case ('hall') {
+      <article class="card">
+        <h2>{{ text('REKORDE', 'RECORDS') }}</h2>
+        <div class="records">
+          @for (record of records(); track record.key) {
+            <p><small>{{ text(record.de, record.en) }}</small><b>{{ record.value }}</b></p>
+          }
+        </div>
+      </article>
+      @if (legendsFacts(); as facts) {
+        <article class="card">
+          <h2>{{ text('LEGENDS TEAM', 'LEGENDS TEAM') }}</h2>
+          <p>{{ facts.cards }} {{ text('Karten', 'cards') }} · {{ text('beste Division', 'best division') }} {{ facts.division }} · {{ facts.packs }} {{ text('Packs geöffnet', 'packs opened') }}</p>
+        </article>
+      }
+      <article class="card">
+        <h2>{{ text('SAISONS DER AKTUELLEN KARRIERE', 'SEASONS OF THE CURRENT CAREER') }}</h2>
+        @for (season of seasons(); track season.season) {
+          <div class="season">
+            <b>{{ text('Saison', 'Season') }} {{ season.season }}</b>
+            <span>{{ season.tier }}. {{ text('Liga', 'division') }} · {{ text('Platz', 'place') }} {{ season.position }}@if (season.champion) { · ★ {{ text('Meister', 'Champion') }} }@if (season.cup) { · ✦ {{ text('Pokalsieger', 'Cup winner') }} }</span>
+            @if (season.levels || season.evolutions) { <small>+{{ season.levels }} {{ text('Level', 'levels') }} · {{ season.evolutions }} {{ text('Evolutionen', 'evolutions') }}@if (season.climber) { · {{ season.climber }} }@if (season.signature) { · {{ season.signature }} }</small> }
+          </div>
+        } @empty {
+          <p class="muted">{{ text('Noch keine abgeschlossene Saison.', 'No completed season yet.') }}</p>
+        }
+      </article>
+    }
+  }
+</section>

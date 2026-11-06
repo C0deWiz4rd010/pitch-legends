@@ -1,0 +1,40 @@
+:host { display: block; }
+.meta { display: flex; flex-direction: column; gap: 14px; }
+.page-head span { color: var(--accent-2); font: 11px var(--font-display); }
+.page-head h1 { margin: 6px 0 0; font: 22px var(--font-display); }
+.tabs, .filters { display: flex; flex-wrap: wrap; gap: 8px; }
+.tabs button, .filters button { padding: 8px 12px; border: 2px solid var(--border); background: var(--bg-800); color: var(--text); cursor: pointer; font-size: 13px; }
+.tabs button.active, .filters button.active { border-color: var(--accent); color: var(--accent); }
+.card { padding: 16px; border: 2px solid var(--border); background: var(--ink-900); box-shadow: 4px 4px 0 var(--ink-shadow); display: flex; flex-direction: column; gap: 8px; }
+.card h2 { margin: 4px 0 4px; font: 12px var(--font-display); color: var(--accent-3); }
+.card h2 small { color: var(--text-mute); font: 11px var(--font-body, inherit); margin-left: 8px; }
+.card h3 { margin: 0; font-size: 14px; }
+.card h3 small { color: var(--accent-3); font-size: 11px; margin-left: 6px; }
+.card p { margin: 0; }
+.muted { color: var(--text-mute); font-size: 12px; }
+.hint { margin: 0; padding: 8px 10px; border: 1px solid var(--warn); color: var(--warn); font-size: 13px; }
+.achievements { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.achievement { padding: 12px; opacity: .8; }
+.achievement.done { opacity: 1; border-color: var(--accent-3); }
+.achievement p { font-size: 12px; color: var(--text-dim); }
+.achievement small { color: var(--text-mute); font-size: 11px; }
+.bar { height: 8px; background: var(--ink-950); border: 1px solid var(--border); }
+.bar.wide { height: 12px; }
+.bar i { display: block; height: 100%; background: var(--accent); }
+.cosmetics { display: flex; flex-wrap: wrap; gap: 8px; }
+.cosmetic { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 8px 12px; border: 2px solid var(--border); background: var(--bg-800); color: var(--text); cursor: pointer; font-size: 12px; }
+.cosmetic small { color: var(--text-mute); font-size: 10px; }
+.cosmetic.worn { background: rgba(56, 224, 123, 0.14); }
+.cosmetic.locked { opacity: .55; }
+.records { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+.records p { padding: 10px; border: 1px solid var(--border); background: var(--bg-800); display: flex; flex-direction: column; gap: 4px; }
+.records small { color: var(--text-mute); font-size: 11px; }
+.records b { font: 18px var(--font-display); }
+.season { display: flex; flex-direction: column; gap: 2px; padding: 6px 0; border-bottom: 1px solid var(--border); font-size: 13px; }
+.season small { color: var(--text-mute); font-size: 11px; }
+@media (max-width: 900px) {
+  .achievements { grid-template-columns: 1fr; }
+  .records { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+.back { display: block; margin-bottom: 8px; color: var(--accent-2); font-size: 12px; text-decoration: none; }

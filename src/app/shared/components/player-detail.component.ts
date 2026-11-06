@@ -29,6 +29,8 @@ import { TalentNode } from '../../data/talents';
 import { PlayerPortraitComponent } from './player-portrait.component';
 import { PlayerPaperDollComponent } from './player-paper-doll.component';
 import { MedicalService } from '../../core/services/medical.service';
+import { MetaService } from '../../core/services/meta.service';
+import { cosmeticById, isCosmeticUnlocked } from '../../core/meta/legend-path';
 import { BOOT_LOOKS, BOOT_TYPES, BootType, bootDef, setBoot, setLook } from '../../core/rpg/equipment';
 import { respecCost, respecState, respecTalents } from '../../core/career/respec';
 import { SOCIAL_LABEL, socialRole } from '../../core/rpg/social';
@@ -47,6 +49,8 @@ export class PlayerDetailComponent {
   protected readonly gs = inject(GameStateService);
   private readonly rpg = inject(RpgService);
   private readonly medical = inject(MedicalService);
+  private readonly meta = inject(MetaService);
+  private readonly wornMeta = this.meta.state;
 
   readonly playerId = input<string>('');
   /** A player who is not in the managed squad (market, free agents, Legends cards): the sheet is then read only. */
@@ -295,6 +299,7 @@ export class PlayerDetailComponent {
       if (target) evolved = evolveSignature(target, signatureId, path, { season: draft.league.season, week: draft.league.currentWeek }).ok;
     });
     const player = this.player();
+    if (evolved) this.meta.record({ type: 'evolution' });
     const after = player ? this.signatureCards(player).find((card) => card.id === signatureId) : undefined;
     // The ceremony: a before and after of the signature that just grew.
     if (evolved && before && after) {
@@ -340,7 +345,11 @@ export class PlayerDetailComponent {
 
   /** Boots with a trade-off, the look that does nothing, and the one-time talent reset of the season. */
   protected readonly bootTypes = BOOT_TYPES;
-  protected readonly bootLooks = BOOT_LOOKS;
+  /** Boot colours with the ones the Legends Path has not opened yet marked as locked. */
+  protected readonly bootLooks = computed(() => BOOT_LOOKS.map((look) => {
+    const reward = cosmeticById('boots', look.id);
+    return { ...look, locked: !!reward && !isCosmeticUnlocked(this.wornMeta(), reward), level: reward?.level ?? 0 };
+  }));
   protected readonly boots = computed(() => {
     const player = this.player();
     const game = this.gs.game();
@@ -377,6 +386,8 @@ export class PlayerDetailComponent {
   }
 
   protected chooseLook(look: string): void {
+    const reward = cosmeticById('boots', look);
+    if (reward && !isCosmeticUnlocked(this.wornMeta(), reward)) return;
     const id = this.playerId();
     this.gs.mutate((draft) => {
       const player = draft.teams.find((team) => team.id === draft.clubId)?.players.find((candidate) => candidate.id === id);

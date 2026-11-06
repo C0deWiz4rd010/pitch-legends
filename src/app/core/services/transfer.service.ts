@@ -24,6 +24,7 @@ import {
 import { hash32 } from '../visual-identity';
 import { clamp } from '../util';
 import { GameStateService } from './game-state.service';
+import { MetaService } from './meta.service';
 import { record } from '../career/finance';
 import { managerAttribute } from '../career/manager-effects';
 import { staffEffect } from '../career/staff';
@@ -55,6 +56,7 @@ const SCOUT_COST = 2_500;
 @Injectable({ providedIn: 'root' })
 export class TransferService {
   private readonly gs = inject(GameStateService);
+  private readonly meta = inject(MetaService);
 
   readonly targets = computed<TransferTargetView[]>(() => {
     const game = this.gs.game();
@@ -179,7 +181,9 @@ export class TransferService {
   }
 
   submitContract(negotiationId: string, contract: ContractProposal): TransferResult {
-    return this.mutateResult((draft) => submitPlayerContract(draft, negotiationId, contract));
+    const result = this.mutateResult((draft) => submitPlayerContract(draft, negotiationId, contract));
+    if (result.ok && result.negotiation?.status === 'accepted' && result.negotiation.toTeamId === this.gs.game()?.clubId) this.meta.record({ type: 'signing' });
+    return result;
   }
 
   acceptAgentCounter(negotiationId: string): TransferResult {

@@ -35,6 +35,7 @@ import {
 import { Rng, clamp } from '../util';
 import { hash32 } from '../visual-identity';
 import { RpgService } from './rpg.service';
+import { MetaService } from './meta.service';
 import { applyInjury, createInjury, isPlayerAvailable } from '../injury-engine';
 import { TRAIT_EFFECTS, hasManagerTrait, managerAttribute } from '../career/manager-effects';
 import { STAFF_EFFECT_SCALE, specialtyTilt, staffEffect, staffFactor, staffMember } from '../career/staff';
@@ -98,6 +99,7 @@ const AI_GROWTH_BASE = 0.015;
 @Injectable({ providedIn: 'root' })
 export class TrainingService {
   private readonly rpg = inject(RpgService);
+  private readonly meta = inject(MetaService);
   /** Season and week of the session being executed, for chronicle entries. */
   private currentWeek: { season: number; week: number } | null = null;
 
@@ -192,6 +194,7 @@ export class TrainingService {
     club.players = playerCopies;
     state.trainingWeek.slotsUsed += sessions.length;
     state.trainingWeek.completedSessions.push(...sessions);
+    for (let i = 0; i < sessions.length; i++) this.meta.record({ type: 'training' });
     return { ok: true, errors: [], sessions };
   }
 

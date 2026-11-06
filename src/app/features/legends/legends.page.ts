@@ -12,6 +12,7 @@ import {
 import { LEGENDS_FORMATIONS, positionFit } from '../../core/legends/squad';
 import { PackResult } from '../../core/legends/legends-engine';
 import { CardTier, LegendsCard, LegendsTask, PackId } from '../../models/legends.model';
+import { UPGRADE_COST, albumProgress, cardLevel, checkUpgrade, upgradableTier } from '../../core/legends/progression';
 import { LegendsCardComponent } from '../../shared/components/legends-card.component';
 import { PlayerDetailComponent } from '../../shared/components/player-detail.component';
 import { Player } from '../../models/player.model';
@@ -33,7 +34,8 @@ export class LegendsPage {
   protected readonly packs = Object.values(PACKS);
   protected readonly tiers = TIER_ORDER;
   protected readonly formations = LEGENDS_FORMATIONS;
-  protected readonly sbcs = SBCS;
+  /** The fixed squad challenges and this week's. */
+  protected readonly sbcs = computed(() => { this.state(); return this.legends.challenges(); });
   protected readonly draftEntry = DRAFT_ENTRY;
   protected readonly draftRounds = DRAFT_ROUNDS;
   protected readonly draftRewards = DRAFT_REWARDS;
@@ -195,6 +197,38 @@ export class LegendsPage {
     return [task.reward.coins ? `${task.reward.coins} ${this.text('Münzen', 'coins')}` : '', task.reward.pack ? this.packName(task.reward.pack) : ''].filter(Boolean).join(' + ');
   }
 
+  /** The level of a card (0 to 5), from the experience of the player behind it. */
+  protected levelOf(card: LegendsCard): number {
+    const state = this.state();
+    return state ? cardLevel(state, card) : 0;
+  }
+
+  /** What an upgrade of the card would need right now: null when the card is already at the top. */
+  protected upgradeOf(card: LegendsCard): { possible: boolean; hint: string } | null {
+    const state = this.state();
+    const tier = state ? upgradableTier(card) : null;
+    if (!state || !tier) return null;
+    const cost = UPGRADE_COST[tier];
+    const check = checkUpgrade(state, card.id);
+    if (check.ok) return { possible: true, hint: check.via === 'duplicates' ? this.text(`${check.duplicates} Zweitkarte(n)`, `${check.duplicates} spare copy(ies)`) : this.text(`${check.tokens} Marken`, `${check.tokens} tokens`) };
+    return { possible: false, hint: this.text(`Stufe ${cost.level} und ${cost.duplicates} Zweitkarte(n) oder ${cost.tokens} Marken`, `Level ${cost.level} and ${cost.duplicates} spare copy(ies) or ${cost.tokens} tokens`) };
+  }
+
+  protected upgrade(card: LegendsCard): void {
+    const result = this.legends.upgrade(card.id);
+    this.message.set(result.ok ? this.text('Die Karte ist eine Stufe aufgestiegen.', 'The card moved up a tier.') : this.text('Dafür fehlt noch etwas.', 'Something is still missing.'));
+    if (result.ok) this.legends.reportCollection();
+  }
+
+  protected readonly album = computed(() => { const state = this.state(); return state ? albumProgress(state) : []; });
+  protected readonly tokens = computed(() => this.state()?.tokens ?? 0);
+
+  protected claimAlbum(id: string): void {
+    const reward = this.legends.claimAlbum(id);
+    this.message.set(reward ? this.text('Albumbelohnung erhalten.', 'Album reward collected.') : this.text('Der Satz ist noch nicht komplett.', 'The set is not complete yet.'));
+    if (reward) this.legends.reportCollection();
+  }
+
   protected claim(task: LegendsTask): void {
     if (this.legends.claimTask(task.id)) this.message.set(this.text('Belohnung erhalten.', 'Reward collected.'));
   }
@@ -221,7 +255,7 @@ export class LegendsPage {
 
   protected sbcDone(id: string): boolean {
     const state = this.state();
-    const sbc = SBCS.find((candidate) => candidate.id === id)!;
+    const sbc = this.sbcs().find((candidate) => candidate.id === id)!;
     return !!state && !sbcAvailable(state, sbc);
   }
 
