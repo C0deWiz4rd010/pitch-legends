@@ -172,6 +172,7 @@
     <div class="sb-team"><app-club-crest class="crest sm" [team]="$any(homeTeam())" [size]="36" /><strong>{{ homeTeam()?.shortName }}</strong></div>
     <div class="sb-score" [attr.aria-label]="homeScore() + ':' + awayScore() + ', ' + minuteLabel()"><span>{{ homeScore() }}</span><b>{{ minuteLabel() }} · {{ periodLabel() }}</b><span>{{ awayScore() }}</span></div>
     <div class="sb-team right"><strong>{{ awayTeam()?.shortName }}</strong><app-club-crest class="crest sm" [team]="$any(awayTeam())" [size]="36" /></div>
+    @if (matchView().restartSeconds > 0 && phase() === 'match') { <span class="stoppage-board restart-timer" [attr.aria-label]="i18n.pick('Standard wird automatisch ausgeführt in ', 'Restart is taken automatically in ') + matchView().restartSeconds">{{ matchView().restartSeconds }}</span> }
     @if (matchView().stoppage > 0 && phase() === 'match') { <span class="stoppage-board" [attr.aria-label]="i18n.pick('Nachspielzeit ', 'Added time ') + matchView().stoppage">+{{ matchView().stoppage }}</span> }
   </header>
 }

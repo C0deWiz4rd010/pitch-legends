@@ -116,6 +116,8 @@ describe('Gameplay actions', () => {
       Object.assign(carrier, { x: 50, y: 34, facingX: 1, facingY: 0, skillCooldown: 0 });
       Object.assign(defender, { x: 50 + gap, y: 34, tackleCooldown: 0, decisionCooldown: 99, intentX: 50 + gap, intentY: 34 });
       giveBall(match, carrier);
+      // The defender's reading of the move is a dice roll; here he is always beaten (the odds are covered in gameplay-feel-v3).
+      (match as unknown as { rng: { bool: () => boolean } }).rng.bool = () => true;
       match.performSkill(carrier, 0, 1);
       expect(carrier.action).toBe(expected);
       if (expected === 'ball-roll') {

@@ -162,6 +162,9 @@ export interface InputFrame {
   jockey?: boolean;
   /** Fire the Mythic ultimate of the team (needs a full focus meter). */
   ultimate?: boolean;
+  /** Right stick: flick in a direction to pick the team-mate that way (screen convention, like move). */
+  pickX?: number;
+  pickY?: number;
   tacticX?: number;
   tacticY?: number;
   pause?: boolean;
@@ -188,6 +191,8 @@ export const EMPTY_MATCH_COMMAND: MatchCommand = {
   keeperRush: false,
   jockey: false,
   ultimate: false,
+  pickX: 0,
+  pickY: 0,
   tacticX: 0,
   tacticY: 0,
   pause: false,
@@ -349,6 +354,8 @@ export interface MatchViewState {
   /** Focus meter of the controlled side (0-100), and whether it has a Mythic player to use it. */
   focus: number;
   hasUltimate: boolean;
+  /** Seconds left before a waiting human restart is taken automatically (0 when none waits). */
+  restartSeconds: number;
 }
 
 export interface MatchCheckpoint {
@@ -393,6 +400,10 @@ export interface MatchCheckpoint {
       stoppage?: { added: [number, number]; overrun: number };
       /** Extra time of a knockout tie: current period and the elapsed time it started at. */
       extra?: { period: 1 | 2; periodStart: number };
+      /** Defenders that already had their one try at the pass currently in flight. */
+      interceptTried?: string[];
+      /** Per player: the tick until which a kick, tackle or lunge still slows the body down. */
+      recoveryUntil?: Record<string, number>;
     };
     previousInput: MatchCommand;
     actionHeld: { pass: number; through: number; lob: number; shoot: number };

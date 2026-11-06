@@ -87,7 +87,10 @@ describe('Complete football matches',()=>{
     expect(match.homeStats.shots).toBe(1);
   });
   it('never waits indefinitely for an unattended human restart',()=>{
-    const match=scene(); restart(match,'throwIn',50,0); tick(match,{},181);
+    const match=scene(); restart(match,'throwIn',50,0); tick(match,{},4*60);
+    // Still waiting for the player after four seconds, kicked automatically after eight.
+    expect(match.rule.phase).toBe('throwIn');
+    tick(match,{},5*60);
     expect(match.rule.phase).toBe('playing');
   });
   it('restores substitutions, player lock and tactical changes without allowing re-entry',()=>{

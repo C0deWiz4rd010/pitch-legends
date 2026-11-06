@@ -87,6 +87,7 @@ const EMPTY_MATCH_VIEW: MatchViewState = {
   extraTime: false,
   focus: 0,
   hasUltimate: false,
+  restartSeconds: 0,
 };
 
 @Component({
@@ -887,6 +888,7 @@ export class MatchPage implements OnDestroy {
       extraTime: this.arcade.inExtraTime,
       focus: Math.round(this.arcade.focus[this.arcade.controlledSide]),
       hasUltimate: this.arcade.hasUltimate(this.arcade.controlledSide),
+      restartSeconds: this.arcade.restartCountdown,
     };
   }
 
@@ -1172,6 +1174,7 @@ export class MatchPage implements OnDestroy {
   private readInput(): MatchCommand {
     const gamepad = typeof navigator !== 'undefined' ? navigator.getGamepads?.()[0] : null;
     const [axisX, axisY] = radialAxes(gamepad?.axes[0] ?? 0, gamepad?.axes[1] ?? 0);
+    const [pickX, pickY] = radialAxes(gamepad?.axes[2] ?? 0, gamepad?.axes[3] ?? 0);
     const prefs = this.controlPrefs.prefs();
     const held = (direction: 'up' | 'down' | 'left' | 'right') => keysFor(prefs, `move-${direction}`).some((key) => this.keys.has(key)) ? 1 : 0;
     const keyboardX = held('right') - held('left');
@@ -1212,6 +1215,8 @@ export class MatchPage implements OnDestroy {
       keeperRush: pressed('through'),
       jockey: pressed('jockey'),
       ultimate: pressed('ultimate'),
+      pickX,
+      pickY,
       tacticX: 0,
       tacticY: 0,
       pause: false,

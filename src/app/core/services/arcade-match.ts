@@ -74,7 +74,7 @@ export const ARCADE_MATCH_TUNING = {
   aiFirstTouchAssist: 10,
   aiIntendedReceiverBonus: 8,
   /** Crowd-backed composure: slightly tighter passing/finishing, cleaner touches and tackles at home. */
-  homeComposure: 0.12,
+  homeComposure: 0.13,
   intendedReceiverControlBias: 0.12,
 } as const;
 
@@ -119,7 +119,15 @@ const AI_LANE_CAUTION = 1.8;
 /** Scales the execution error of AI passes (below 1 means cleaner passing); human passes keep their full error. */
 const AI_PASS_SKILL = 1;
 /** Interception attempts on a pass in flight happen every this many ticks per defender. */
-const INTERCEPT_EVERY = 5;
+const INTERCEPT_SHARE = 72;
+/** A human-controlled restart is taken for the player after this many seconds. */
+const RESTART_AUTO_SECONDS = 8;
+/** Share of the normal speed while a kick or tackle is still being recovered from. */
+const RECOVERY_SPEED = 0.55;
+/** How far away a slide may start, and how long a missed one (or a missed standing tackle) keeps the player slow. */
+const SLIDE_LUNGE_REACH = 3.2;
+const SLIDE_MISS_TICKS = 48;
+const TACKLE_MISS_TICKS = 24;
 
 export type { ShootoutPrompt } from '../football/shootout';
 
@@ -135,6 +143,8 @@ export class ArcadeMatch {
   readonly actors: ArcadeActor[] = [];
   /** Render-only: bumped when players or the ball are placed instead of moved, so frames are not interpolated across it. */
   private teleportEpoch = 0;
+  /** Training scenarios never take a restart on the player's behalf. */
+  private scenarioActive = false;
   private ownerCache: ArcadeActor | undefined;
   readonly ball: ArcadeBall = {
     x: FIELD_LENGTH / 2,
@@ -375,6 +385,11 @@ export class ArcadeMatch {
           .filter((actor) => actor.active && actor.side === this.controlledSide && actor.player.id !== this.selectedPlayerId && actor.player.positionGroup !== 'GK')
           .sort((a, b) => distance(a, this.ball) - distance(b, this.ball))[0]
       : undefined;
+    // The same button tackles and sends the keeper out: a defender in tackling range tackles, anyone further away rushes the keeper.
+    const controlledDefender = acceptsHumanInput && ownerBeforeMovement && ownerBeforeMovement.side !== this.controlledSide
+      ? this.actors.find((candidate) => candidate.player.id === this.selectedPlayerId && candidate.active)
+      : undefined;
+    const canTackle = !!controlledDefender && distance(controlledDefender, ownerBeforeMovement!) <= 1.6;
     let slot = 0;
     for (const actor of this.actors) {
       if (!actor.active) continue;
@@ -382,7 +397,7 @@ export class ArcadeMatch {
       actor.skillCooldown = Math.max(0, actor.skillCooldown - safeDt);
       actor.tackleCooldown = Math.max(0, actor.tackleCooldown - safeDt);
       // Rushing out is only possible for a ball close to the own goal, never across the pitch.
-      const keeperRush = input.keeperRush && actor.side === this.controlledSide && actor.player.positionGroup === 'GK' && ownerBeforeMovement?.side !== actor.side
+      const keeperRush = input.keeperRush && !canTackle && actor.side === this.controlledSide && actor.player.positionGroup === 'GK' && ownerBeforeMovement?.side !== actor.side
         && Math.abs(this.ball.x - (this.attackDirection(actor.side) > 0 ? 0 : FIELD_LENGTH)) < 22;
       if (actor.action === 'injured' && actionIsPlaying('injured', actor.actionStartedTick, this.tick)) {
         this.moveActor(actor, 0, 0, false, safeDt);
@@ -478,6 +493,7 @@ export class ArcadeMatch {
    */
   setupScenario(setup: ScenarioSetup): void {
     this.teleportEpoch++;
+    this.scenarioActive = true;
     applyPitch(this.pitch);
     const listed = new Map<ArcadeActor, { x: number; y: number }>();
     for (const side of ['home', 'away'] as const) {
@@ -916,6 +932,11 @@ export class ArcadeMatch {
       const best=this.bestControlledActor();
       if(distance(best,this.ball)<5 && distance(selected,this.ball)>distance(best,this.ball)+3.5) candidate=best;
     }
+    if(canAutoSwitch && owner && owner.side!==this.controlledSide && selected && !candidate) {
+      // Defending: when the controlled player is far from the carrier, take the team-mate best placed between ball and goal.
+      const best=this.bestDefenderAgainst(owner);
+      if(best && best.player.id!==selected.player.id && distance(selected,owner)>12 && distance(best,owner)<distance(selected,owner)-4) candidate=best;
+    }
     if(candidate && candidate.player.id!==this.selectedPlayerId) {
       if(this.football.switchCandidate?.id!==candidate.player.id) this.football.switchCandidate={id:candidate.player.id,sinceTick:this.tick};
       if(this.tick-this.football.switchCandidate.sinceTick>=12) {
@@ -924,6 +945,26 @@ export class ArcadeMatch {
         this.football.switchCandidate=null;
       }
     } else this.football.switchCandidate=null;
+    if (len2(input.pickX, input.pickY) > 0.65 && len2(this.previousInput.pickX, this.previousInput.pickY) <= 0.65 && selected) {
+      // Right stick flick: the team-mate in that direction from the current player.
+      const dx = input.pickX * this.currentAttackDirection, dy = input.pickY, flick = len2(dx, dy);
+      let pick: ArcadeActor | undefined;
+      let pickScore = -Infinity;
+      for (const mate of this.actors) {
+        if (!mate.active || mate.side !== this.controlledSide || mate === selected || mate.player.positionGroup === 'GK') continue;
+        const gap = distance(mate, selected);
+        if (gap < 0.5 || gap > 45) continue;
+        const alignment = ((mate.x - selected.x) * dx + (mate.y - selected.y) * dy) / (gap * flick);
+        if (alignment < 0.5) continue;
+        const score = alignment * 3 - gap * 0.04;
+        if (score > pickScore) { pickScore = score; pick = mate; }
+      }
+      if (pick) {
+        this.selectedPlayerId = pick.player.id;
+        this.football.selectionUntilTick = this.tick + 90;
+        this.football.switchCandidate = null;
+      }
+    }
     if (input.switchPlayer && !this.previousInput.switchPlayer) {
       this.football.selectionUntilTick = this.tick + 90;
       this.football.switchCandidate=null;
@@ -943,6 +984,20 @@ export class ArcadeMatch {
     }
   }
 
+  /** The outfield player of the controlled side who is best placed to meet this ball carrier: near, and goal-side. */
+  private bestDefenderAgainst(carrier: ArcadeActor): ArcadeActor | undefined {
+    const ownGoalX = this.attackDirection(this.controlledSide) > 0 ? 0 : FIELD_LENGTH;
+    let best: ArcadeActor | undefined;
+    let bestScore = Number.POSITIVE_INFINITY;
+    for (const actor of this.actors) {
+      if (!actor.active || actor.side !== this.controlledSide || actor.player.positionGroup === 'GK') continue;
+      const goalSide = Math.abs(actor.x - carrier.x) < 1 || Math.sign(ownGoalX - carrier.x) === Math.sign(actor.x - carrier.x);
+      const score = distance(actor, carrier) + (goalSide ? 0 : 6);
+      if (score < bestScore) { bestScore = score; best = actor; }
+    }
+    return best;
+  }
+
   private moveControlled(actor: ArcadeActor, input: MatchCommand, dt: number): void {
     const worldX = input.moveX * this.currentAttackDirection;
     const carrier = this.owner();
@@ -959,13 +1014,23 @@ export class ArcadeMatch {
       this.setAction(actor, 'jockey');
       return;
     }
-    this.moveActor(actor, worldX, input.moveY, input.sprint, dt);
+    // With the ball, the same button shields it: slower, but the carrier is much harder to tackle.
+    const shielding = !!input.jockey && this.ball.ownerId === actor.player.id;
+    this.moveActor(actor, worldX, input.moveY, input.sprint && !shielding, dt, shielding ? 0.62 : 1);
     const moving = len2(worldX, input.moveY) > 0.1;
-    this.setAction(actor, !moving ? 'idle' : input.sprint ? 'sprint' : this.ball.ownerId === actor.player.id ? 'carry' : 'jog');
+    this.setAction(actor, !moving ? 'idle' : input.sprint && !shielding ? 'sprint' : this.ball.ownerId === actor.player.id ? 'carry' : 'jog');
     if (input.skill && !this.previousInput.skill) this.performSkill(actor, worldX, input.moveY);
   }
 
+  /** A kick, tackle or lunge plants the body: for a few ticks the player moves at a fraction of his speed. */
+  private startRecovery(actor: ArcadeActor, ticks: number): void {
+    if (ticks <= 0) return;
+    (this.football.recoveryUntil ??= {})[actor.player.id] = this.tick + ticks;
+  }
+
   private moveActor(actor: ArcadeActor, dx: number, dy: number, sprint: boolean, dt: number, speedScale = 1): void {
+    const recoveringUntil = this.football.recoveryUntil?.[actor.player.id];
+    if (recoveringUntil !== undefined && recoveringUntil > this.tick) speedScale *= RECOVERY_SPEED;
     const previousX = actor.x;
     const previousY = actor.y;
     const magnitude = len2(dx, dy);
@@ -1001,8 +1066,12 @@ export class ArcadeMatch {
     actor.animationDistance += len2(actor.x - previousX, actor.y - previousY);
     const footballMinutes = dt * 90 / this.totalSeconds;
     const pressureCost = this.teamOf(actor.side).tactics.pressing === 'gegenpress' ? 0.16 : 0;
-    const drainBase = (magnitude > 0.1 ? 0.2 : 0.06) + (sprint ? 0.56 : 0) + (ownsBall ? 0.05 : 0) + pressureCost;
-    const drain = (actor.stats!.hookMask & HOOK_BIT.staminaDrain) !== 0 ? this.hook(actor, HK.staminaDrain, drainBase) : drainBase;
+    // Endurance now matters: strong players tire slower, weak ones faster, and standing still recovers a little.
+    const endurance = 1 + (50 - attrs.stamina) * 0.008;
+    const resting = magnitude <= 0.1 && len2(actor.vx, actor.vy) < 1;
+    const drainBase = resting ? -(0.02 + attrs.stamina * 0.0006)
+      : ((magnitude > 0.1 ? 0.2 : 0.06) + (sprint ? 0.56 : 0) + (ownsBall ? 0.05 : 0) + pressureCost) * endurance;
+    const drain = drainBase > 0 && (actor.stats!.hookMask & HOOK_BIT.staminaDrain) !== 0 ? this.hook(actor, HK.staminaDrain, drainBase) : drainBase;
     actor.stamina = clamp(actor.stamina - footballMinutes * drain, 0, 100);
   }
 
@@ -1041,7 +1110,10 @@ export class ArcadeMatch {
     }
     const dx = actor.intentX - actor.x;
     const dy = actor.intentY - actor.y;
-    const sprint = dx * dx + dy * dy > 14 * 14 && actor.stamina > 25;
+    // A carrier in open space sprints; before, the 8 m target ahead never reached the 14 m sprint threshold.
+    const carrying = this.ball.ownerId === actor.player.id && actor.player.positionGroup !== 'GK';
+    const openSpace = carrying && this.closestOpponent(actor) > 5.5;
+    const sprint = (dx * dx + dy * dy > 14 * 14 && actor.stamina > 25) || (openSpace && actor.stamina > 35);
     this.moveActor(actor, dx, dy, sprint, dt);
     if(actor.player.positionGroup==='GK' && actor.action==='keeper-ready') {
       const facing=turnTowards(actor.facingX,actor.facingY,this.ball.x-actor.x,this.ball.y-actor.y,10*dt);
@@ -1209,6 +1281,7 @@ export class ArcadeMatch {
     // High crosses arrive at about 1.8 m (header height); driven crosses skim the grass.
     const vz = driven ? 0.6 : clamp((1.7 + 4.905 * time * time) / time, 3, 11);
     this.registerPass(actor, runner, teammates);
+    if (this.isHumanControlled(actor)) this.selectReceiver(runner);
     this.releaseBall(actor, px * speed, py * speed, vz, 0);
     this.setAction(actor, driven ? 'pass' : 'lob');
     return true;
@@ -1219,10 +1292,19 @@ export class ArcadeMatch {
     this.passAttempts[actor.side]++;
     this.stats(actor.side).passesAttempted++;
     this.lastPasser = { id: actor.player.id, side: actor.side, at: this.elapsed };
+    this.football.interceptTried = [];
     this.football.offsideCandidates = teammates.filter(candidate => this.isOffside(candidate, actor)).map(candidate => candidate.player.id);
     this.pendingOffsideTargetId = target && this.isOffside(target, actor) ? target.player.id : null;
     this.intendedReceiverId = target?.player.id ?? null;
     this.activeShot = null;
+  }
+
+  /** The intended receiver of a human pass is controlled at once; the stick already steers his run. */
+  private selectReceiver(receiver: ArcadeActor): void {
+    if (this.config.playerLockId || (this.config.autoSwitch ?? 'receivers') === 'manual' || receiver.player.positionGroup === 'GK') return;
+    this.selectedPlayerId = receiver.player.id;
+    this.football.selectionUntilTick = this.tick + 45;
+    this.football.switchCandidate = null;
   }
 
   private charge(value: number, maximum: number): number {
@@ -1261,8 +1343,17 @@ export class ArcadeMatch {
     const travelEstimate = rawDistance / 19;
     // A through ball is played into the space ahead of the runner, further with more power.
     const lead = through ? clamp(4 + power * 9, 4, 13) : 0;
-    const targetX = target ? clamp(target.x + target.vx * travelEstimate * 0.65 + this.attackDirection(actor.side) * lead, 1, FIELD_LENGTH - 1) : manualTarget.x;
-    const targetY = target ? clamp(target.y + target.vy * travelEstimate * 0.65, 1, FIELD_WIDTH - 1) : manualTarget.y;
+    // The lead follows the runner's own path (blended with the direction of attack); a standing receiver gets it towards goal.
+    let leadX = this.attackDirection(actor.side), leadY = 0;
+    const runSpeed = target ? len2(target.vx, target.vy) : 0;
+    if (target && lead > 0 && runSpeed > 1.2) {
+      leadX = (target.vx / runSpeed) * 0.7 + leadX * 0.3;
+      leadY = (target.vy / runSpeed) * 0.7;
+      const leadLength = len2(leadX, leadY) || 1;
+      leadX /= leadLength; leadY /= leadLength;
+    }
+    const targetX = target ? clamp(target.x + target.vx * travelEstimate * 0.65 + leadX * lead, 1, FIELD_LENGTH - 1) : manualTarget.x;
+    const targetY = target ? clamp(target.y + target.vy * travelEstimate * 0.65 + leadY * lead, 1, FIELD_WIDTH - 1) : manualTarget.y;
     const dx = targetX - actor.x;
     const dy = targetY - actor.y;
     const length = len2(dx, dy) || 1;
@@ -1285,6 +1376,7 @@ export class ArcadeMatch {
       ? clamp(8 + length * 0.48 + power * 4.5 + (through ? 2.8 : 0), 12, 25)
       : (lofted ? 16 : lob ? 14 : through ? 14.5 : 11.8) + power * (lob ? 12 : 13.5) + this.stat(actor,'passing') * 0.025;
     this.registerPass(actor, target, teammates);
+    if (humanPass && target) this.selectReceiver(target);
     const vz = lofted ? clamp(length / speed * 4.905 * 0.8 + 0.3, 2.5, 6) : lob ? clamp(length / speed * 4.905 + 0.5, 3, 9) : 0.15;
     this.releaseBall(actor, px * speed, py * speed, vz, lob ? this.rng.float(-2, 2) : 0, lob ? -2 : 0);
     this.setAction(actor, lob && !through ? 'lob' : through ? 'through-pass' : 'pass');
@@ -1339,7 +1431,7 @@ export class ArcadeMatch {
     this.intendedReceiverId = null;
     // Driven and hard shots carry topspin (they dip); chips carry backspin (they float and check up).
     const topspin = chip ? -3 : driven ? 4 : power > 0.7 && !finesse ? 1.5 : 0;
-    this.releaseBall(actor, dx / length * speed, dy / length * speed, vz, curl * 5, topspin);
+    this.releaseBall(actor, dx / length * speed, dy / length * speed, vz, curl * 5, topspin, 12);
     this.setAction(actor, chip ? 'chip-shot' : finesse ? 'finesse-shot' : low ? 'low-shot' : 'shot');
     this.events.push({ minute: this.footballMinute, type: 'shot', side: actor.side, playerId: actor.player.id, params: { player: playerName(actor.player), xG, distance: round(distanceToGoal,1) } });
   }
@@ -1354,7 +1446,7 @@ export class ArcadeMatch {
     actor.skillCooldown = 0.75;
     const opponentGap = this.closestOpponent(actor);
     if (opponentGap < 1.05) {
-      this.releaseBall(actor, actor.facingX * 4 + this.rng.float(-2, 2), actor.facingY * 4 + this.rng.float(-2, 2), 0.5, 0);
+      this.releaseBall(actor, actor.facingX * 4 + this.rng.float(-2, 2), actor.facingY * 4 + this.rng.float(-2, 2), 0.5, 0, 0, 0);
       this.setAction(actor, 'skill-failed');
       return;
     }
@@ -1382,13 +1474,30 @@ export class ArcadeMatch {
     this.setAction(actor, move);
     if (opponentGap > 3.6) return;
     const quality = this.stat(actor,'dribbling') / 100 * (actor.stamina > 20 ? 1 : 0.7);
+    actor.stamina = clamp(actor.stamina - 0.5, 0, 100);
     let beaten = false;
+    let engagedBeatsYou = false;
     for (const opponent of this.actors) {
-      if (!opponent.active || opponent.side === actor.side || opponent.player.positionGroup === 'GK' || distance(opponent, actor) > 3.6) continue;
+      if (!opponent.active || opponent.side === actor.side || opponent.player.positionGroup === 'GK') continue;
+      const gap = distance(opponent, actor);
+      if (gap > 3.6) continue;
+      // Each defender is beaten (or not) on his own: dribbling against defending, and whether he faces the carrier.
+      const facing = gap > 0.01 ? (opponent.facingX * (actor.x - opponent.x) + opponent.facingY * (actor.y - opponent.y)) / gap : 1;
+      const chance = clamp(0.62 + quality * 0.38 - this.stat(opponent,'defending') / 100 * 0.40 - Math.max(0, facing) * 0.10 + (facing < -0.2 ? 0.15 : 0), 0.2, 0.95);
+      if (!this.rng.bool(chance)) {
+        if (gap <= 1.8) engagedBeatsYou = true;
+        continue;
+      }
       beaten = true;
       opponent.tackleCooldown = Math.max(opponent.tackleCooldown, 0.2 + quality * 0.35);
       opponent.vx *= 0.5; opponent.vy *= 0.5;
       if (!this.isHumanControlled(opponent)) opponent.decisionCooldown += 0.15 + quality * 0.25;
+    }
+    if (engagedBeatsYou && this.ball.ownerId === actor.player.id) {
+      // The defender next to the carrier read the move: the touch goes wrong.
+      this.releaseBall(actor, actor.facingX * 3 + this.rng.float(-2, 2), actor.facingY * 3 + this.rng.float(-2, 2), 0.4, 0, 0, 0);
+      this.setAction(actor, 'skill-failed');
+      return;
     }
     if (beaten && this.anySignatureEvents) this.fireSignature('skillWon', actor, null);
   }
@@ -1445,8 +1554,9 @@ export class ArcadeMatch {
     return Math.sign((targetY - actor.y) * this.attackDirection(actor.side)) || 1;
   }
 
-  private releaseBall(actor: ArcadeActor, vx: number, vy: number, vz: number, spin: number, topspin = 0): void {
+  private releaseBall(actor: ArcadeActor, vx: number, vy: number, vz: number, spin: number, topspin = 0, recoveryTicks = 7): void {
     this.ball.ownerId = null;
+    this.startRecovery(actor, recoveryTicks);
     actor.contact = { tick: this.tick, x: this.ball.x, y: this.ball.y, z: this.ball.z, kind: 'foot', foot: actor.player.foot === 'Left' ? 'left' : 'right' };
     // The ball leaves its actual contact point, preserving visual continuity.
     this.ball.z = Math.max(BALL_RADIUS, this.ball.z);
@@ -1481,16 +1591,26 @@ export class ArcadeMatch {
     const owner = this.owner();
     if (!owner || owner.side === actor.side || actor.tackleCooldown > 0) return;
     const reach = sliding ? 2.25 : 1.45;
-    if (distance(actor, owner) > reach) return;
+    const gap = distance(actor, owner);
+    // A slide can be started from further out: the lunge carries the player forward and, when short, leaves him on the floor.
+    if (gap > (sliding ? SLIDE_LUNGE_REACH : reach)) return;
     actor.tackleCooldown = sliding ? 1.15 : 0.45;
     this.setAction(actor, sliding ? 'slide' : 'standing-tackle');
+    if (sliding) {
+      const lunge = Math.max(gap, 0.1);
+      actor.vx = actor.vx * 0.4 + (owner.x - actor.x) / lunge * 5.5;
+      actor.vy = actor.vy * 0.4 + (owner.y - actor.y) / lunge * 5.5;
+    }
+    if (gap > reach) { this.startRecovery(actor, SLIDE_MISS_TICKS); return; }
     const relativeX = owner.x - actor.x;
     const relativeY = owner.y - actor.y;
     const approach = (relativeX * actor.facingX + relativeY * actor.facingY) / Math.max(0.1, len2(relativeX, relativeY));
     const speed = len2(actor.vx - owner.vx, actor.vy - owner.vy);
     // A carrier who is not sprinting, with the defender behind, shields the ball.
     const behind = (-relativeX * owner.facingX - relativeY * owner.facingY) / Math.max(0.1, len2(relativeX, relativeY)) < -0.2;
-    const shielding = behind && len2(owner.vx, owner.vy) < this.maxSpeed(owner, false) * 0.95 ? 0.12 * this.stat(owner,'physical') / 80 : 0;
+    const shieldingBase = behind && len2(owner.vx, owner.vy) < this.maxSpeed(owner, false) * 0.95 ? 0.12 * this.stat(owner,'physical') / 80 : 0;
+    // A carrier who actively shields (held button) is protected on top of that.
+    const shielding = shieldingBase + (this.isHumanControlled(owner) && this.previousInput.jockey ? 0.14 : 0);
     const jockeyBonus = (actor.action === 'jockey' ? 0.06 : 0) + (actor.side === 'home' ? ARCADE_MATCH_TUNING.homeComposure * 0.3 : 0);
     const winChance = clamp(this.hook(actor, HK.tackleWin, 0.28 + this.stat(actor,'defending') / 170 - this.stat(owner,'dribbling') / 260 + approach * 0.12 + (sliding ? 0.08 : 0) - shielding + jockeyBonus), 0.12, 0.82);
     const ballReach = distance(actor, this.ball) <= (sliding ? 1.9 : 1.15) && this.ball.z < .65;
@@ -1503,8 +1623,11 @@ export class ArcadeMatch {
       actor.contact = {tick:this.tick,x:this.ball.x,y:this.ball.y,z:this.ball.z,kind:'foot',foot:'right'};
       this.stats(actor.side).tacklesWon++;
       this.ratings[actor.player.id] = clamp((this.ratings[actor.player.id] ?? 6.5) + 0.09, 1, 10);
+      this.startRecovery(actor, 6);
       return;
     }
+    // Missing costs time: the player is out of the play for a moment.
+    this.startRecovery(actor, sliding ? SLIDE_MISS_TICKS * 0.75 : TACKLE_MISS_TICKS);
     const foulRisk = clamp((sliding ? 0.22 : 0.07) + speed * 0.018 + Math.max(0, -approach) * 0.12, 0.03, 0.68);
     if (this.rng.bool(foulRisk)) this.callFoul(actor, owner, sliding, speed);
   }
@@ -1755,8 +1878,9 @@ export class ArcadeMatch {
     for (const actor of this.actors) {
       if (!actor.active || (this.ball.controlledTouch < 0.14 && actor.player.id === this.ball.lastTouchPlayerId)) continue;
       const intended = actor.player.id === this.intendedReceiverId;
-      // A defender gets a chance at a pass in flight only every few ticks, not on every tick the ball is near.
-      if (!intended && this.lastPasser && !this.lastPasser.received && actor.side !== this.lastPasser.side && (this.tick + actor.player.kitNumber) % INTERCEPT_EVERY !== 0) continue;
+      // A defender gets exactly one try at a pass in flight, and not every defender goes for it; no tick-parity gate any more.
+      const interceptsFlight = !intended && !!this.lastPasser && !this.lastPasser.received && actor.side !== this.lastPasser.side;
+      if (interceptsFlight && this.football.interceptTried?.includes(actor.player.id)) continue;
       const controlRadius = this.ball.z > 0.75 ? 0.7 : intended ? 1.05 : 0.95;
       // Chest and thigh control up to 1.4 m; very hard balls at that height cannot be killed.
       if (this.ball.z > 0.75 && speed > 17) continue;
@@ -1771,6 +1895,11 @@ export class ArcadeMatch {
     }
     if (!candidate) return;
     if (!this.legalRestartTouch(candidate)) return;
+    if (this.lastPasser && !this.lastPasser.received && candidate.side !== this.lastPasser.side && candidate.player.id !== this.intendedReceiverId) {
+      (this.football.interceptTried ??= []).push(candidate.player.id);
+      // Some defenders read the pass too late; the share is a fixed seeded draw per pass and defender.
+      if (hash32(`${this.lastPasser.at}|${candidate.player.id}`) % 100 >= INTERCEPT_SHARE) return;
+    }
     if (this.pendingOffsideTargetId === candidate.player.id || this.football.offsideCandidates.includes(candidate.player.id)) {
       this.stats(candidate.side).offsides++;
       this.events.push({ minute: this.footballMinute, type: 'foul', side: candidate.side, playerId: candidate.player.id, messageKey: 'match.offside', params: { player: playerName(candidate.player) } });
@@ -1795,6 +1924,19 @@ export class ArcadeMatch {
       this.ball.vy = candidate.vy;
       this.ball.vz = -0.5;
       this.ball.controlledTouch = 0.18;
+      // The controlled receiver takes the ball where the stick points: body and ball turn into the touch, a poor touch runs away.
+      const stick = humanReceiver && candidate.player.id === this.selectedPlayerId ? len2(this.previousInput.moveX, this.previousInput.moveY) : 0;
+      if (stick > 0.3) {
+        const wx = this.previousInput.moveX * this.currentAttackDirection / stick, wy = this.previousInput.moveY / stick;
+        const quality = clamp(firstTouch / 100, 0.2, 1);
+        const carry = Math.max(len2(candidate.vx, candidate.vy), 2.2);
+        const turned = turnTowards(candidate.facingX, candidate.facingY, wx, wy, 1.2);
+        candidate.facingX = turned.x; candidate.facingY = turned.y;
+        candidate.vx = candidate.vx * 0.5 + wx * carry * 0.5;
+        candidate.vy = candidate.vy * 0.5 + wy * carry * 0.5;
+        this.ball.vx = candidate.vx + wx * (1 + (1 - quality) * 2.2);
+        this.ball.vy = candidate.vy + wy * (1 + (1 - quality) * 2.2);
+      }
       this.ball.lastTouch = candidate.side;
       this.ball.lastTouchPlayerId = candidate.player.id;
       if (this.lastPasser && !this.lastPasser.received && this.elapsed - this.lastPasser.at <= 5) {
@@ -1827,16 +1969,27 @@ export class ArcadeMatch {
       this.ball.lastTouchPlayerId = candidate.player.id;
       this.ball.lastTouch = candidate.side;
       this.ball.controlledTouch = 0;
-      this.ball.vx *= 0.48;
-      this.ball.vy += this.rng.float(-2.5, 2.5);
+      // Damp along the ball's own direction of travel and knock it sideways; damping only x let cross-field balls run on.
+      const heavyKick = this.rng.float(-2.5, 2.5);
+      const heavySpeed = len2(this.ball.vx, this.ball.vy);
+      const sideX = heavySpeed > 0.1 ? -this.ball.vy / heavySpeed : 0, sideY = heavySpeed > 0.1 ? this.ball.vx / heavySpeed : 1;
+      this.ball.vx = this.ball.vx * 0.48 + sideX * heavyKick;
+      this.ball.vy = this.ball.vy * 0.48 + sideY * heavyKick;
       this.setAction(candidate, 'heavy-touch');
     }
   }
 
   private tryHeader(): void {
     if (this.ball.z > 2.45 || this.ball.z < 1.4) return;
-    const actor = this.actors.find(a => a.active && a.player.positionGroup !== 'GK'
-      && distance(a, this.ball) < 0.7 && !(a.player.id === this.ball.lastTouchPlayerId && this.ball.controlledTouch < 0.3));
+    // The nearest player wins the header; equal distances are settled by the seeded order, not by list position.
+    let actor: ArcadeActor | undefined;
+    let nearest = Number.POSITIVE_INFINITY;
+    for (const candidate of this.actors) {
+      if (!candidate.active || candidate.player.positionGroup === 'GK' || (candidate.player.id === this.ball.lastTouchPlayerId && this.ball.controlledTouch < 0.3)) continue;
+      const gap = distance(candidate, this.ball);
+      if (gap >= 0.7) continue;
+      if (gap < nearest - 1e-9 || (actor && Math.abs(gap - nearest) <= 1e-9 && this.tieOrder(candidate) < this.tieOrder(actor))) { actor = candidate; nearest = gap; }
+    }
     if (!actor) return;
     const queued = actor.side === this.controlledSide ? this.football.queuedAction : null;
     const direction = this.attackDirection(actor.side);
@@ -1862,7 +2015,7 @@ export class ArcadeMatch {
     const headerXg = shotXg(goalDistance, actor.y - FIELD_WIDTH / 2, this.stat(actor,'shooting'), clamp((3 - this.closestOpponent(actor)) / 3, 0, 1), true, FIELD_WIDTH);
     const length = len2(goalX - actor.x, targetY - actor.y);
     const speed = 11 + this.stat(actor,'physical') * 0.07;
-    this.releaseBall(actor, (goalX - actor.x) / length * speed, (targetY - actor.y) / length * speed, -1.4, 0);
+    this.releaseBall(actor, (goalX - actor.x) / length * speed, (targetY - actor.y) / length * speed, -1.4, 0, 0, 0);
     if (actor.contact) actor.contact.kind = 'head';
     this.setAction(actor, 'header');
     this.stats(actor.side).shots++;
@@ -2006,13 +2159,14 @@ export class ArcadeMatch {
     this.rule.elapsed += dt;
     const human = side === this.controlledSide && this.config.controllerMode === 'human';
     if (human) for (const kind of ['pass','through','lob','shoot'] as const) {
-      if (input[kind]) this.actionHeld[kind] = Math.min(.9,this.actionHeld[kind]+dt);
+      if (input[kind]) this.actionHeld[kind] = Math.min(kind === 'shoot' ? .9 : .8,this.actionHeld[kind]+dt);
       if (!input[kind] && this.previousInput[kind] && this.actionHeld[kind] > 0) {
-        this.football.queuedAction = { kind, power:this.charge(this.actionHeld[kind],.9),
+        this.football.queuedAction = { kind, power:this.charge(this.actionHeld[kind],kind === 'shoot' ? .9 : .8),
           aimX:input.aimX*this.currentAttackDirection,aimY:input.aimY,finesse:input.skill,low:this.actionHeld[kind]<.14,expiresTick:this.tick+180 };
       }
     }
-    const forced = this.rule.elapsed >= 3;
+    // A human restart waits for the kick; only after a long pause is it taken automatically (never in training scenarios).
+    const forced = !this.scenarioActive && this.rule.elapsed >= RESTART_AUTO_SECONDS;
     if (this.rule.elapsed < .42 || (human && !this.football.queuedAction && !forced)) return;
     const command = this.football.queuedAction;
     const indirect = this.rule.indirect;
@@ -2433,7 +2587,8 @@ export class ArcadeMatch {
     const base = (actor.stats!.hookMask & HOOK_BIT.sprintBurst) !== 0 ? this.hook(actor, HK.sprintBurst, pace) : pace;
     const fitness = actor.stamina < 40 ? 0.82 + actor.stamina * 0.0045 : 1;
     const ownsBall = this.ball.ownerId === actor.player.id;
-    const ball = ownsBall ? sprint ? ARCADE_MATCH_TUNING.ballSprintRatio : ARCADE_MATCH_TUNING.ballJogRatio : 1;
+    // A carrier at full tilt gives up 10-15 % of his speed, less with better dribbling (it used to be a flat 9 %).
+    const ball = ownsBall ? sprint ? 0.8 + clamp(actor.attrs!.dribbling, 0, 100) / 100 * 0.1 : ARCADE_MATCH_TUNING.ballJogRatio : 1;
     const injured = this.football.injuredIds?.length && this.isInjured(actor.player.id) ? 0.6 : 1;
     return base * fitness * ball * injured * (sprint ? 1 : ARCADE_MATCH_TUNING.jogRatio);
   }
@@ -2542,6 +2697,13 @@ export class ArcadeMatch {
 
   canTriggerUltimate(side: Side): boolean {
     return this.effectsEnabled && this.focus[side] >= ULTIMATE_COST && this.tick >= this.ultimateUntil[side] && !!this.mythicUser(side);
+  }
+
+  /** Whole seconds until a restart the human has to take is kicked automatically; 0 when none is waiting. */
+  get restartCountdown(): number {
+    const waiting = this.rule.phase !== 'playing' && this.rule.phase !== 'advantage' && this.rule.phase !== 'halftime' && this.rule.phase !== 'fulltime'
+      && this.rule.restartSide === this.controlledSide && this.config.controllerMode === 'human' && !this.scenarioActive && !this.football.queuedAction;
+    return waiting ? Math.max(0, Math.ceil(RESTART_AUTO_SECONDS - this.rule.elapsed)) : 0;
   }
 
   hasUltimate(side: Side): boolean {

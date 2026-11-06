@@ -12,7 +12,8 @@ import { EMPTY_MATCH_COMMAND } from './models/match.model';
 function runningMatch(): ArcadeMatch {
   const { home, away } = createPracticeTeams();
   const match = new ArcadeMatch(home, away, home.id, 3, 11);
-  for (let tick = 0; tick < 240; tick++) match.step(MATCH_TICK, { ...EMPTY_MATCH_COMMAND, moveX: 1, sprint: true });
+  // A human kick-off is only taken automatically after eight seconds; run past that so play is under way.
+  for (let tick = 0; tick < 540; tick++) match.step(MATCH_TICK, { ...EMPTY_MATCH_COMMAND, moveX: 1, sprint: true });
   return match;
 }
 
