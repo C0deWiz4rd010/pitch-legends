@@ -2,7 +2,7 @@
 
 Fortschritt je Phase des [3.0-Plans](PITCH_LEGENDS_3_0_PLAN.md): was geändert wurde, wie es geprüft wurde und was offen bleibt. Jede Phase endet mit einem Eintrag nach dem Muster des [2.0-Logs](IMPLEMENTATION_2_0_LOG.md).
 
-Stand: Plan freigegeben am 2026-11-06, Phasen 0 bis 5 umgesetzt.
+Stand: Plan freigegeben am 2026-11-06, Phasen 0 bis 6 umgesetzt.
 
 | Phase | Thema | Stand |
 | --- | --- | --- |
@@ -12,7 +12,7 @@ Stand: Plan freigegeben am 2026-11-06, Phasen 0 bis 5 umgesetzt.
 | 3 | KI mit Fußballverständnis | umgesetzt, Rest siehe unten |
 | 4 | Animation 2.0 (Hybrid) | umgesetzt, Rest siehe unten |
 | 5 | Grafik-Politur und Präsentation | teilweise umgesetzt, Rest siehe unten |
-| 6 | Leistung und Mobile | offen |
+| 6 | Leistung und Mobile | teilweise umgesetzt, Rest siehe unten |
 | 7 | RPG I: Spieler vertiefen | offen |
 | 8 | RPG II: Trainer und Verein | offen |
 | 9 | Meta und Sammeln | offen |
@@ -217,3 +217,21 @@ Stand: Plan freigegeben am 2026-11-06, Phasen 0 bis 5 umgesetzt.
   - Einlauf und Aufstellung, Anstoß-, Halbzeit- und Schlusskamera, Spielerkamera, Stereo-Panning der Ballkontakte und ein Samplepaket.
   - Diese Punkte sind Optik und Präsentation, die ohne Sichtkontrolle auf mehreren Geräten riskant wären; sie sind für eine zweite Runde vorgemerkt.
 - **Offen:** Playwright-E2E nicht gelaufen; keine Messung der Bildabstände mit der neuen Umgebung (die Pass-Kosten der Umgebung fallen einmalig beim Stadionaufbau an).
+
+## Phase 6 – Leistung und Mobile (2026-11-06)
+
+- **Qualitätswechsel ohne Hänger** (löst den offenen Punkt aus Phase 0): Beginnt ein Match auf der hohen Stufe, bleiben Schattenkarte und Composer für das ganze Match bestehen. Beim Herunterschalten hört die Schattenkarte nur auf, sich zu aktualisieren (`shadowMap.autoUpdate`, `sun.shadow.intensity = 0`), und Bloom und Vignette werden abgeschaltet; die Materialien behalten ihre Programme. Im Browser gemessen: hoch → mittel → niedrig → hoch lässt die Zahl der Shader-Programme bei 57 und kostet einen Frame von etwa 4 ms; vorher waren es rund 20 neue Programme und etwa 370 ms.
+- **Grafik-Einstellungen** (Einstellungsseite, `GraphicsPrefsService`, Schlüssel `pitch-legends:graphics:v1`, pro Gerät, nicht im Spielstand):
+  - Stufe: Auto, Hoch, Mittel, Niedrig. „Auto“ startet je nach Gerät (Handy mittel, sonst hoch) und passt sich während des Spiels an; eine feste Stufe ändert sich nie.
+  - Bildrate: Auto, 30 oder 60 (`RenderCadence` mit dem gewählten Takt).
+  - Renderauflösung: 60, 80 oder 100 % der Stufenauflösung.
+  - Im Browser geprüft: Mit Niedrig, 30 und 60 % läuft der Renderer fest auf niedrig (Auflösung 0,51), ohne Composer und ohne Anpassung, Zielrate 30.
+- **GPU-Zeitmessung** (`gpu-timer.ts`, Erweiterung `EXT_disjoint_timer_query_webgl2`, wo vorhanden): Das Ergebnis eines Frames wird einige Bilder später gelesen, geglättet; die ersten zwölf Ergebnisse (Shader und Uploads) und Ergebnisse nach einem „Disjoint“-Ereignis werden verworfen. Ohne Erweiterung bleibt alles wie bisher.
+- **Qualitätsregel** (`quality-policy.ts`, `decideQuality`): Mit GPU-Zeit wird nur heruntergeschaltet, wenn die GPU wirklich Grenze ist (über 15 ms pro Frame); hinaufgeschaltet wird nur mit Luft (unter 9 ms). Damit führt eine 30-Hz-Anzeige oder ein CPU-gebundenes Bild nicht mehr zu einem falschen Herunterschalten (offener Punkt aus Phase 0). Ohne Zeitmessung gilt die alte Regel über die Bildabstände, die einen Vsync-Deckel nicht von einer überlasteten GPU unterscheiden kann.
+- **Nachweis:** 420 Unit-Tests (8 neu in `performance-v3.spec.ts`: Einstellungen und Speichern, Regel mit und ohne GPU-Zeit, Bildratendeckel auf 144 Hz, GPU-Timer mit einem simulierten Kontext). Typecheck, Style-, i18n-, Format-Check und Build grün. Der Balance-Lauf blieb unberührt (keine Engine-Änderung).
+- **Nicht umgesetzt:**
+  - Eine Detailstufe für ferne Spieler und der gemeinsame Glyphen-Atlas für Rückennummern (die 22 Rücken-Texturen bleiben).
+  - Messungen auf einem Pixel 6a oder iPhone 12, ein 15-Minuten-Match und fünf Matches in Folge mit Speichermessung, eine Live-Worker für die Simulation (die Messung dafür steht aus; sie bleibt bei etwa 22 µs pro Tick auf dem Hauptthread).
+  - Die neuen Zeilen auf der Einstellungsseite habe ich nicht gesehen, weil die Seite einen Spielstand braucht; geprüft sind Übersetzung und Funktion über den Dienst und den Renderer.
+  - Die Pixel-Zeitmessung im Test-Browser meldete beim ersten Versuch unplausible 1,7 s, bevor ich die Anlaufphase verwerfen ließ; echte Werte auf echter Hardware stehen aus.
+- **Hinweis zum Testen:** Der Ton muss schon vor dem Laden der Spielseite stumm sein (neues Browserfenster = leerer Speicher); das ist als Regel gespeichert.

@@ -63,6 +63,30 @@
       </div>
     </div>
     <div class="setting">
+      <span>{{ i18n.pick('Grafikstufe', 'Graphics level') }}</span>
+      <div class="mini-seg" role="group" [attr.aria-label]="i18n.pick('Grafikstufe', 'Graphics level')">
+        @for (level of graphicsLevels; track level.value) {
+          <button [class.active]="graphics.prefs().quality === level.value" [attr.aria-pressed]="graphics.prefs().quality === level.value" (click)="setGraphicsLevel(level.value)">{{ i18n.pick(level.de, level.en) }}</button>
+        }
+      </div>
+    </div>
+    <div class="setting">
+      <span>{{ i18n.pick('Bildrate', 'Frame rate') }}</span>
+      <div class="mini-seg" role="group" [attr.aria-label]="i18n.pick('Bildrate', 'Frame rate')">
+        @for (cap of frameCaps; track cap.value) {
+          <button [class.active]="graphics.prefs().frameCap === cap.value" [attr.aria-pressed]="graphics.prefs().frameCap === cap.value" (click)="setFrameCap(cap.value)">{{ cap.label }}</button>
+        }
+      </div>
+    </div>
+    <div class="setting">
+      <span>{{ i18n.pick('Renderauflösung', 'Render resolution') }}</span>
+      <div class="mini-seg" role="group" [attr.aria-label]="i18n.pick('Renderauflösung', 'Render resolution')">
+        @for (scale of renderScales; track scale) {
+          <button [class.active]="graphics.prefs().renderScale === scale" [attr.aria-pressed]="graphics.prefs().renderScale === scale" (click)="setRenderScale(scale)">{{ scale * 100 }} %</button>
+        }
+      </div>
+    </div>
+    <div class="setting">
       <span>{{ i18n.pick('Spielhilfe', 'Match assist') }}</span>
       <div class="mini-seg">
         @for (preset of assistPresets; track preset) {

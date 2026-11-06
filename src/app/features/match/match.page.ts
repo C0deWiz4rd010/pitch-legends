@@ -45,6 +45,7 @@ import { playerName } from '../../core/ratings';
 import { I18nService } from '../../core/services/i18n.service';
 import { ARCADE_MATCH_TUNING, ArcadeMatch, FIELD_LENGTH, MATCH_TICK, ShootoutPrompt } from '../../core/services/arcade-match';
 import { AudioService } from '../../core/services/audio.service';
+import { GraphicsPrefsService } from '../../core/services/graphics-prefs.service';
 import { ControlHelpService } from '../../core/services/control-help.service';
 import { PortraitService } from '../../core/services/portrait.service';
 import { BINDABLE_ACTIONS, BUTTON_ACTIONS, ButtonAction, buttonFor, keysFor } from '../../core/controls/control-prefs';
@@ -123,6 +124,7 @@ export class MatchPage implements OnDestroy {
   private readonly metrics = new MatchMetrics();
   protected readonly i18n = inject(I18nService);
   protected readonly audio = inject(AudioService);
+  private readonly graphicsPrefs = inject(GraphicsPrefsService);
   private readonly travel = inject(TravelService);
   protected readonly controlHelp = inject(ControlHelpService);
   private readonly portraits = inject(PortraitService);
@@ -672,7 +674,7 @@ export class MatchPage implements OnDestroy {
         await this.portraits.releaseGraphics();
         const { ThreePitchRenderer } = await import('./three-pitch.renderer');
         if (this.disposed || this.arcade !== match || !canvas.isConnected) return;
-        const renderer = this.zone.runOutsideAngular(() => new ThreePitchRenderer(canvas));
+        const renderer = this.zone.runOutsideAngular(() => new ThreePitchRenderer(canvas, this.graphicsPrefs.prefs()));
         this.renderer = renderer;
         canvas.addEventListener('webglcontextlost', () => this.pauseFor(this.i18n.pick('Grafik unterbrochen. Nach der Wiederherstellung kannst du weiterspielen.', 'Graphics interrupted. You can continue once they are restored.')), { once: true });
         await renderer.prepare(match);

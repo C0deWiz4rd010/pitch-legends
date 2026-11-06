@@ -8,6 +8,8 @@ import { I18nPipe } from '../../shared/i18n.pipe';
 import { I18nService } from '../../core/services/i18n.service';
 import { RpgService } from '../../core/services/rpg.service';
 import { AudioService } from '../../core/services/audio.service';
+import { GraphicsPrefsService } from '../../core/services/graphics-prefs.service';
+import { FrameCap, GraphicsQualityPref } from '../../core/graphics-prefs';
 import { APP_VERSION } from '../../core/version';
 import { ManagerPortraitComponent } from '../../shared/components/manager-portrait.component';
 
@@ -25,15 +27,25 @@ export class SettingsPage {
   protected readonly i18n = inject(I18nService);
   private readonly rpg = inject(RpgService);
   protected readonly audio = inject(AudioService);
+  protected readonly graphics = inject(GraphicsPrefsService);
 
   protected readonly message = signal('');
   protected readonly confirmNew = signal(false);
   protected readonly version = APP_VERSION;
 
   protected readonly difficulties: GameSettings['difficulty'][] = ['easy', 'normal', 'hard'];
+  protected readonly graphicsLevels: { value: GraphicsQualityPref; de: string; en: string }[] = [
+    { value: 'auto', de: 'AUTO', en: 'AUTO' }, { value: 'high', de: 'HOCH', en: 'HIGH' }, { value: 'balanced', de: 'MITTEL', en: 'MEDIUM' }, { value: 'low', de: 'NIEDRIG', en: 'LOW' },
+  ];
+  protected readonly frameCaps: { value: FrameCap; label: string }[] = [{ value: 0, label: 'AUTO' }, { value: 30, label: '30' }, { value: 60, label: '60' }];
+  protected readonly renderScales = [0.6, 0.8, 1];
   protected readonly durations: GameSettings['matchDuration'][] = [3, 5, 8];
   protected readonly assistPresets: GameSettings['assistPreset'][] = ['assisted', 'balanced', 'manual'];
   protected readonly perkPaths = ['coaching', 'tactics', 'scouting', 'leadership', 'negotiation', 'youthDevelopment'] as const;
+
+  protected setGraphicsLevel(value: GraphicsQualityPref): void { this.graphics.update({ quality: value }); }
+  protected setFrameCap(value: FrameCap): void { this.graphics.update({ frameCap: value }); }
+  protected setRenderScale(value: number): void { this.graphics.update({ renderScale: value }); }
 
   protected setDifficulty(d: GameSettings['difficulty']): void {
     this.gs.patchSettings((settings) => (settings.difficulty = d));

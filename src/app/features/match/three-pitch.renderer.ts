@@ -7,6 +7,9 @@ import { hash32 } from '../../core/visual-identity';
 import { MatchRenderFrame, MatchRenderState, MatchSnapshot, PlayerRuntimeSnapshot } from '../../models/match.model';
 import { MATCH_TICK } from '../../core/football/match-types';
 import { RefereeRig } from './animation/referee';
+import { GpuTimer } from './gpu-timer';
+import { decideQuality } from './quality-policy';
+import { DEFAULT_GRAPHICS_PREFS, GraphicsPrefs } from '../../core/graphics-prefs';
 import { loadClipSet } from './animation/clip-store';
 import { createPlayerVisualIdentity } from '../../core/visual-identity';
 import { createProceduralFootballer, poseFootballer, ProceduralFootballer } from './three-player.factory';
@@ -51,6 +54,8 @@ export interface PitchRenderDiagnostics {
   geometries: number;
   textures: number;
   renderMilliseconds: number;
+  /** Smoothed GPU time per frame, or null when the browser has no GPU timer. */
+  gpuMilliseconds: number | null;
   contextLost: boolean;
   targetFps: number;
 }
@@ -130,6 +135,13 @@ export class ThreePitchRenderer {
   private readonly confettiVelocity = new Float32Array(160 * 3);
   private readonly weather: THREE.LineSegments;
   private quality: PitchQuality;
+  private readonly mobile: boolean;
+  /** Started on the high profile: only then do shadow map and post-processing exist, and they stay for the whole match. */
+  private readonly startedHigh: boolean;
+  /** Quality follows the frame time; a fixed profile chosen in the settings never changes. */
+  private readonly adaptive: boolean;
+  private gpuTimer: GpuTimer | null = null;
+  private vignettePass: ShaderPass | null = null;
   private readonly interpolation: RenderInterpolationScratch = { players: [], owned: [] };
   private readonly mirroredPlayer = {} as PlayerRuntimeSnapshot;
   /** Highest profile this device started with; recovery never exceeds it. */
@@ -179,14 +191,18 @@ export class ThreePitchRenderer {
     this.renderer.compileAsync(this.scene, this.camera).catch(() => undefined);
   };
 
-  constructor(private readonly canvas: HTMLCanvasElement) {
-    const mobile = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
-    this.quality = mobile ? 'balanced' : 'high';
-    this.pixelRatio = Math.min(window.devicePixelRatio || 1, mobile ? 1.35 : 1.75);
+  constructor(private readonly canvas: HTMLCanvasElement, private readonly prefs: GraphicsPrefs = DEFAULT_GRAPHICS_PREFS) {
+    this.mobile = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
+    this.quality = prefs.quality !== 'auto' ? prefs.quality : this.mobile ? 'balanced' : 'high';
     this.software=usesSoftwareGraphics();
-    this.cadence=new RenderCadence(this.software ? 1 / 30 : 0);
+    this.adaptive = prefs.quality === 'auto';
+    this.pixelRatio = this.pixelRatioFor(this.quality);
+    this.cadence=new RenderCadence(prefs.frameCap > 0 ? 1 / prefs.frameCap : this.software ? 1 / 30 : 0);
     this.renderer = new THREE.WebGLRenderer({ canvas, alpha: false, antialias: !this.software, powerPreference: 'high-performance' });
     if (this.software) { this.quality = 'low'; this.pixelRatio = .35; }
+    this.startedHigh = this.quality === 'high' && !this.software;
+    const timer = new GpuTimer(this.renderer.getContext() as WebGL2RenderingContext);
+    this.gpuTimer = timer.available ? timer : null;
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     // Statistics cover the whole frame, including every post-processing pass.
     this.renderer.info.autoReset = false;
@@ -480,8 +496,11 @@ export class ThreePitchRenderer {
     this.updateTurf(dt);
     if (this.bloom) this.bloom.strength = 0.25 + Math.max(0, 1 - (this.time - this.goalTime) / 1.5) * 0.45;
     this.renderer.info.reset();
+    this.gpuTimer?.begin();
     if (this.composer && this.composerActive) this.composer.render(dt);
     else this.renderer.render(this.scene, this.camera);
+    this.gpuTimer?.end();
+    this.gpuTimer?.poll();
     // The minimap follows every frame; only software rendering keeps the old 11 Hz.
     if (this.time - this.lastHud > (this.software ? 0.09 : 0)) {
       this.drawHud(match, state, !!replay);
@@ -495,28 +514,44 @@ export class ThreePitchRenderer {
     return { renderer: 'three-webgl2', quality: this.quality, resolutionScale: this.pixelRatio,
       drawCalls: this.renderer.info.render.calls, triangles: this.renderer.info.render.triangles,
       geometries: this.renderer.info.memory.geometries, textures: this.renderer.info.memory.textures,
-      renderMilliseconds: this.renderMilliseconds, contextLost: this.contextLost, targetFps: this.software ? 30 : 60 };
+      renderMilliseconds: this.renderMilliseconds, gpuMilliseconds: this.gpuTimer?.ms ?? null, contextLost: this.contextLost, targetFps: this.prefs.frameCap || (this.software ? 30 : 60) };
   }
 
   setQuality(quality: PitchQuality): void {
     this.quality = quality;
-    this.pixelRatio = Math.min(window.devicePixelRatio || 1, this.software ? .35 : quality === 'high' ? 1.75 : quality === 'balanced' ? 1.25 : 0.85);
-    this.renderer.shadowMap.enabled = quality === 'high';
+    this.pixelRatio = this.pixelRatioFor(quality);
+    if (this.startedHigh) {
+      // Switching the shadow map off recompiles every material (a stall of about a third of a second). It stays compiled in;
+      // below the high profile it simply stops updating and fades to nothing.
+      this.renderer.shadowMap.autoUpdate = quality === 'high';
+      if (quality === 'high') this.renderer.shadowMap.needsUpdate = true;
+      this.sun.shadow.intensity = quality === 'high' ? 1 : 0;
+    }
     this.configureComposer();
     this.resize();
     this.canvas.dataset['quality'] = quality;
     this.stadium.traverse(object => { if (object.name === 'crowd') object.visible = quality !== 'low'; });
   }
 
-  /** Bloom, vignette and tone mapping as a light post-process on the high profile only. */
+  /** Render resolution for a profile: the device's pixel ratio capped per profile, times the render scale chosen in the settings. */
+  private pixelRatioFor(quality: PitchQuality): number {
+    if (this.software) return 0.35;
+    const cap = quality === 'high' ? 1.75 : quality === 'balanced' ? (this.mobile ? 1.35 : 1.25) : 0.85;
+    return Math.min(window.devicePixelRatio || 1, cap) * this.prefs.renderScale;
+  }
+
+  /**
+   * Tone mapping, bloom and vignette as a post-process. Once a match starts on the high profile the composer is used for the
+   * whole match: dropping a profile only switches the bloom and vignette passes off, so the materials keep their programs.
+   */
   private configureComposer(): void {
-    const wanted = this.quality === 'high' && !this.software;
+    const wanted = this.startedHigh;
     (this.shadow.material as THREE.MeshBasicMaterial).opacity = this.quality === 'high' ? 0.14 : 0.30;
     // On the shadow-map profile the ball already casts a real shadow; its blob only keeps it readable.
     (this.ballShadow.material as THREE.MeshBasicMaterial).opacity = this.quality === 'high' ? 0.18 : 0.50;
     this.composerActive = wanted;
     if (!wanted) return;
-    if (this.composer) return;
+    if (this.composer) { this.setPostPasses(); return; }
     const target = new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, samples: 4 });
     const composer = new EffectComposer(this.renderer, target);
     composer.addPass(new RenderPass(this.scene, this.camera));
@@ -527,13 +562,22 @@ export class ThreePitchRenderer {
     vignette.uniforms['offset'].value = 1.02;
     vignette.uniforms['darkness'].value = 0.85;
     composer.addPass(vignette);
+    this.vignettePass = vignette;
     composer.addPass(new OutputPass());
     this.composer = composer;
+    this.setPostPasses();
+  }
+
+  private setPostPasses(): void {
+    const on = this.quality === 'high';
+    if (this.bloom) this.bloom.enabled = on;
+    if (this.vignettePass) this.vignettePass.enabled = on;
   }
 
   destroy(): void {
     if (this.disposed) return;
     this.disposed = true;
+    this.gpuTimer?.dispose();
     this.composer?.dispose();
     this.composer = null;
     this.resizeObserver?.disconnect();
@@ -1263,7 +1307,7 @@ export class ThreePitchRenderer {
 
   /** One step down after a stalled frame burst instead of dropping straight to the lowest profile. */
   stepDownQuality(): void {
-    if (this.quality === 'low' || this.qualityCooldown > 0) return;
+    if (!this.adaptive || this.quality === 'low' || this.qualityCooldown > 0) return;
     this.setQuality(this.quality === 'high' ? 'balanced' : 'low');
     this.qualityCooldown = 8;
     this.stableSamples = 0;
@@ -1271,23 +1315,22 @@ export class ThreePitchRenderer {
   }
 
   private adaptQuality(dt: number): void {
+    if (!this.adaptive) return;
     this.qualityCooldown -= dt;
     this.sampleFrames++;
     this.sampleTime += dt;
     if (this.sampleFrames < 150) return;
-    const average = this.sampleTime / this.sampleFrames;
-    if (this.qualityCooldown <= 0 && average > 0.024 && this.quality !== 'low') {
-      this.stepDownQuality();
-    } else if (average < 0.0185 && !this.software) {
-      // Stable samples (2.5 s each) earn one profile back; every stall raises the bar to avoid oscillation.
-      this.stableSamples++;
-      const rank = { low: 0, balanced: 1, high: 2 } as const;
-      if (this.stableSamples >= Math.min(12, 2 * (1 + this.downgrades)) && this.qualityCooldown <= 0 && rank[this.quality] < rank[this.ceilingQuality]) {
-        this.setQuality(this.quality === 'low' ? 'balanced' : 'high');
-        this.qualityCooldown = 12;
-        this.stableSamples = 0;
-      }
-    } else this.stableSamples = 0;
+    const outcome = decideQuality({
+      average: this.sampleTime / this.sampleFrames, gpuMs: this.gpuTimer?.ms ?? null, quality: this.quality, ceiling: this.ceilingQuality,
+      cooldown: this.qualityCooldown, stable: this.stableSamples, downgrades: this.downgrades, software: this.software,
+    });
+    this.stableSamples = outcome.stable;
+    if (outcome.action === 'down') this.stepDownQuality();
+    else if (outcome.action === 'up') {
+      this.setQuality(this.quality === 'low' ? 'balanced' : 'high');
+      this.qualityCooldown = 12;
+      this.stableSamples = 0;
+    }
     this.sampleTime = 0;
     this.sampleFrames = 0;
   }
