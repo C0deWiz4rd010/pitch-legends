@@ -2,7 +2,7 @@
 
 Fortschritt je Phase des [3.0-Plans](PITCH_LEGENDS_3_0_PLAN.md): was geändert wurde, wie es geprüft wurde und was offen bleibt. Jede Phase endet mit einem Eintrag nach dem Muster des [2.0-Logs](IMPLEMENTATION_2_0_LOG.md).
 
-Stand: Plan freigegeben am 2026-11-06, Phasen 0 bis 4 umgesetzt.
+Stand: Plan freigegeben am 2026-11-06, Phasen 0 bis 5 umgesetzt.
 
 | Phase | Thema | Stand |
 | --- | --- | --- |
@@ -11,7 +11,7 @@ Stand: Plan freigegeben am 2026-11-06, Phasen 0 bis 4 umgesetzt.
 | 2 | Ball, Aktionen, Torwart, Standards | teilweise umgesetzt, Rest siehe unten |
 | 3 | KI mit Fußballverständnis | umgesetzt, Rest siehe unten |
 | 4 | Animation 2.0 (Hybrid) | umgesetzt, Rest siehe unten |
-| 5 | Grafik-Politur und Präsentation | offen |
+| 5 | Grafik-Politur und Präsentation | teilweise umgesetzt, Rest siehe unten |
 | 6 | Leistung und Mobile | offen |
 | 7 | RPG I: Spieler vertiefen | offen |
 | 8 | RPG II: Trainer und Verein | offen |
@@ -198,3 +198,22 @@ Stand: Plan freigegeben am 2026-11-06, Phasen 0 bis 4 umgesetzt.
 - **Studio:** Neuer Schalter „Aufgenommene Clips“ (A/B-Vergleich). Im Browser gesehen: Der Sprint mit Clips ist kompakter mit Vorlage und angewinkelten Armen, ohne Clips steht die Figur aufrechter mit weit schwingenden Armen; der Tanz erscheint als lesbare Jubelpose.
 - **Nachweis:** 410 Unit-Tests (7 neu in `animation-clips.spec.ts` mit handgemachten Clips: Gewichte, Mischung, Schleife, Mittelwert der Hüfte, Oberkörper aus dem Clip statt prozedural, Torwart unberührt, Beine unverändert, weiches Zurückblenden, Tanz mit und ohne Clips). Zwei Anpassungen: Jubelvarianten höchstens 5 statt 4 (`presentation-v2.spec`), Baseline des i18n-Checks für das Studio um einen Text auf 24.
 - **Nicht gemacht:** Eine Sichtabnahme aller 128 Identitäten mit Clips, ein Test der echten Dateien in den Unit-Tests (sie sind im Browser nur geladen und angeschaut), und die Clips für Hechten, Fallen oder Aufstehen (das Standardpaket hat keine fußballtypischen).
+
+## Phase 5 – Grafik-Politur und Präsentation (2026-11-06)
+
+- **Licht aus dem Himmel** (`applySkyEnvironment`): Die Umgebung für Reflexe und Streulicht kommt nicht mehr aus einem Innenraum (`RoomEnvironment`), sondern aus dem Himmel des jeweiligen Stadions: Kuppel mit Verlauf, Boden mit Grasfarbe, tagsüber und bei Dämmerung eine helle Sonne, nachts vier helle Flutlichter. Sie wird je Atmosphäre beim Aufbau des Stadions erzeugt (PMREM, Software-GL ohne). Stärke 0,8 (Tag), 0,7 (Dämmerung), 0,5 (Nacht); die alten Werte 0,3/0,18 waren für den hellen Innenraum gewählt. Statt einer externen HDRI (Poly Haven, 1,5 MB) wird nichts nachgeladen.
+- **Partikel:** Rasenfetzen und Konfetti sind weiche runde Punkte (`createSoftDot`) statt harter Quadrate.
+- **Wetter:** Regen und Sturm ziehen den Nebel heran (Sichtweite 85/230 m bei Regen, 60/190 m bei Sturm statt 140/300 m). Im Sturm blitzt es alle neun Sekunden (`lightningFlash`, rein aus der Renderzeit, bei reduzierter Bewegung aus).
+- **Kamera bei Standards:** Ecken, Freistöße und Elfmeter im Angriffsdrittel rahmen das Tor: Die Kamera fährt dorthin und rückt auf 32 m (Elfmeter 24 m) Sichtbreite zusammen.
+- **Anzeige:** Über dem gesteuerten Spieler stehen sein Nachname und ein Ausdauerbalken (grün, gelb, rot; folgt der Einstellung für die Minimap). Die Minimap wird jedes Bild gezeichnet, nur Software-GL bleibt bei 11 Hz.
+- **Bewegungseinstellung des Betriebssystems:** `prefers-reduced-motion` erreicht jetzt auch den Renderer und die Engine (`MatchConfig.camera.reducedMotion`); vorher zählte nur die Einstellung im Spiel.
+- **Ton:** Musik und Fangesänge werden im Audio-Kontext vorausgeplant (`startBeat`, 0,3 s Vorlauf) statt über unzuverlässige `setInterval`-Takte; ein belegter Hauptthread (Wiederholung, Layout) bringt den Rhythmus nicht mehr ins Stolpern.
+- **Nachweis:** 412 Unit-Tests (2 neu in `presentation-v3.spec.ts` für den Blitz); zwei bestehende Audio-Tests mussten die Planung im Voraus berücksichtigen (die Uhr der Test-Audiokontexts läuft jetzt mit der Zeit, und die Musik wird nicht mehr nach genau einer Note, sondern nach einer Zahl vorausgeplanter Noten gezählt). Typecheck, Style-, i18n-, Format-Check und Build grün. Im Browser (stumm geschaltet) gesehen: Tagbild heller und freundlicher als mit der Innenraum-Umgebung (nach der Anpassung der Stärke), Sturm bei Nacht mit Nebel und Regen, Spielername mit Balken am gesteuerten Spieler, Kamera fährt bei einer Ecke zum Tor.
+- **Nicht umgesetzt:**
+  - Rasen als Shader (Mähstreifen blickwinkelabhängig, Abnutzung): Die 2048er Canvas-Textur bleibt.
+  - SMAA statt MSAA im Composer, Farbtabellen je Atmosphäre, Tiefenschärfe in Wiederholungen und Bloom nur für Flutlicht (der Bloom-Schwellenwert 2,2 wirkt ohnehin fast nur dort).
+  - Flutlicht-Schatten je Mast, Lichtkegel, Stadion-Ausbau über `standStyle`, `bannerPattern` und `sponsorSeed`, LED-Banden.
+  - Publikum als Billboards aus einem Atlas, Schnee, Spritzer und nasser Glanz im Regen, Torjubel mit rotierenden Konfetti-Plättchen.
+  - Einlauf und Aufstellung, Anstoß-, Halbzeit- und Schlusskamera, Spielerkamera, Stereo-Panning der Ballkontakte und ein Samplepaket.
+  - Diese Punkte sind Optik und Präsentation, die ohne Sichtkontrolle auf mehreren Geräten riskant wären; sie sind für eine zweite Runde vorgemerkt.
+- **Offen:** Playwright-E2E nicht gelaufen; keine Messung der Bildabstände mit der neuen Umgebung (die Pass-Kosten der Umgebung fallen einmalig beim Stadionaufbau an).

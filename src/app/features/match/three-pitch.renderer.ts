@@ -14,7 +14,6 @@ import { interpolateThreeFrame, playerInCameraSpace, RenderInterpolationScratch 
 import { usesSoftwareGraphics } from './graphics-capabilities';
 import { advanceBroadcastCamera } from './broadcast-camera';
 import { RenderCadence } from './render-cadence';
-import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
@@ -157,6 +156,11 @@ export class ThreePitchRenderer {
   private contextLost = false;
   private disposed = false;
   private lastHud = -1;
+  /** Base light levels of this stadium; a storm's lightning lifts them for a moment. */
+  private fillBase = 1;
+  private rimBase = 1;
+  private softDot: THREE.CanvasTexture | null = null;
+  private readonly tagPoint = new THREE.Vector3();
   private sampleTime = 0;
   private sampleFrames = 0;
   private renderMilliseconds = 0;
@@ -200,13 +204,6 @@ export class ThreePitchRenderer {
     this.sun.shadow.mapSize.set(2048, 2048);
     // A tight shadow box follows the camera: about 28 texels per metre instead of 14.
     Object.assign(this.sun.shadow.camera, { left: -36, right: 36, top: 30, bottom: -30, near: 1, far: 170 });
-    if (!this.software) {
-      // Image-based lighting gives kits, skin and the ball real highlights instead of flat ambient light.
-      const pmrem = new THREE.PMREMGenerator(this.renderer);
-      this.scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
-      this.scene.environmentIntensity = 0.3;
-      pmrem.dispose();
-    }
     this.sun.shadow.bias = -0.0004;
     this.sun.shadow.normalBias = 0.065;
     this.sun.shadow.camera.updateProjectionMatrix();
@@ -271,7 +268,8 @@ export class ThreePitchRenderer {
     // Turf and dust kicked up by slide tackles and hard strikes.
     const turfGeometry = new THREE.BufferGeometry();
     turfGeometry.setAttribute('position', new THREE.Float32BufferAttribute(new Float32Array(64 * 3).fill(-100), 3));
-    this.turf = new THREE.Points(turfGeometry, new THREE.PointsMaterial({ color: '#3f7a3c', size: 0.09, transparent: true, opacity: 0.9, depthWrite: false }));
+    this.softDot = createSoftDot();
+    this.turf = new THREE.Points(turfGeometry, new THREE.PointsMaterial({ color: '#3f7a3c', size: 0.17, map: this.softDot, alphaTest: 0.02, transparent: true, opacity: 0.9, depthWrite: false }));
     this.turf.frustumCulled = false;
     this.scene.add(this.turf);
     this.configureComposer();
@@ -284,7 +282,7 @@ export class ThreePitchRenderer {
       confettiColors.push(c.r, c.g, c.b);
     }
     confettiGeometry.setAttribute('color', new THREE.Float32BufferAttribute(confettiColors, 3));
-    this.confetti = new THREE.Points(confettiGeometry, new THREE.PointsMaterial({ size: 0.14, vertexColors: true, transparent: true, opacity: 1, depthWrite: false, toneMapped: false }));
+    this.confetti = new THREE.Points(confettiGeometry, new THREE.PointsMaterial({ size: 0.24, map: this.softDot, alphaTest: 0.02, vertexColors: true, transparent: true, opacity: 1, depthWrite: false, toneMapped: false }));
     this.confetti.frustumCulled = false;
     this.confetti.visible = false;
     this.scene.add(this.confetti);
@@ -484,7 +482,8 @@ export class ThreePitchRenderer {
     this.renderer.info.reset();
     if (this.composer && this.composerActive) this.composer.render(dt);
     else this.renderer.render(this.scene, this.camera);
-    if (this.time - this.lastHud > 0.09) {
+    // The minimap follows every frame; only software rendering keeps the old 11 Hz.
+    if (this.time - this.lastHud > (this.software ? 0.09 : 0)) {
       this.drawHud(match, state, !!replay);
       this.lastHud = this.time;
     }
@@ -545,6 +544,8 @@ export class ThreePitchRenderer {
     this.models.clear();
     this.referee?.destroy();
     this.referee = null;
+    this.softDot?.dispose();
+    this.scene.environment?.dispose();
     disposeTree(this.scene);
     this.sun.shadow.dispose();
     this.renderer.renderLists.dispose();
@@ -589,14 +590,21 @@ export class ThreePitchRenderer {
     const sz = selected ? selected.y - FIELD_WIDTH / 2 : bz;
     const lead = Math.min(0.12, match.config.camera.lookAhead ?? 0.12);
     const limitX = Math.max(4, FIELD_LENGTH / 2 - 9.5), limitZ = Math.max(3, FIELD_WIDTH / 2 - 10);
-    const targetX = THREE.MathUtils.clamp(bx * 0.55 + sx * 0.45 + state.ball.vx * mirror * lead, -limitX, limitX);
+    let targetX = THREE.MathUtils.clamp(bx * 0.55 + sx * 0.45 + state.ball.vx * mirror * lead, -limitX, limitX);
     const targetZ = THREE.MathUtils.clamp(bz * 0.55 + sz * 0.45 + state.ball.vy * lead * 0.5, -limitZ, limitZ);
     // The cage is small: frame it tighter.
     const frame = match.pitch.id === 'small' ? 0.62 : 1;
     const preset = CAMERA_PRESETS[this.presetFor(match)];
     const reduced = match.config.camera.reducedMotion;
     const baseWidth = (replay && !reduced ? 34 : 48) * frame;
-    const targetWidth = Math.max(baseWidth, Math.abs(bx - sx) * 1.25 + 25 * frame) * preset.width / THREE.MathUtils.clamp(match.config.camera.zoom || 1, 0.6, 1.4);
+    let targetWidth = Math.max(baseWidth, Math.abs(bx - sx) * 1.25 + 25 * frame) * preset.width / THREE.MathUtils.clamp(match.config.camera.zoom || 1, 0.6, 1.4);
+    // Set pieces in the attacking third are framed on the goal: the camera moves towards it and closes in.
+    const restart = match.rule.phase;
+    if (!replay && (restart === 'corner' || restart === 'penalty' || restart === 'freeKick') && Math.abs(bx) > FIELD_LENGTH / 2 - 38 * frame) {
+      const goalX = Math.sign(bx) * (FIELD_LENGTH / 2);
+      targetX = THREE.MathUtils.clamp(THREE.MathUtils.lerp(bx, goalX, restart === 'penalty' ? 0.55 : 0.32), -limitX, limitX);
+      targetWidth = Math.min(targetWidth, (restart === 'penalty' ? 24 : 32) * frame * preset.width);
+    }
     if (!this.cameraInitialized || this.lastDirection !== mirror) {
       this.cameraX = targetX;
       this.cameraZ = targetZ;
@@ -746,6 +754,34 @@ export class ThreePitchRenderer {
     }
   }
 
+  /**
+   * Image-based light from the sky of this stadium instead of an indoor room: a blue dome with a warm sun and grass bounce below
+   * by day, a dark dome with bright floodlights by night. Kits, skin and the ball catch highlights that fit the scene.
+   */
+  private applySkyEnvironment(sky: { zenith: string; horizon: string }, night: boolean, sunset: boolean): void {
+    if (this.software) return;
+    const world = new THREE.Scene();
+    world.add(createSkyDome(sky.zenith, sky.horizon, 60));
+    const ground = new THREE.Mesh(new THREE.CircleGeometry(58, 24), new THREE.MeshBasicMaterial({ color: night ? '#0f2412' : '#4d8a45' }));
+    ground.rotation.x = -Math.PI / 2;
+    ground.position.y = -2;
+    world.add(ground);
+    const bright = (colour: string, strength: number, radius: number, x: number, y: number, z: number) => {
+      const lamp = new THREE.Mesh(new THREE.SphereGeometry(radius, 8, 6), new THREE.MeshBasicMaterial({ color: new THREE.Color(colour).multiplyScalar(strength) }));
+      lamp.position.set(x, y, z);
+      world.add(lamp);
+    };
+    if (night) for (const [x, z] of [[-34, -26], [34, -26], [-34, 26], [34, 26]]) bright('#e8f2ff', 7, 3.2, x, 36, z);
+    else bright(sunset ? '#ffc58a' : '#fff1d2', sunset ? 9 : 12, 5, -28, 42, 18);
+    const generator = new THREE.PMREMGenerator(this.renderer);
+    this.scene.environment?.dispose();
+    this.scene.environment = generator.fromScene(world, 0.04).texture;
+    generator.dispose();
+    disposeTree(world);
+    // Brighter than the old indoor map needed: a sky is dimmer on average than a lit room.
+    this.scene.environmentIntensity = night ? 0.5 : sunset ? 0.7 : 0.8;
+  }
+
   private buildStadium(match: ArcadeMatch): void {
     const atmosphere = match.home.visuals.stadium.atmosphere;
     const night = atmosphere === 'night';
@@ -753,7 +789,10 @@ export class ThreePitchRenderer {
     const sky = SKY[night ? 'night' : sunset ? 'sunset' : 'day'];
     const bg = sky.horizon;
     this.scene.background = new THREE.Color(bg);
-    this.scene.fog = new THREE.Fog(bg, 140, 300);
+    // Rain and storms close the view in.
+    const weather = match.config.weather;
+    this.scene.fog = new THREE.Fog(bg, weather === 'storm' ? 60 : weather === 'rain' ? 85 : 140, weather === 'storm' ? 190 : weather === 'rain' ? 230 : 300);
+    this.applySkyEnvironment(sky, night, sunset);
     this.sun.color.set(night ? '#e4efff' : sunset ? '#ffd9a0' : '#fff5df');
     // Night: floodlights from high above and a darker ambient; day: warm low sun.
     // Image-based light adds on top, so direct light is a little lower than before.
@@ -761,8 +800,9 @@ export class ThreePitchRenderer {
     this.sunHeight = night ? 95 : 75;
     this.fill.intensity = (night ? 0.7 : sunset ? 0.95 : 1.1) * (this.software ? 1.6 : 1);
     this.rim.intensity = night ? 1.0 : sunset ? 0.9 : 0.6;
+    this.fillBase = this.fill.intensity;
+    this.rimBase = this.rim.intensity;
     this.rim.color.set(sunset ? '#ffc38a' : '#d4e6ff');
-    this.scene.environmentIntensity = night ? 0.18 : 0.3;
     this.stadium.add(createSkyDome(sky.zenith, sky.horizon), createSkyline(sky.horizon, match.home.visuals.seed));
     const surround = new THREE.Mesh(new THREE.PlaneGeometry(160, 116), new THREE.MeshStandardMaterial({ color: '#204c38', roughness: 1 }));
     surround.rotation.x = -Math.PI / 2;
@@ -1062,6 +1102,11 @@ export class ThreePitchRenderer {
       (this.weather.material as THREE.LineBasicMaterial).opacity = match.config.weather === 'storm' ? 0.32 : 0.2;
     }
     if (!reduced) this.flags.forEach((cloth, i) => { cloth.rotation.y = Math.sin(this.time * (match.config.weather === 'storm' ? 6 : 3) + i * 1.7) * 0.45; });
+    if (match.config.weather === 'storm' && !reduced) {
+      const flash = lightningFlash(this.time);
+      this.fill.intensity = this.fillBase * (1 + 2.2 * flash);
+      this.rim.intensity = this.rimBase * (1 + 2 * flash);
+    }
     this.confetti.visible = !reduced && goalAge >= 0 && goalAge < 3;
     if (this.confetti.visible) {
       const pos = this.confetti.geometry.getAttribute('position') as THREE.BufferAttribute;
@@ -1089,6 +1134,30 @@ export class ThreePitchRenderer {
         pos.needsUpdate = true;
       });
     }
+  }
+
+  /** Name and stamina above the player you control. */
+  private drawPlayerTag(ctx: CanvasRenderingContext2D, match: ArcadeMatch, state: VisualState, w: number, h: number, s: number): void {
+    const model = this.models.get(state.controlledPlayerId);
+    const actor = match.actors.find(candidate => candidate.player.id === state.controlledPlayerId);
+    if (!model || !actor || !model.mesh.visible) return;
+    this.tagPoint.set(model.mesh.position.x, model.recipe.height + 0.42, model.mesh.position.z).project(this.camera);
+    if (this.tagPoint.z > 1 || Math.abs(this.tagPoint.x) > 1.1 || Math.abs(this.tagPoint.y) > 1.1) return;
+    const x = (this.tagPoint.x * 0.5 + 0.5) * w, y = (-this.tagPoint.y * 0.5 + 0.5) * h;
+    const stamina = Math.max(0, Math.min(1, actor.stamina / 100));
+    ctx.textAlign = 'center';
+    ctx.font = `700 ${11 * s}px system-ui, sans-serif`;
+    ctx.lineWidth = 3 * s;
+    ctx.strokeStyle = 'rgba(5,15,22,.85)';
+    ctx.strokeText(actor.player.lastName.toUpperCase(), x, y - 7 * s);
+    ctx.fillStyle = '#f5f6e9';
+    ctx.fillText(actor.player.lastName.toUpperCase(), x, y - 7 * s);
+    const width = 44 * s, height = 4 * s;
+    ctx.fillStyle = 'rgba(5,15,22,.78)';
+    ctx.fillRect(x - width / 2 - s, y - s, width + 2 * s, height + 2 * s);
+    ctx.fillStyle = stamina > 0.5 ? '#7be08a' : stamina > 0.25 ? '#ffd166' : '#ff6b6b';
+    ctx.fillRect(x - width / 2, y, width * stamina, height);
+    ctx.textAlign = 'left';
   }
 
   private drawHud(match: ArcadeMatch, state: VisualState, replay: boolean): void {
@@ -1132,6 +1201,7 @@ export class ThreePitchRenderer {
       const fitness = state.players.find(p => p.id === state.controlledPlayerId)?.fitness ?? 100;
       ctx.fillStyle = fitness > 45 ? '#66dbc0' : '#f0b767'; ctx.fillRect(left + 12 * s, bottom - 3 * s, (labelWidth - 24 * s) * fitness / 100, 3 * s);
     }
+    if (this.minimap && !replay && !this.celebration) this.drawPlayerTag(ctx, match, state, w, h, s);
     if (replay && !this.celebration) {
       // Cinema bars mark the replay unmistakably.
       const bar = h * 0.075;
@@ -1266,13 +1336,13 @@ function createPitchTexture(seed: number, wet: boolean): THREE.CanvasTexture {
 }
 
 /** Gradient dome: zenith colour overhead fading to the horizon (and fog) colour. */
-function createSkyDome(zenith: string, horizon: string): THREE.Mesh {
-  const geometry = new THREE.SphereGeometry(280, 24, 12);
+function createSkyDome(zenith: string, horizon: string, radius = 280): THREE.Mesh {
+  const geometry = new THREE.SphereGeometry(radius, 24, 12);
   const top = new THREE.Color(zenith), bottom = new THREE.Color(horizon), colour = new THREE.Color();
   const pos = geometry.getAttribute('position');
   const colours: number[] = [];
   for (let i = 0; i < pos.count; i++) {
-    const t = THREE.MathUtils.clamp(pos.getY(i) / 280, 0, 1);
+    const t = THREE.MathUtils.clamp(pos.getY(i) / radius, 0, 1);
     colour.copy(bottom).lerp(top, Math.pow(t, 0.6));
     colours.push(colour.r, colour.g, colour.b);
   }
@@ -1280,6 +1350,33 @@ function createSkyDome(zenith: string, horizon: string): THREE.Mesh {
   const dome = new THREE.Mesh(geometry, new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.BackSide, fog: false, depthWrite: false }));
   dome.renderOrder = -1;
   return dome;
+}
+
+/**
+ * Brightness of a lightning flash (0 to 1) at renderer time `seconds`: one bolt in every nine-second window, at a fixed
+ * offset per window, flickering for half a second. Pure, so the same time always gives the same light.
+ */
+export function lightningFlash(seconds: number): number {
+  const window = Math.floor(seconds / 9);
+  const age = seconds - (window * 9 + 1 + (hash32(`bolt-${window}`) % 100) * 0.06);
+  if (age < 0 || age >= 0.5) return 0;
+  return Math.max(0, 1 - age / 0.5) * (age < 0.12 ? 1 : 0.55 + 0.45 * Math.sin(age * 60));
+}
+
+/** A soft round dot for turf and confetti, so they are not hard squares. */
+function createSoftDot(): THREE.CanvasTexture {
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = 32;
+  const ctx = canvas.getContext('2d');
+  if (ctx) {
+    const gradient = ctx.createRadialGradient(16, 16, 1, 16, 16, 15);
+    gradient.addColorStop(0, 'rgba(255,255,255,1)');
+    gradient.addColorStop(0.55, 'rgba(255,255,255,0.85)');
+    gradient.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, 32, 32);
+  }
+  return new THREE.CanvasTexture(canvas);
 }
 
 /** A distant city silhouette beyond the stands. */

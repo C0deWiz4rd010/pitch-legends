@@ -112,16 +112,16 @@ export class AudioService {
   setChant(active:boolean):void {
     if(active===!!this.chantTimer) return;
     if(!active) { if(this.chantTimer) clearInterval(this.chantTimer); this.chantTimer=null; return; }
-    this.chantTimer=setInterval(()=>{
-      const beat=this.chantStep++%8;
-      if(beat<3 || beat===4 || beat===5) this.crowdSwell(.08,.16,beat<3?1800:900,'crowdVolume');
-      if(beat===6) this.crowdSwell(.14,.5,520,'crowdVolume');
-    },300);
+    this.chantTimer=this.startBeat(.3,(step,delay)=>{
+      const beat=step%8;
+      if(beat<3 || beat===4 || beat===5) this.crowdSwell(.08,.16,beat<3?1800:900,'crowdVolume',delay);
+      if(beat===6) this.crowdSwell(.14,.5,520,'crowdVolume',delay);
+    });
   }
   startMusic():void {
     if(this.musicTimer) return;
     const bass=[98,98,131,147,98,165,147,131];
-    this.musicTimer=setInterval(()=>{const note=bass[this.musicStep++%bass.length];this.tone(note,.14,'triangle',.07,note*.99,'musicVolume');},260);
+    this.musicTimer=this.startBeat(.26,(step,delay)=>{const note=bass[step%bass.length];this.tone(note,.14,'triangle',.07,note*.99,'musicVolume',delay);});
   }
   stopMusic():void {if(this.musicTimer) clearInterval(this.musicTimer);this.musicTimer=null;}
   startCrowd():void {
@@ -172,16 +172,25 @@ export class AudioService {
     source.onended=()=>{source.disconnect();filter.disconnect();gain.disconnect();};
   }
   /** Band-limited noise that rises and falls: a stylised crowd voice. */
-  private crowdSwell(volume:number,duration:number,centre:number,channel:Channel):void {
+  private crowdSwell(volume:number,duration:number,centre:number,channel:Channel,delay=0):void {
     const level=this.level(channel)*volume;if(level<=0) return;
     const ctx=this.audioContext();if(!ctx) return;
-    const source=ctx.createBufferSource(),filter=ctx.createBiquadFilter(),gain=ctx.createGain(),start=ctx.currentTime;
+    const source=ctx.createBufferSource(),filter=ctx.createBiquadFilter(),gain=ctx.createGain(),start=ctx.currentTime+delay;
     source.buffer=this.getNoise(ctx);source.loop=true;
     filter.type='bandpass';filter.Q.value=.9;
     filter.frequency.setValueAtTime(centre*.8,start);filter.frequency.linearRampToValueAtTime(centre*1.25,start+duration*.35);filter.frequency.linearRampToValueAtTime(centre*.9,start+duration);
     gain.gain.setValueAtTime(.0001,start);gain.gain.linearRampToValueAtTime(level,start+duration*.3);gain.gain.exponentialRampToValueAtTime(.0001,start+duration);
-    source.connect(filter).connect(gain).connect(ctx.destination);source.start();source.stop(start+duration);
+    source.connect(filter).connect(gain).connect(ctx.destination);source.start(start);source.stop(start+duration);
     source.onended=()=>{source.disconnect();filter.disconnect();gain.disconnect();};
+  }
+  /**
+   * A steady beat on the audio clock: notes are handed to the audio context a fraction of a second ahead, so a busy main thread
+   * (a goal replay, a layout) can delay the timer without ever making the rhythm stumble.
+   */
+  private startBeat(period:number,play:(index:number,delay:number)=>void):ReturnType<typeof setInterval>|null {
+    const ctx=this.audioContext();if(!ctx) return null;
+    let next=ctx.currentTime+.05,index=0;
+    return setInterval(()=>{while(next<ctx.currentTime+.3){play(index++,Math.max(0,next-ctx.currentTime));next+=period;}},80);
   }
   private tone(frequency:number,duration:number,wave:OscillatorType,volume:number,endFrequency=frequency,channel:Channel='sfxVolume',delay=0):void {
     const level=this.level(channel)*volume;if(level<=0) return;

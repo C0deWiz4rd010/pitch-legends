@@ -583,7 +583,7 @@ export class MatchPage implements OnDestroy {
       playerLockId: lockId,
       weather: this.practice ? this.exhibition?.weather ?? 'clear' : this.expectedWeather(),
       inputDevice: this.selectedMode() === 'coach' ? 'ai' : this.inputDevice(),
-      camera: { zoom: 1, lookAhead: 0.18, shake: settings?.cameraShake ?? true, reducedMotion: settings?.reducedMotion ?? false },
+      camera: { zoom: 1, lookAhead: 0.18, shake: settings?.cameraShake ?? true, reducedMotion: this.reducedMotion() },
       knockout: this.knockout(),
       smallSided: !!this.exhibition?.smallSided,
       auras: settings?.auras ?? 'on',

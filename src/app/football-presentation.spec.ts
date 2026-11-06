@@ -11,7 +11,9 @@ import { playerInCameraSpace } from './features/match/three-render-state';
 class FakeAudioContext {
   static oscillators=0;
   static stopped=0;
-  currentTime=0; sampleRate=100; state='running'; destination={};
+  // The audio clock runs with the (fake) wall clock, like a real context; the beat scheduler plans notes ahead of it.
+  get currentTime() { return Date.now() / 1000; }
+  sampleRate=100; state='running'; destination={};
   private param() {return {value:0,setValueAtTime:vi.fn(),setTargetAtTime:vi.fn(),linearRampToValueAtTime:vi.fn(),exponentialRampToValueAtTime:vi.fn()};}
   private node() {const node={connect:(_:unknown)=>node,disconnect:vi.fn(),start:vi.fn(),stop:()=>FakeAudioContext.stopped++};return node;}
   createOscillator(){FakeAudioContext.oscillators++;return {...this.node(),frequency:this.param()};}
@@ -30,10 +32,12 @@ describe('Football presentation',()=>{
     const audio=TestBed.inject(AudioService);
     audio.setVolume('sfxVolume',0);audio.setVolume('musicVolume',1);
     audio.click(); expect(FakeAudioContext.oscillators).toBe(0);
+    // The beat is planned a little ahead on the audio clock, so a few notes exist after the first timer tick.
     audio.startMusic(); vi.advanceTimersByTime(270);
-    expect(FakeAudioContext.oscillators).toBe(1);
-    audio.toggleSound(); vi.advanceTimersByTime(270);
-    expect(FakeAudioContext.oscillators).toBe(1);
+    const notes = FakeAudioContext.oscillators;
+    expect(notes).toBeGreaterThanOrEqual(1);
+    audio.toggleSound(); vi.advanceTimersByTime(600);
+    expect(FakeAudioContext.oscillators).toBe(notes);
     audio.stopMusic();
   });
   it('plays an authoritative contact once and releases the looping crowd source',()=>{
