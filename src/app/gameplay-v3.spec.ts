@@ -83,7 +83,7 @@ describe('Gameplay V3 match contracts', () => {
     expect(midpointActor.y).toBeCloseTo((previousActor.y + currentActor.y) / 2, 8);
     expect(midpoint.ball.x).toBeCloseTo((previous.ball.x + current.ball.x) / 2, 8);
 
-    const teleported = { ...current, discontinuityKey: `${current.discontinuityKey}-teleport` };
+    const teleported = { ...current, teleportEpoch: current.teleportEpoch + 1 };
     expect(interpolateMatchRenderFrame({ previous, current: teleported, alpha: 0.5, deltaSeconds: 1 / 60 })).toBe(teleported);
   });
 

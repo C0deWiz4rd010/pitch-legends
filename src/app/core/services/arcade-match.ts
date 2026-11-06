@@ -133,6 +133,8 @@ export class ArcadeMatch {
   /** Full pitch, or the five-a-side cage with boards instead of touchlines and no offside. */
   readonly pitch: PitchGeometry;
   readonly actors: ArcadeActor[] = [];
+  /** Render-only: bumped when players or the ball are placed instead of moved, so frames are not interpolated across it. */
+  private teleportEpoch = 0;
   private ownerCache: ArcadeActor | undefined;
   readonly ball: ArcadeBall = {
     x: FIELD_LENGTH / 2,
@@ -475,6 +477,7 @@ export class ArcadeMatch {
    * others off the pitch and starts open play, or a penalty / free kick for the given side.
    */
   setupScenario(setup: ScenarioSetup): void {
+    this.teleportEpoch++;
     applyPitch(this.pitch);
     const listed = new Map<ArcadeActor, { x: number; y: number }>();
     for (const side of ['home', 'away'] as const) {
@@ -557,6 +560,7 @@ export class ArcadeMatch {
   }
 
   private substitute(side: Side, outId: string, inId: string): boolean {
+    this.teleportEpoch++;
     const managed = side === this.controlledSide;
     const budget = managed ? { used: this.subsUsed, windows: this.substitutionWindows, lastAt: this.lastSubAt }
       : (this.football.opponentSubs ??= { used: 0, windows: 0, lastAt: -100 });
@@ -641,14 +645,11 @@ export class ArcadeMatch {
 
   /** Pass a frame that is no longer displayed to reuse its objects. */
   renderState(reuse?: MatchRenderState): MatchRenderState {
-    let activeSignature = '';
-    for (const actor of this.actors) if (actor.active) activeSignature += actor.player.id + ',';
-    const discontinuityKey = `${this.half}|${this.phase}|${this.rule.phase}|${this.homeScore}:${this.awayScore}|${activeSignature}`;
     if (reuse) {
       reuse.tick = this.tick;
       reuse.controlledPlayerId = this.selectedPlayerId;
       reuse.attackDirection = this.currentAttackDirection;
-      reuse.discontinuityKey = discontinuityKey;
+      reuse.teleportEpoch = this.teleportEpoch;
       writeBallSnapshot(this.ball, reuse.ball);
       writePlayers(this.actors, reuse.players);
       return reuse;
@@ -657,7 +658,7 @@ export class ArcadeMatch {
       tick: this.tick,
       controlledPlayerId: this.selectedPlayerId,
       attackDirection: this.currentAttackDirection,
-      discontinuityKey,
+      teleportEpoch: this.teleportEpoch,
       ball: this.ballSnapshot(),
       players: this.actors.map((actor) => this.actorSnapshot(actor)),
     };
@@ -762,6 +763,7 @@ export class ArcadeMatch {
       this.initAttrs(actor);
       this.applyActorSnapshot(actor, saved);
     }
+    this.teleportEpoch++;
     Object.assign(this.ball, checkpoint.ball);
     this.tick = checkpoint.tick;
     this.restoreEffects(checkpoint.runtime.effects);
@@ -1960,6 +1962,7 @@ export class ArcadeMatch {
   }
 
   private setRestart(phase: RuleState['phase'], side: Side, x: number, y: number, indirect = false): void {
+    this.teleportEpoch++;
     this.football.queuedAction = null;
     this.football.offsideCandidates = [];
     this.football.restartRelease = null;
@@ -2122,6 +2125,7 @@ export class ArcadeMatch {
   }
 
   private resetKickoff(side: Side): void {
+    this.teleportEpoch++;
     this.football.restartRelease = null;
     this.football.queuedAction = null;
     for (const actor of this.actors) {
@@ -2301,7 +2305,7 @@ export class ArcadeMatch {
         else if (list.length < 48) list.push({ x: round(x, 1), y: round(y, 1), weight: 1 });
       }
     }
-    if (this.config.mode !== 'instant' && this.tick % 30 === 0) this.safeSnapshot = this.snapshot();
+    if (this.config.mode !== 'instant' && this.tick % 30 === 0) this.safeSnapshot = this.snapshotInto(this.safeSnapshot);
   }
 
   private updatePossessionStats(dt: number): void {
@@ -2385,6 +2389,7 @@ export class ArcadeMatch {
   }
 
   private applySnapshot(snapshot: MatchSnapshot): void {
+    this.teleportEpoch++;
     this.tick = snapshot.tick;
     this.elapsed = snapshot.elapsed;
     this.homeScore = snapshot.homeScore;

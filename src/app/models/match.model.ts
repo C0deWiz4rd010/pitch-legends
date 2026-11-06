@@ -316,7 +316,8 @@ export interface MatchRenderState {
   tick: number;
   controlledPlayerId: string;
   attackDirection: 1 | -1;
-  discontinuityKey: string;
+  /** Bumps whenever players or ball are placed rather than moved (restarts, kick-off, substitutions, restores). */
+  teleportEpoch: number;
   ball: BallSnapshot;
   players: PlayerRuntimeSnapshot[];
 }

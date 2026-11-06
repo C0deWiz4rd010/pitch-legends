@@ -8,6 +8,7 @@ export class TickInputBuffer {
   private readonly sources = new Map<string, { button: BufferedButton; active: boolean }>();
   private readonly queues = new Map<BufferedButton, { active: boolean; at: number }[]>();
   private readonly consumed = new Map<BufferedButton, boolean>();
+  private consumedAt = Infinity;
 
   set(source: string, button: BufferedButton, active: boolean, at: number): void {
     const before = this.held(button);
@@ -29,12 +30,19 @@ export class TickInputBuffer {
         this.consumed.set(button, queue.shift()!.active);
       }
       const edge = queue?.shift();
-      if (edge) this.consumed.set(button, edge.active);
+      if (edge) { this.consumed.set(button, edge.active); this.consumedAt = Math.min(this.consumedAt, edge.at); }
       else if (!queue?.length) this.consumed.set(button, this.held(button));
       command[button] = this.consumed.get(button) ?? false;
     }
     command.keeperRush = command.through;
     return command;
+  }
+
+  /** Timestamp of the oldest button edge consumed since the last call (for input-to-frame latency), or null. */
+  takeConsumedAt(): number | null {
+    const at = this.consumedAt;
+    this.consumedAt = Infinity;
+    return at === Infinity ? null : at;
   }
 
   clear(): void { this.sources.clear(); this.queues.clear(); this.consumed.clear(); }

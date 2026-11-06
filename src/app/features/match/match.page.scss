@@ -159,6 +159,8 @@ kbd { min-width: 68px; padding: 5px; border: 1px solid var(--border); background
 .sb-score b { padding: 6px 9px; background: var(--bg-900); color: var(--accent); font: 10px var(--font-display); }
 
 .match-shell { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(240px, .55fr); gap: 14px; align-items: start; min-width: 0; }
+/* Half-time keeps the canvas and its WebGL context alive; only the view is parked. */
+.match-shell.match-shell--parked { display: none !important; }
 .pitch-panel { min-width: 0; }
 .canvas-wrap { position: relative; overflow: hidden; aspect-ratio: 16 / 9; border: 2px solid var(--border); background: var(--ink-950); box-shadow: var(--shadow-2); }
 canvas { display: block; width: 100%; height: 100%; image-rendering: auto; touch-action: none; }

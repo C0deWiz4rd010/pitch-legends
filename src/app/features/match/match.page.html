@@ -176,8 +176,8 @@
   </header>
 }
 
-@if (phase() === 'match') {
-  <section class="match-shell fade-up">
+@if (phase() === 'match' || phase() === 'halftime') {
+  <section class="match-shell fade-up" [class.match-shell--parked]="phase() === 'halftime'">
     <div class="pitch-panel">
       <div class="canvas-wrap">
         <canvas #pitch aria-label="Live football pitch"></canvas>

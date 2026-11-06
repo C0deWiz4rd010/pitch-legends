@@ -66,7 +66,7 @@ export class StartComponent {
 
   readonly hasSave = signal(this.saves.hasSave());
   /** Resolved against the base href, so the art also loads when the game is served from a sub-path. */
-  protected readonly stadiumArt = `url(${new URL('assets/pixel/stadium-night.png', document.baseURI).href})`;
+  protected readonly stadiumArt = `url(${new URL('assets/pixel/stadium-night.jpg', document.baseURI).href})`;
   protected readonly confirmDiscard = signal(false);
   readonly hasLegacySave = this.saves.hasLegacySave();
 

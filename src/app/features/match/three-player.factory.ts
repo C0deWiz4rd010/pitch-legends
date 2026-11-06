@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
 import { PlayerVisualIdentity, KitDesign } from '../../models/visual.model';
 import { PlayerRuntimeSnapshot } from '../../models/match.model';
 import { hash32 } from '../../core/visual-identity';
@@ -88,8 +89,11 @@ class SkinGeometry {
     geometry.setAttribute('color', new THREE.Float32BufferAttribute(this.colors, 3));
     geometry.setAttribute('skinIndex', new THREE.Uint16BufferAttribute(this.skinIndices, 4));
     geometry.setAttribute('skinWeight', new THREE.Float32BufferAttribute(this.skinWeights, 4));
-    geometry.computeBoundingSphere();
-    return geometry;
+    // Smooth-shaded primitives (head, hair, eyes) repeat vertices once per triangle; indexing shares them and cuts skinning work.
+    const indexed = mergeVertices(geometry, 1e-4);
+    geometry.dispose();
+    indexed.computeBoundingSphere();
+    return indexed;
   }
 }
 
@@ -344,6 +348,13 @@ export function placeFoot(model: ProceduralFootballer, side: 'left' | 'right', x
 const KICK_ACTIONS: ReadonlySet<string> = new Set(['pass', 'through-pass', 'lob', 'shot', 'low-shot', 'finesse-shot', 'chip-shot', 'keeper-kick', 'knock-on']);
 const BLEND_SECONDS = 0.14;
 const BLEND_TARGET = new THREE.Quaternion();
+// Scratch for keeper and contact IK, which run every frame for several players.
+const KEEPER_TARGET = new THREE.Vector3();
+const CATCH_POINT = new THREE.Vector3(0, 1.10, .35);
+const IK_ORIGIN = new THREE.Vector3(), IK_DESTINATION = new THREE.Vector3(), IK_DELTA = new THREE.Vector3();
+const IK_POLE = new THREE.Vector3(), IK_ELBOW = new THREE.Vector3(), IK_LOCAL = new THREE.Vector3(), IK_CHILD = new THREE.Vector3();
+const IK_OLD_ARM = new THREE.Quaternion(), IK_OLD_ELBOW = new THREE.Quaternion();
+const CONTACT_OLD = [new THREE.Quaternion(), new THREE.Quaternion(), new THREE.Quaternion()];
 
 /** Presentation-only memory per figure: last pose for cross-fades and facing for turn lean. */
 interface PoseMemory {
@@ -555,7 +566,7 @@ export function poseFootballer(model: ProceduralFootballer, state: PlayerRuntime
     }
     const source=state.actionTarget ?? (state.contact?.kind==='hand'?state.contact:undefined);
     const dx=(source?.x ?? state.x)-state.x,dy=(source?.y ?? state.y+.35)-state.y;
-    const target=new THREE.Vector3(dx*state.facingY-dy*state.facingX,source?.z ?? 1.1,dx*state.facingX+dy*state.facingY);
+    const target=KEEPER_TARGET.set(dx*state.facingY-dy*state.facingX,source?.z ?? 1.1,dx*state.facingX+dy*state.facingY);
     if(state.action==='keeper-dive') {
       const extent=THREE.MathUtils.smoothstep(age,0,.20)*(1-THREE.MathUtils.smoothstep(age,.52,1.10));
       const sign=Math.sign(target.x)||1;
@@ -567,17 +578,17 @@ export function poseFootballer(model: ProceduralFootballer, state: PlayerRuntime
       j.rightThigh.rotation.x=THREE.MathUtils.lerp(j.rightThigh.rotation.x,-.35,extent);
       j.leftShin.rotation.x=THREE.MathUtils.lerp(j.leftShin.rotation.x,.45,extent);
       j.rightShin.rotation.x=THREE.MathUtils.lerp(j.rightShin.rotation.x,.60,extent);
-      pointHand(model,'left',target.clone().add(new THREE.Vector3(.07,0,0)),extent);
-      pointHand(model,'right',target.clone().add(new THREE.Vector3(-.07,0,0)),extent);
+      pointHand(model,'left',target,extent,.07);
+      pointHand(model,'right',target,extent,-.07);
     } else if(state.action==='keeper-catch') {
       const gather=THREE.MathUtils.smoothstep(age,0,.22);
-      target.lerp(new THREE.Vector3(0,1.10,.35),gather);
-      pointHand(model,'left',target.clone().add(new THREE.Vector3(.08,0,-.025)),1);
-      pointHand(model,'right',target.clone().add(new THREE.Vector3(-.08,0,-.025)),1);
+      target.lerp(CATCH_POINT,gather);
+      pointHand(model,'left',target,1,.08,-.025);
+      pointHand(model,'right',target,1,-.08,-.025);
     } else if(state.action==='keeper-parry') {
       const weight=1-THREE.MathUtils.smoothstep(age,.12,.65);
-      pointHand(model,'left',target.clone().add(new THREE.Vector3(.08,0,0)),weight);
-      pointHand(model,'right',target.clone().add(new THREE.Vector3(-.08,0,0)),weight);
+      pointHand(model,'left',target,weight,.08);
+      pointHand(model,'right',target,weight,-.08);
     } else if(state.action==='keeper-throw') {
       const weight=1-THREE.MathUtils.smoothstep(age,.15,.45);
       j.rightArm.rotation.x=-1.3*weight;j.rightForearm.rotation.x=-.25*weight;
@@ -595,9 +606,11 @@ export function poseFootballer(model: ProceduralFootballer, state: PlayerRuntime
       const targetDrop = Math.sqrt(Math.max(0.2, maximumReach * maximumReach - distance * distance));
       j.hips.position.y = Math.min(j.hips.position.y, 0.11 + targetDrop);
       const thigh = j[`${contact.foot}Thigh`], shin = j[`${contact.foot}Shin`], foot = j[`${contact.foot}Foot`];
-      const old = [thigh.quaternion.clone(), shin.quaternion.clone(), foot.quaternion.clone()];
+      CONTACT_OLD[0].copy(thigh.quaternion); CONTACT_OLD[1].copy(shin.quaternion); CONTACT_OLD[2].copy(foot.quaternion);
       placeFoot(model, contact.foot, lateral, 0.11, forward);
-      [thigh, shin, foot].forEach((bone, i) => bone.quaternion.copy(old[i].slerp(bone.quaternion, weight)));
+      thigh.quaternion.copy(CONTACT_OLD[0].slerp(thigh.quaternion, weight));
+      shin.quaternion.copy(CONTACT_OLD[1].slerp(shin.quaternion, weight));
+      foot.quaternion.copy(CONTACT_OLD[2].slerp(foot.quaternion, weight));
     }
   }
   if (state.action === 'celebrate') poseCelebration(model, age, reducedMotion);
@@ -648,22 +661,23 @@ function poseCelebration(model: ProceduralFootballer, age: number, reducedMotion
 }
 
 /** Two-link arm aiming preserves elbow length and solves in the current chest frame. */
-function pointHand(model:ProceduralFootballer,side:'left'|'right',target:THREE.Vector3,weight:number):void {
+function pointHand(model:ProceduralFootballer,side:'left'|'right',target:THREE.Vector3,weight:number,offsetX=0,offsetZ=0):void {
   const arm=model.joints[`${side}Arm`],elbow=model.joints[`${side}Forearm`],hand=model.joints[`${side}Hand`];
-  const oldArm=arm.quaternion.clone(),oldElbow=elbow.quaternion.clone();
+  IK_OLD_ARM.copy(arm.quaternion);IK_OLD_ELBOW.copy(elbow.quaternion);
   model.mesh.updateMatrixWorld(true);
-  const origin=arm.getWorldPosition(new THREE.Vector3()),destination=model.mesh.localToWorld(target.clone());
-  const delta=destination.clone().sub(origin),upper=elbow.position.length(),lower=hand.position.length();
+  const origin=arm.getWorldPosition(IK_ORIGIN);
+  const destination=model.mesh.localToWorld(IK_DESTINATION.copy(target).add(IK_LOCAL.set(offsetX,0,offsetZ)));
+  const delta=IK_DELTA.copy(destination).sub(origin),upper=elbow.position.length(),lower=hand.position.length();
   const distance=THREE.MathUtils.clamp(delta.length(),.001,upper+lower-.001),direction=delta.normalize();
-  const pole=new THREE.Vector3(side==='left'?1:-1,-1,-.4).transformDirection(model.mesh.matrixWorld);
+  const pole=IK_POLE.set(side==='left'?1:-1,-1,-.4).transformDirection(model.mesh.matrixWorld);
   const bend=pole.addScaledVector(direction,-pole.dot(direction)).normalize();
   const cosine=THREE.MathUtils.clamp((upper*upper+distance*distance-lower*lower)/(2*upper*distance),-1,1);
-  const elbowTarget=origin.clone().addScaledVector(direction,upper*cosine).addScaledVector(bend,upper*Math.sqrt(1-cosine*cosine));
+  const elbowTarget=IK_ELBOW.copy(origin).addScaledVector(direction,upper*cosine).addScaledVector(bend,upper*Math.sqrt(1-cosine*cosine));
   const aim=(bone:THREE.Bone,child:THREE.Bone,world:THREE.Vector3)=>{
-    const local=bone.parent!.worldToLocal(world.clone()).sub(bone.position).normalize();
-    bone.quaternion.setFromUnitVectors(child.position.clone().normalize(),local);
+    const local=bone.parent!.worldToLocal(IK_LOCAL.copy(world)).sub(bone.position).normalize();
+    bone.quaternion.setFromUnitVectors(IK_CHILD.copy(child.position).normalize(),local);
     model.mesh.updateMatrixWorld(true);
   };
   aim(arm,elbow,elbowTarget);aim(elbow,hand,destination);
-  arm.quaternion.copy(oldArm.slerp(arm.quaternion,weight));elbow.quaternion.copy(oldElbow.slerp(elbow.quaternion,weight));
+  arm.quaternion.copy(IK_OLD_ARM.slerp(arm.quaternion,weight));elbow.quaternion.copy(IK_OLD_ELBOW.slerp(elbow.quaternion,weight));
 }

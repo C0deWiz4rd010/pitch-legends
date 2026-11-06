@@ -5,6 +5,7 @@ import { ArcadeActor, ArcadeMatch, FIELD_LENGTH, FIELD_WIDTH, GOAL_WIDTH, GOAL_H
 import { resolveMatchKits, MatchKitSelection } from '../../core/kit-visuals';
 import { hash32 } from '../../core/visual-identity';
 import { MatchRenderFrame, MatchRenderState, MatchSnapshot, PlayerRuntimeSnapshot } from '../../models/match.model';
+import { MATCH_TICK } from '../../core/football/match-types';
 import { createProceduralFootballer, poseFootballer, ProceduralFootballer } from './three-player.factory';
 import { interpolateThreeFrame, playerInCameraSpace, RenderInterpolationScratch } from './three-render-state';
 import { usesSoftwareGraphics } from './graphics-capabilities';
@@ -63,6 +64,8 @@ export class ThreePitchRenderer {
   /** Back light from the far stand separates players from the grass. */
   private readonly rim = new THREE.DirectionalLight('#d4e6ff', 0.9);
   private composer: EffectComposer | null = null;
+  /** The composer outlives quality changes (rebuilding it mid-match stalls); it only draws on the high profile. */
+  private composerActive = false;
   private bloom: UnrealBloomPass | null = null;
   private readonly flags: THREE.Mesh[] = [];
   private turf!: THREE.Points;
@@ -89,7 +92,7 @@ export class ThreePitchRenderer {
   private readonly auraColor = new THREE.Color();
   private readonly auraRarity = new Map<string, Rarity>();
   /** Players whose signature is awake this frame; their ring flares. */
-  private readonly awakeIds = new Set<string>();
+  private awakeIds = new Set<string>();
   private previousAwake = new Set<string>();
   /** Expanding rings where a Legendary or Mythic signature just woke up. */
   private readonly flares: { id: string; age: number; color: string }[] = [];
@@ -103,6 +106,14 @@ export class ThreePitchRenderer {
   private readonly ribbonAxis = new THREE.Vector3();
   private readonly ribbonSide = new THREE.Vector3();
   private readonly ballPosition = new THREE.Vector3();
+  private readonly spinAxis = new THREE.Vector3();
+  private readonly spinQuat = new THREE.Quaternion();
+  private readonly camPosition = new THREE.Vector3();
+  private readonly camLook = new THREE.Vector3();
+  private readonly camIntro = new THREE.Vector3();
+  /** Simulation time shown so far: pose blends and the ball roll follow it, so slow motion slows them too. */
+  private poseClock = 0;
+  private lastStateTick = -1;
   private readonly hud: HTMLCanvasElement;
   private readonly hudContext: CanvasRenderingContext2D | null;
   private readonly resizeObserver: ResizeObserver | null;
@@ -131,6 +142,8 @@ export class ThreePitchRenderer {
   private time = 0;
   private goalTime = -100;
   private netImpulse = 0;
+  /** Scene side of the net that was hit: -1 or 1, indexing goalNets 0 and 1. */
+  private netSide = 1;
   private cameraX = 0;
   private cameraZ = 0;
   private viewWidth = 91;
@@ -332,6 +345,7 @@ export class ThreePitchRenderer {
     this.shake = Math.max(this.shake, 0.5);
     this.replayVariant = (this.replayVariant + 1) % 3;
     const side = this.ball.position.x >= 0 ? 1 : -1;
+    this.netSide = side;
     for (let i = 0; i < 160; i++) {
       this.confettiOrigins.set([side * (FIELD_LENGTH / 2 + .5), 0.2 + i % 4, (i % 2 ? -1 : 1) * (5 + i % 7)], i * 3);
       this.confettiVelocity.set([((hash32(`gx${i}`) % 100) / 100 - 0.5) * 7, 4 + (hash32(`gy${i}`) % 80) / 10, ((hash32(`gz${i}`) % 100) / 100 - 0.5) * 8], i * 3);
@@ -352,6 +366,11 @@ export class ThreePitchRenderer {
     if (!dt) return;
     const state = replay ?? (frame ? interpolateThreeFrame(frame, this.interpolation) : match.renderState());
     this.time += dt;
+    const tickDelta = this.lastStateTick < 0 ? 0 : state.tick - this.lastStateTick;
+    this.lastStateTick = state.tick;
+    // Pauses and jumps (replay start, restores) advance nothing; live play and slow motion advance by the ticks shown.
+    const simDt = tickDelta > 0 && tickDelta <= 12 ? tickDelta * MATCH_TICK : 0;
+    this.poseClock += simDt;
     this.ensureMatch(match);
     this.updateCamera(match, state, dt, !!replay);
     this.camera.updateMatrixWorld();
@@ -362,13 +381,16 @@ export class ThreePitchRenderer {
     let index = 0;
     let auraIndex = 0;
     const auraMode = this.quality === 'low' || this.software ? 'off' : match.config.auras ?? 'on';
+    // Last frame's set becomes the previous one; swapping avoids a new Set per frame.
+    const lastAwake = this.awakeIds;
+    this.awakeIds = this.previousAwake;
+    this.previousAwake = lastAwake;
     this.awakeIds.clear();
     if (auraMode !== 'off') for (const actor of match.actors) if (actor.sig) for (const runtime of actor.sig) if (runtime.awake) { this.awakeIds.add(actor.player.id); break; }
     for (const id of this.awakeIds) {
       const rarity = this.auraRarity.get(id);
       if (!this.previousAwake.has(id) && (rarity === 'legendary' || rarity === 'mythic') && this.flares.length < 8) this.flares.push({ id, age: 0, color: RARITY_DEFS[rarity].aura });
     }
-    this.previousAwake = new Set(this.awakeIds);
     this.aura.material.opacity = auraMode === 'subtle' ? 0.38 : 0.75;
     for (const model of this.models.values()) model.mesh.visible = false;
     for (const player of state.players) {
@@ -380,7 +402,7 @@ export class ThreePitchRenderer {
       this.cullSphere.center.copy(model.mesh.position).setY(1);
       if (!this.cullFrustum.intersectsSphere(this.cullSphere)) { model.mesh.visible = false; continue; }
       model.mesh.rotation.y = Math.atan2(player.facingX * mirror, player.facingY);
-      poseFootballer(model, playerInCameraSpace(player,mirror,this.mirroredPlayer), state.tick, this.time, match.config.camera.reducedMotion,player.id===state.controlledPlayerId&&!replay?match.actionPower:0, lookAt);
+      poseFootballer(model, playerInCameraSpace(player,mirror,this.mirroredPlayer), state.tick, this.poseClock, match.config.camera.reducedMotion,player.id===state.controlledPlayerId&&!replay?match.actionPower:0, lookAt);
       if (player.action === 'slide' && state.tick - player.actionStartedTick < 3 && this.turfSpawned.get(player.id) !== player.actionStartedTick) {
         this.turfSpawned.set(player.id, player.actionStartedTick);
         this.spawnTurf(model.mesh.position.x, model.mesh.position.z, 12, 3.2);
@@ -443,12 +465,12 @@ export class ThreePitchRenderer {
     this.shadow.instanceMatrix.needsUpdate = true;
     this.selection.visible = !!this.models.get(state.controlledPlayerId)?.mesh.visible;
     this.arrow.visible = this.selection.visible;
-    this.updateBall(state, dt, !!replay);
+    this.updateBall(state, dt, simDt, !!replay);
     this.updateAtmosphere(match, dt);
     this.updateTurf(dt);
     if (this.bloom) this.bloom.strength = 0.25 + Math.max(0, 1 - (this.time - this.goalTime) / 1.5) * 0.45;
     this.renderer.info.reset();
-    if (this.composer) this.composer.render(dt);
+    if (this.composer && this.composerActive) this.composer.render(dt);
     else this.renderer.render(this.scene, this.camera);
     if (this.time - this.lastHud > 0.09) {
       this.drawHud(match, state, !!replay);
@@ -479,12 +501,10 @@ export class ThreePitchRenderer {
   private configureComposer(): void {
     const wanted = this.quality === 'high' && !this.software;
     (this.shadow.material as THREE.MeshBasicMaterial).opacity = this.quality === 'high' ? 0.14 : 0.30;
-    if (!wanted) {
-      this.composer?.dispose();
-      this.composer = null;
-      this.bloom = null;
-      return;
-    }
+    // On the shadow-map profile the ball already casts a real shadow; its blob only keeps it readable.
+    (this.ballShadow.material as THREE.MeshBasicMaterial).opacity = this.quality === 'high' ? 0.18 : 0.50;
+    this.composerActive = wanted;
+    if (!wanted) return;
     if (this.composer) return;
     const target = new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, samples: 4 });
     const composer = new EffectComposer(this.renderer, target);
@@ -527,11 +547,15 @@ export class ThreePitchRenderer {
     this.renderer.setPixelRatio(this.pixelRatio);
     this.renderer.setSize(this.width, this.height, false);
     if (this.composer) {
-      this.composer.setPixelRatio(this.pixelRatio);
-      this.composer.setSize(this.width, this.height);
-      this.bloom?.resolution.set(this.width / 2, this.height / 2);
+      // An idle composer keeps its shaders but shrinks its MSAA target to a single pixel.
+      const w = this.composerActive ? this.width : 1, h = this.composerActive ? this.height : 1;
+      this.composer.setPixelRatio(this.composerActive ? this.pixelRatio : 1);
+      this.composer.setSize(w, h);
+      this.bloom?.resolution.set(w / 2, h / 2);
     }
-    this.hud.width = Math.round(Math.min(1600, Math.max(640, this.width)));
+    // The HUD canvas follows the device pixel ratio (capped at 2), so text and minimap stay sharp on HiDPI screens.
+    const hudRatio = Math.min(window.devicePixelRatio || 1, 2);
+    this.hud.width = Math.round(Math.min(2400, Math.max(640, this.width * hudRatio)));
     this.hud.height = Math.round(this.hud.width * this.height / this.width);
     this.lastHud = -1;
     this.updateFrustum();
@@ -583,25 +607,25 @@ export class ThreePitchRenderer {
     const distance = width / Math.max(1.1,this.width/this.height) / (2*Math.tan(THREE.MathUtils.degToRad(fov/2)));
     const angle = THREE.MathUtils.degToRad(pitch);
     const standZ = focusZ * stand;
-    let position = new THREE.Vector3(focusX, distance * Math.sin(angle), standZ + distance * Math.cos(angle));
-    let look = new THREE.Vector3(focusX, 0, THREE.MathUtils.lerp(standZ, focusZ, 0.7));
+    const position = this.camPosition.set(focusX, distance * Math.sin(angle), standZ + distance * Math.cos(angle));
+    const look = this.camLook.set(focusX, 0, THREE.MathUtils.lerp(standZ, focusZ, 0.7));
     if (replay && !celebration && !reduced && this.replayVariant > 0) {
       const goalSide = Math.sign(bx) || 1;
       if (this.replayVariant === 1) {
         // Behind the goal, looking back up the pitch at the finish.
-        position = new THREE.Vector3(goalSide * (FIELD_LENGTH / 2 + 10), 4.2, bz * 0.3);
-        look = new THREE.Vector3(bx - goalSide * 6, 0.8, bz);
+        position.set(goalSide * (FIELD_LENGTH / 2 + 10), 4.2, bz * 0.3);
+        look.set(bx - goalSide * 6, 0.8, bz);
         fov = 42;
       } else {
         // Low touchline camera level with the ball.
-        position = new THREE.Vector3(this.cameraX * 0.85, 2.6, FIELD_WIDTH / 2 + 7);
-        look = new THREE.Vector3(this.cameraX, 0.7, this.cameraZ);
+        position.set(this.cameraX * 0.85, 2.6, FIELD_WIDTH / 2 + 7);
+        look.set(this.cameraX, 0.7, this.cameraZ);
         fov = 34;
       }
     } else if (!replay && !reduced && this.time < 2.6) {
       // Opening sweep over the ground before kick-off.
       const intro = 1 - THREE.MathUtils.smoothstep(this.time, 0.2, 2.6);
-      position.lerp(new THREE.Vector3(-58 + this.time * 12, 36, 62), intro);
+      position.lerp(this.camIntro.set(-58 + this.time * 12, 36, 62), intro);
     }
     if (this.shake > 0.001 && match.config.camera.shake && !reduced) {
       position.x += Math.sin(this.time * 71) * this.shake * 0.22;
@@ -959,16 +983,24 @@ export class ThreePitchRenderer {
     this.stadium.add(bodies, heads);
   }
 
-  private updateBall(state: VisualState, dt: number, replay: boolean): void {
+  private updateBall(state: VisualState, dt: number, simDt: number, replay: boolean): void {
     const x = (state.ball.x - FIELD_LENGTH / 2) * state.attackDirection;
     const z = state.ball.y - FIELD_WIDTH / 2;
     const h = Math.max(0, state.ball.z);
     const next = this.ballPosition.set(x, Math.max(0.11, h), z);
     const travelled = next.distanceTo(this.ball.position);
     this.ball.position.copy(next);
-    this.ball.rotation.x += state.ball.vy * dt / 0.11;
-    this.ball.rotation.z -= state.ball.vx * state.attackDirection * dt / 0.11;
-    this.ball.rotation.y += state.ball.spin * dt;
+    if (simDt > 0) {
+      // Roll about the axis perpendicular to the travel direction, in simulation time; Euler x/z drifted on diagonals.
+      const rollX = state.ball.vx * state.attackDirection, rollZ = state.ball.vy;
+      const rollSpeed = Math.hypot(rollX, rollZ);
+      if (rollSpeed > 1e-3) {
+        this.spinAxis.set(rollZ / rollSpeed, 0, -rollX / rollSpeed);
+        this.ball.quaternion.premultiply(this.spinQuat.setFromAxisAngle(this.spinAxis, rollSpeed * simDt / 0.11));
+      }
+      if (state.ball.spin) this.ball.quaternion.premultiply(this.spinQuat.setFromAxisAngle(this.spinAxis.set(0, 1, 0), state.ball.spin * simDt));
+      this.ball.quaternion.normalize();
+    }
     this.ballShadow.position.set(x, 0.02, z);
     this.ballShadow.scale.setScalar(1 + h * 0.15);
     this.ballHalo.position.set(x, 0.025, z);
@@ -1023,6 +1055,8 @@ export class ThreePitchRenderer {
     if (this.netImpulse > 0) {
       this.netImpulse = Math.max(0, this.netImpulse - dt * 0.65);
       this.goalNets.forEach((mesh, index) => {
+        // Only the net that was hit moves.
+        if ((index === 1) !== (this.netSide > 0)) return;
         const rest = this.netRestPositions[index];
         const pos = mesh.geometry.getAttribute('position') as THREE.BufferAttribute;
         for (let i = 0; i < pos.count; i++) {
@@ -1040,7 +1074,8 @@ export class ThreePitchRenderer {
     if (!ctx) return;
     const w = this.hud.width, h = this.hud.height;
     ctx.clearRect(0, 0, w, h);
-    const s = Math.max(0.72, Math.min(1.1, w / 1000));
+    // Layout scale from the CSS width, times the canvas-to-CSS pixel ratio.
+    const s = Math.max(0.72, Math.min(1.1, this.width / 1000)) * (w / this.width);
     const touch = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
     const bottomInset = touch ? 0 : 55;
     const mapW = 150 * s, mapH = mapW * FIELD_WIDTH / FIELD_LENGTH;
@@ -1084,7 +1119,10 @@ export class ThreePitchRenderer {
       ctx.fillText('●  REPLAY', 22 * s, bar + 24 * s);
     }
     if (!replay && match.rule.phase !== 'playing' && match.rule.phase !== 'advantage') {
-      const names: Record<string, string> = { kickoff: 'ANSTOSS', freeKick: 'FREISTOSS', corner: 'ECKBALL', throwIn: 'EINWURF', goalKick: 'ABSTOSS', penalty: 'ELFMETER' };
+      const english = typeof document !== 'undefined' && document.documentElement.lang === 'en';
+      const names: Record<string, string> = english
+        ? { kickoff: 'KICK-OFF', freeKick: 'FREE KICK', corner: 'CORNER', throwIn: 'THROW-IN', goalKick: 'GOAL KICK', penalty: 'PENALTY' }
+        : { kickoff: 'ANSTOSS', freeKick: 'FREISTOSS', corner: 'ECKBALL', throwIn: 'EINWURF', goalKick: 'ABSTOSS', penalty: 'ELFMETER' };
       const label = names[match.rule.phase];
       if (label) {
         ctx.font = `600 ${13 * s}px system-ui, sans-serif`; ctx.textAlign = 'center';
@@ -1101,7 +1139,7 @@ export class ThreePitchRenderer {
     ctx.clearRect(0, 0, this.hud.width, this.hud.height);
     ctx.fillStyle = 'rgba(8,22,33,.85)'; ctx.fillRect(0, 0, this.hud.width, this.hud.height);
     ctx.fillStyle = '#fff1c9'; ctx.textAlign = 'center'; ctx.font = '600 20px system-ui';
-    ctx.fillText('Grafik wird wiederhergestellt …', this.hud.width / 2, this.hud.height / 2);
+    ctx.fillText(document.documentElement.lang === 'en' ? 'Restoring graphics …' : 'Grafik wird wiederhergestellt …', this.hud.width / 2, this.hud.height / 2);
     ctx.textAlign = 'left';
   }
 

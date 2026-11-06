@@ -56,7 +56,7 @@ import { TravelService } from '../../core/services/travel.service';
 import { BufferedButton, TickInputBuffer } from '../../core/football/tick-input';
 import { MatchMetrics } from '../../core/football/match-metrics';
 import { createPracticeTeams } from '../../core/football/practice';
-import { interpolateThreeReplay } from './three-render-state';
+import { interpolateThreeReplay, RenderInterpolationScratch } from './three-render-state';
 import { replayPlayback } from './replay-playback';
 import { SubstitutionPanelComponent, PitchEntry } from '../../shared/components/substitution-panel.component';
 import { ConfirmDialogComponent } from '../../shared/components/confirm-dialog.component';
@@ -211,6 +211,9 @@ export class MatchPage implements OnDestroy {
   private raf = 0;
   private lastTs = 0;
   private fixedAccumulator = 0;
+  private lastChallengeHudAt = 0;
+  private readonly replayScratch: RenderInterpolationScratch = { players: [], owned: [] };
+  private celebrationCache: { frame: MatchSnapshot; scorerId: string; mates: Set<string>; out: MatchSnapshot } | null = null;
   private previousRenderState: MatchRenderState | null = null;
   private currentRenderState: MatchRenderState | null = null;
   private lastViewSync = 0;
@@ -708,7 +711,7 @@ export class MatchPage implements OnDestroy {
       const playback = replayPlayback(frames.length, Math.max(0, this.replayElapsed - celebrate), reduced);
       const current = this.currentRenderState ?? this.arcade.renderState();
       const index = Math.max(0, Math.floor(playback.cursor));
-      const replay = frames.length ? interpolateThreeReplay(frames[index], frames[Math.min(frames.length - 1, index + 1)], playback.cursor - index) : undefined;
+      const replay = frames.length ? interpolateThreeReplay(frames[index], frames[Math.min(frames.length - 1, index + 1)], playback.cursor - index, this.replayScratch) : undefined;
       this.renderer?.render(this.arcade, { previous: current, current, alpha: 1, deltaSeconds: renderDelta }, replay);
       if (playback.done) this.skipReplay();
       this.raf = requestAnimationFrame((time) => this.loop(time));
@@ -744,7 +747,8 @@ export class MatchPage implements OnDestroy {
       this.syncMatch(timestamp);
       this.lastSimulationCost = performance.now() - simulationStarted;
       if (this.challenge) {
-        this.challengeHud.set(this.challenge.hud());
+        // hud() builds a new object; setting it every frame would run change detection at 60 Hz.
+        if (timestamp - this.lastChallengeHudAt >= 100 || this.challenge.done) { this.lastChallengeHudAt = timestamp; this.challengeHud.set(this.challenge.hud()); }
         this.renderer?.setMarkers(this.challenge.markers());
         if (this.challenge.done) { this.finishChallenge(); return; }
       }
@@ -762,7 +766,9 @@ export class MatchPage implements OnDestroy {
       alpha: Math.max(0, Math.min(1, this.fixedAccumulator / MATCH_TICK)),
       deltaSeconds: renderDelta,
     });
-    if (this.playing() && rawDelta > 0) this.metrics.record(rawDelta * 1000, this.lastSimulationCost, performance.now() - renderStarted);
+    const presentedAt = performance.now();
+    const inputAt = this.inputBuffer.takeConsumedAt();
+    if (this.playing() && rawDelta > 0) this.metrics.record(rawDelta * 1000, this.lastSimulationCost, presentedAt - renderStarted, inputAt === null ? NaN : Math.max(0, presentedAt - inputAt));
     if (timestamp - this.lastMetricsAt > 1000) {
       this.lastMetricsAt = timestamp;
       const canvas = this.canvasRef()?.nativeElement;
@@ -904,8 +910,6 @@ export class MatchPage implements OnDestroy {
     this.controlHelp.flushProgress();
     cancelAnimationFrame(this.raf);
     this.raf = 0;
-    this.renderer?.destroy();
-    this.renderer = null;
     this.saveCheckpoint();
     this.phase.set('halftime');
     this.audio.whistle();
@@ -921,6 +925,12 @@ export class MatchPage implements OnDestroy {
     this.initializeMatchProjection();
     this.phase.set('match');
     this.playing.set(true);
+    // The renderer survives half-time; without one the canvas effect starts it.
+    if (this.renderer && !this.raf) {
+      this.lastTs = 0;
+      this.fixedAccumulator = 0;
+      this.zone.runOutsideAngular(() => { this.raf = requestAnimationFrame((time) => this.loop(time)); });
+    }
   }
 
   protected togglePlay(): void {
@@ -971,17 +981,33 @@ export class MatchPage implements OnDestroy {
   private celebrationFrame(frame: MatchSnapshot, scorerId: string, elapsed: number): MatchSnapshot {
     const scorer = frame.players.find(player => player.id === scorerId);
     if (!scorer) return frame;
+    // Team-mates and the output frame are chosen once per goal; each call only rewrites the pooled players.
+    let cache = this.celebrationCache;
+    if (!cache || cache.frame !== frame || cache.scorerId !== scorerId) {
+      const mates = new Set(frame.players.filter(player => player.active && player.side === scorer.side && player.id !== scorerId && player.action !== 'keeper-ready')
+        .sort((a, b) => Math.hypot(a.x - scorer.x, a.y - scorer.y) - Math.hypot(b.x - scorer.x, b.y - scorer.y)).slice(0, 2).map(player => player.id));
+      const players = frame.players.map(player => ({ ...player }));
+      cache = this.celebrationCache = { frame, scorerId, mates, out: { ...frame, ball: { ...frame.ball, vx: 0, vy: 0, vz: 0 }, players } };
+    }
     const cornerX = scorer.x > 52.5 ? 103 : 2, cornerY = scorer.y > 34 ? 66 : 2;
     const run = Math.min(1, elapsed / 1.6);
-    const tick = frame.tick + Math.round(elapsed * 60);
-    const mates = new Set(frame.players.filter(player => player.active && player.side === scorer.side && player.id !== scorerId && player.action !== 'keeper-ready')
-      .sort((a, b) => Math.hypot(a.x - scorer.x, a.y - scorer.y) - Math.hypot(b.x - scorer.x, b.y - scorer.y)).slice(0, 2).map(player => player.id));
     const sx = scorer.x + (cornerX - scorer.x) * run * 0.35, sy = scorer.y + (cornerY - scorer.y) * run * 0.35;
-    return { ...frame, tick, ball: { ...frame.ball, vx: 0, vy: 0, vz: 0 }, players: frame.players.map(player => {
-      if (player.id === scorerId) return { ...player, x: sx, y: sy, vx: (cornerX - scorer.x) * 0.2 * (1 - run), vy: (cornerY - scorer.y) * 0.2 * (1 - run), facingX: Math.sign(cornerX - scorer.x) || 1, facingY: 0, action: 'celebrate', actionStartedTick: frame.tick + 30 };
-      if (mates.has(player.id)) return { ...player, x: player.x + (sx - player.x) * run * 0.6, y: player.y + (sy - player.y) * run * 0.6, action: run > 0.7 ? 'celebrate' : 'sprint', actionStartedTick: frame.tick + 60 };
-      return { ...player, vx: 0, vy: 0, action: 'idle' };
-    }) };
+    // A fractional tick keeps poses smooth on 120/144 Hz displays.
+    cache.out.tick = frame.tick + elapsed * 60;
+    for (let index = 0; index < frame.players.length; index++) {
+      const player = frame.players[index];
+      const target = Object.assign(cache.out.players[index], player);
+      if (player.id === scorerId) {
+        Object.assign(target, { x: sx, y: sy, vx: (cornerX - scorer.x) * 0.2 * (1 - run), vy: (cornerY - scorer.y) * 0.2 * (1 - run), facingX: Math.sign(cornerX - scorer.x) || 1, facingY: 0, action: 'celebrate', actionStartedTick: frame.tick + 30 });
+        // Legs follow the ground covered; the stride phase used to stay frozen while the scorer glided.
+        target.animationDistance = (player.animationDistance ?? 0) + Math.hypot(sx - player.x, sy - player.y);
+      } else if (cache.mates.has(player.id)) {
+        const mx = player.x + (sx - player.x) * run * 0.6, my = player.y + (sy - player.y) * run * 0.6;
+        Object.assign(target, { x: mx, y: my, action: run > 0.7 ? 'celebrate' : 'sprint', actionStartedTick: frame.tick + 60 });
+        target.animationDistance = (player.animationDistance ?? 0) + Math.hypot(mx - player.x, my - player.y);
+      } else Object.assign(target, { vx: 0, vy: 0, action: 'idle' });
+    }
+    return cache.out;
   }
 
   protected cycleSpeed(): void {
