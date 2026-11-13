@@ -29,6 +29,7 @@ import { WEAR_HEIGHT, WEAR_WIDTH, stampWear } from './pitch-wear';
 import { CosmeticDef } from '../../core/meta/legend-path';
 import { CosmeticSlot } from '../../models/meta.model';
 import { KitPattern } from '../../models/visual.model';
+import { BallMesh, createBallMesh, paintBall } from './ball-mesh';
 import { BALL_RADIUS, netBallMotion, netBulge, netHitStrength, netSlack, netStopDepth, NET_REST_POCKET } from './net-physics';
 
 /** Camera angle (degrees above the pitch), lens and framing per broadcast preset. */
@@ -144,8 +145,8 @@ export class ThreePitchRenderer {
   private readonly models = new Map<string, ProceduralFootballer>();
   private readonly matrixDummy = new THREE.Object3D();
   private readonly shadow: THREE.InstancedMesh;
-  /** Which triangles of the ball are dark panels, so a ball design can repaint it. */
-  private readonly ballPanels: boolean[] = [];
+  /** The ball's panels (pentagons, hexagons, stitching), so a ball design can repaint it. */
+  private readonly ballMesh: BallMesh = createBallMesh(0.11);
   /** What the Legends Path wears in matches: only drawn, never read by the simulation. */
   private cosmetics: { ball?: string; cheer?: number; decor?: string; kit?: KitPattern } = {};
   /** Under floodlights every player throws four faint shadows, one away from each mast: soft ellipses instead of more shadow maps. */
@@ -169,6 +170,12 @@ export class ThreePitchRenderer {
   /** Expanding rings where a Legendary or Mythic signature just woke up. */
   private readonly flares: { id: string; age: number; color: string }[] = [];
   private readonly arrow: THREE.Mesh;
+  /** A broken ring under the team-mate the switch button would take next. */
+  private readonly switchRing: THREE.Mesh<THREE.BufferGeometry, THREE.MeshBasicMaterial>;
+  /** Shirt number and position group per player, for the markers the HUD draws. */
+  private readonly hudInfo = new Map<string, { number: number; keeper: boolean }>();
+  /** Where the four corners of the picture meet the grass (scene x and z), for the view outline on the minimap. */
+  private readonly viewCorners = new Float32Array(8);
   private readonly power: THREE.Mesh<THREE.RingGeometry, THREE.MeshBasicMaterial>;
   private readonly ball: THREE.Mesh<THREE.BufferGeometry, THREE.MeshStandardMaterial>;
   private readonly ballShadow: THREE.Mesh;
@@ -330,6 +337,13 @@ export class ThreePitchRenderer {
     this.aura.renderOrder = 3;
     this.aura.count = 0;
     this.scene.add(this.aura);
+    const arcs = [0, 1, 2, 3].map(i => new THREE.RingGeometry(0.7, 0.78, 10, 1, i * Math.PI / 2 + 0.3, Math.PI / 2 - 0.6));
+    this.switchRing = new THREE.Mesh(mergeGeometries(arcs)!, new THREE.MeshBasicMaterial({ color: SELECTION_FREE, transparent: true, opacity: 0.55, depthWrite: false, toneMapped: false }));
+    arcs.forEach(arc => arc.dispose());
+    this.switchRing.rotation.x = -Math.PI / 2;
+    this.switchRing.renderOrder = 4;
+    this.switchRing.visible = false;
+    this.scene.add(this.switchRing);
     const arrowGeometry = new THREE.ConeGeometry(0.20, 0.33, 3);
     this.arrow = new THREE.Mesh(arrowGeometry, new THREE.MeshBasicMaterial({ color: '#ffe875', depthTest: false, toneMapped: false }));
     this.arrow.rotation.z = Math.PI;
@@ -339,19 +353,7 @@ export class ThreePitchRenderer {
     this.power.rotation.x = -Math.PI / 2;
     this.scene.add(this.power);
 
-    const ballGeometry = new THREE.IcosahedronGeometry(0.11, 2);
-    const colors: number[] = [];
-    const pos = ballGeometry.getAttribute('position');
-    for (let i = 0; i < pos.count; i += 3) {
-      const cx = (pos.getX(i) + pos.getX(i + 1) + pos.getX(i + 2)) * 1.307;
-      const cy = (pos.getY(i) + pos.getY(i + 1) + pos.getY(i + 2)) * 1.307;
-      const cz = (pos.getZ(i) + pos.getZ(i + 1) + pos.getZ(i + 2)) * 1.307;
-      const panel = Math.sin(cx * 15) * Math.sin(cy * 15) * Math.sin(cz * 15) > 0.37;
-      this.ballPanels.push(panel);
-      const color = new THREE.Color(panel ? BALL_PANEL : BALL_BODY);
-      for (let n = 0; n < 3; n++) colors.push(color.r, color.g, color.b);
-    }
-    ballGeometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+    const ballGeometry = this.ballMesh.geometry;
     this.ball = new THREE.Mesh(ballGeometry, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.51, emissive: '#77746b', emissiveIntensity: 0.18 }));
     this.ball.castShadow = true;
     this.scene.add(this.ball);
@@ -625,6 +627,14 @@ export class ThreePitchRenderer {
     this.shadow.instanceMatrix.needsUpdate = true;
     this.selection.visible = !!this.models.get(state.controlledPlayerId)?.mesh.visible;
     this.arrow.visible = this.selection.visible;
+    // The next switch candidate is only of interest while the other side or nobody has the ball.
+    const hunting = !replay && !this.celebration && match.config.controllerMode === 'human' && match.rule.phase === 'playing' && match.owner()?.side !== match.controlledSide;
+    const nextModel = hunting ? this.models.get(match.switchTarget() ?? '') : undefined;
+    this.switchRing.visible = !!nextModel?.mesh.visible;
+    if (nextModel && this.switchRing.visible) {
+      this.switchRing.position.copy(nextModel.mesh.position).setY(0.026);
+      if (!match.config.camera.reducedMotion) this.switchRing.rotation.z = this.time * 0.9;
+    }
     this.updateBall(state, dt, simDt, !!replay);
     this.updateAim(match, state, !!replay || !!this.celebration);
     if (this.referee) {
@@ -741,13 +751,7 @@ export class ThreePitchRenderer {
       kit: worn.kit?.value as KitPattern | undefined,
     };
     const [panel, body] = (this.cosmetics.ball ?? `${BALL_PANEL}|${BALL_BODY}`).split('|');
-    const colors = this.ball.geometry.getAttribute('color') as THREE.BufferAttribute;
-    const panelColor = new THREE.Color(panel), bodyColor = new THREE.Color(body);
-    this.ballPanels.forEach((isPanel, triangle) => {
-      const color = isPanel ? panelColor : bodyColor;
-      for (let n = 0; n < 3; n++) colors.setXYZ(triangle * 3 + n, color.r, color.g, color.b);
-    });
-    colors.needsUpdate = true;
+    paintBall(this.ballMesh, panel, body);
   }
 
   destroy(): void {
@@ -993,6 +997,7 @@ export class ThreePitchRenderer {
       this.referee?.destroy();
       this.referee = null;
       this.auraRarity.clear();
+      this.hudInfo.clear();
       disposeTree(this.stadium);
       this.stadium.clear();
       this.goalNets.length = 0;
@@ -1018,6 +1023,7 @@ export class ThreePitchRenderer {
       const model = createProceduralFootballer(actor.player.visuals, shown, actor.player.kitNumber, actor.player.positionGroup === 'GK', actor.player.foot === 'Left',this.software, actor.player.lastName);
       if (actor.side === match.controlledSide && this.cosmetics.cheer !== undefined) model.cheer = this.cosmetics.cheer;
       this.models.set(actor.player.id, model);
+      this.hudInfo.set(actor.player.id, { number: actor.player.kitNumber, keeper: actor.player.positionGroup === 'GK' });
       this.scene.add(model.mesh);
       const rarity = dnaOf(actor.player).rarity;
       if (atLeast(rarity, AURA_FROM)) this.auraRarity.set(actor.player.id, rarity);
@@ -1585,6 +1591,40 @@ export class ThreePitchRenderer {
     ctx.textAlign = 'left';
   }
 
+  /** Team-mates near the ball but outside the picture get a badge with their number at the edge, pointing towards them. */
+  private drawMateArrows(ctx: CanvasRenderingContext2D, match: ArcadeMatch, state: VisualState, w: number, h: number, s: number, bottomInset: number): void {
+    const dot = this.mapDots[match.controlledSide];
+    const ballX = state.ball.x, ballY = state.ball.y, margin = 22 * s;
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.font = `700 ${10 * s}px system-ui, sans-serif`;
+    for (const player of state.players) {
+      if (!player.active || player.side !== match.controlledSide || player.id === state.controlledPlayerId) continue;
+      const info = this.hudInfo.get(player.id);
+      const gap = Math.hypot(player.x - ballX, player.y - ballY);
+      if (!info || info.keeper || gap > MATE_ARROW_RANGE) continue;
+      this.tagPoint.set((player.x - FIELD_LENGTH / 2) * state.attackDirection, 1, player.y - FIELD_WIDTH / 2).project(this.camera);
+      const edge = edgeMarker(this.tagPoint.x, this.tagPoint.y, this.tagPoint.z > 1);
+      if (!edge) continue;
+      const x = Math.min(w - margin, Math.max(margin, (edge.x * 0.5 + 0.5) * w));
+      const y = Math.min(h - margin - bottomInset, Math.max(margin, (-edge.y * 0.5 + 0.5) * h));
+      ctx.globalAlpha = 0.95 - 0.5 * gap / MATE_ARROW_RANGE;
+      // The pointer: a small triangle outside the badge, towards the player.
+      const cos = Math.cos(edge.angle), sin = -Math.sin(edge.angle), r = 9 * s;
+      ctx.fillStyle = dot.rim;
+      ctx.beginPath();
+      ctx.moveTo(x + cos * (r + 6 * s), y + sin * (r + 6 * s));
+      ctx.lineTo(x + cos * r * 0.6 - sin * r * 0.8, y + sin * r * 0.6 + cos * r * 0.8);
+      ctx.lineTo(x + cos * r * 0.6 + sin * r * 0.8, y + sin * r * 0.6 - cos * r * 0.8);
+      ctx.closePath(); ctx.fill();
+      ctx.fillStyle = dot.fill;
+      ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = dot.rim; ctx.lineWidth = 1.4 * s; ctx.stroke();
+      ctx.fillStyle = dot.rim;
+      ctx.fillText(String(info.number), x, y + 0.5 * s);
+    }
+    ctx.globalAlpha = 1; ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+  }
+
   private drawHud(match: ArcadeMatch, state: VisualState, replay: boolean): void {
     const ctx = this.hudContext;
     if (!ctx) return;
@@ -1595,7 +1635,9 @@ export class ThreePitchRenderer {
     const touch = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
     const bottomInset = touch ? 0 : 55;
     const mapW = 150 * s, mapH = mapW * FIELD_WIDTH / FIELD_LENGTH;
-    const mapX = (w - mapW) / 2, mapY = h - mapH - 15 * s - bottomInset;
+    // The minimap sits in a corner, clear of the action: bottom right with a mouse, top right where thumbs cover the bottom.
+    const css = w / this.width;
+    const mapX = w - mapW - 22 * s, mapY = touch ? 46 * css + 9 * s : h - mapH - 20 * s - (bottomInset + 40) * css;
     if (this.minimap && !(replay && !this.celebration)) {
     ctx.fillStyle = 'rgba(9,26,33,.67)';
     ctx.beginPath(); ctx.roundRect(mapX - 9 * s, mapY - 9 * s, mapW + 18 * s, mapH + 18 * s, 6 * s); ctx.fill();
@@ -1616,7 +1658,21 @@ export class ThreePitchRenderer {
     }
     ctx.fillStyle = '#ffffff';
     ctx.beginPath(); ctx.arc(mapX + (state.attackDirection > 0 ? state.ball.x : FIELD_LENGTH - state.ball.x) / FIELD_LENGTH * mapW, mapY + state.ball.y / FIELD_WIDTH * mapH, 2.4 * s, 0, Math.PI * 2); ctx.fill();
+    // What the camera sees, as an outline on the map.
+    const view = groundView(this.camera, this.viewCorners);
+    ctx.save();
+    ctx.beginPath(); ctx.rect(mapX, mapY, mapW, mapH); ctx.clip();
+    ctx.beginPath();
+    for (let corner = 0; corner < 4; corner++) {
+      const x = mapX + (view[corner * 2] + FIELD_LENGTH / 2) / FIELD_LENGTH * mapW, y = mapY + (view[corner * 2 + 1] + FIELD_WIDTH / 2) / FIELD_WIDTH * mapH;
+      if (corner) ctx.lineTo(x, y); else ctx.moveTo(x, y);
     }
+    ctx.closePath();
+    ctx.fillStyle = 'rgba(255,255,255,.07)'; ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,.5)'; ctx.lineWidth = s; ctx.stroke();
+    ctx.restore();
+    }
+    if (!replay && !this.celebration && match.config.controllerMode === 'human') this.drawMateArrows(ctx, match, state, w, h, s, bottomInset);
     const selected = match.actors.find(actor => actor.player.id === state.controlledPlayerId);
     if (selected) {
       const left = 18 * s, bottom = touch ? 98 * s : h - 25 * s - bottomInset;
@@ -1719,6 +1775,40 @@ export class ThreePitchRenderer {
     this.sampleTime = 0;
     this.sampleFrames = 0;
   }
+}
+
+/** Team-mates farther from the ball than this (metres) get no marker at the edge of the picture. */
+export const MATE_ARROW_RANGE = 40;
+const VIEW_POINT = new THREE.Vector3();
+const VIEW_SIGNS = [-1, -1, 1, -1, 1, 1, -1, 1];
+
+/**
+ * Where a point outside the picture is marked on its edge. Takes normalized device coordinates (-1 to 1, y up) and whether the
+ * point lies behind the camera; returns the spot on the border in the same coordinates and the direction towards the point,
+ * or null when the point is in the picture.
+ */
+export function edgeMarker(x: number, y: number, behind: boolean): { x: number; y: number; angle: number } | null {
+  // A point behind the camera projects mirrored through the centre.
+  if (behind) { x = -x; y = -y; }
+  const reach = Math.max(Math.abs(x), Math.abs(y));
+  if (!behind && reach <= 1) return null;
+  if (reach < 1e-6) return { x: 0, y: -1, angle: -Math.PI / 2 };
+  return { x: x / reach, y: y / reach, angle: Math.atan2(y, x) };
+}
+
+/**
+ * The patch of grass the camera sees: scene x and z where the four corners of the picture meet the ground, in the order bottom
+ * left, bottom right, top right, top left. A corner that looks above the horizon is pushed far out along its direction.
+ */
+export function groundView(camera: THREE.Camera, out = new Float32Array(8)): Float32Array {
+  const eye = camera.position;
+  for (let corner = 0; corner < 4; corner++) {
+    VIEW_POINT.set(VIEW_SIGNS[corner * 2], VIEW_SIGNS[corner * 2 + 1], 0.5).unproject(camera).sub(eye).normalize();
+    const reach = VIEW_POINT.y < -1e-4 ? Math.min(400, -eye.y / VIEW_POINT.y) : 400;
+    out[corner * 2] = eye.x + VIEW_POINT.x * reach;
+    out[corner * 2 + 1] = eye.z + VIEW_POINT.z * reach;
+  }
+  return out;
 }
 
 /** Real mowing and white paint in one inexpensive, locally generated texture. */

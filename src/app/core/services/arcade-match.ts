@@ -906,6 +906,26 @@ export class ArcadeMatch {
     return candidates[0] ?? this.actors.find((actor) => actor.active && actor.side === this.controlledSide)!;
   }
 
+  /**
+   * Whom the switch button would take right now, without a stick direction: the next of the three players who reach the ball
+   * first. Read-only (the renderer marks him); it follows the same order as `handleSelection`.
+   */
+  switchTarget(): string | null {
+    if (this.config.playerLockId) return null;
+    let first: ArcadeActor | undefined, second: ArcadeActor | undefined, third: ArcadeActor | undefined;
+    let firstTime = Infinity, secondTime = Infinity, thirdTime = Infinity;
+    for (const actor of this.actors) {
+      if (!actor.active || actor.side !== this.controlledSide || actor.player.positionGroup === 'GK') continue;
+      const time = this.interceptTime(actor);
+      if (time < firstTime) { third = second; thirdTime = secondTime; second = first; secondTime = firstTime; first = actor; firstTime = time; }
+      else if (time < secondTime) { third = second; thirdTime = secondTime; second = actor; secondTime = time; }
+      else if (time < thirdTime) { third = actor; thirdTime = time; }
+    }
+    const selected = this.selectedPlayerId;
+    const next = first?.player.id === selected ? second ?? first : second?.player.id === selected ? third ?? first : first;
+    return next && next.player.id !== selected ? next.player.id : null;
+  }
+
   interceptTime(actor: ArcadeActor): number {
     const projected = { x: this.ball.x + this.ball.vx * 0.35, y: this.ball.y + this.ball.vy * 0.35 };
     return distance(actor, projected) / Math.max(1, this.maxSpeed(actor, false));
