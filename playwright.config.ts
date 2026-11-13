@@ -18,7 +18,7 @@ export default defineConfig({
     screenshot: 'only-on-failure',
   },
   projects: [
-    { name: 'chromium', use: { ...devices['Desktop Chrome'], launchOptions: { executablePath, ...(process.env['PLAYWRIGHT_SOFTWARE_GL'] ? {args:['--use-gl=angle','--use-angle=swiftshader','--enable-unsafe-swiftshader']} : {}) } } },
+    { name: 'chromium', use: { ...devices['Desktop Chrome'], launchOptions: { executablePath, args: ['--mute-audio', ...(process.env['PLAYWRIGHT_SOFTWARE_GL'] ? ['--use-gl=angle','--use-angle=swiftshader','--enable-unsafe-swiftshader'] : [])] } } },
     // Functional check in the other engines: only tests tagged @cross, which avoid Chromium-only measurements.
     ...(crossBrowser ? [
       // Headless Firefox on Linux CI has no GPU; software WebGL keeps the 3D pitch testable.
