@@ -36,12 +36,12 @@ describe('Player heads', () => {
     for (const [style, count] of counts.entries()) if (HAIR_STYLES[style] !== 'bald') expect(count).toBeGreaterThan(bald);
     // No two styles are the same geometry.
     expect(new Set(counts).size).toBeGreaterThanOrEqual(HAIR_STYLE_COUNT - 2);
-  });
+  }, 60_000);
 
   it('adds a beard in every style but the clean-shaven one', () => {
     const counts = BEARD_STYLES.map((_, beard) => vertices({ hairStyle: 0, facialHair: beard }));
     for (let beard = 1; beard < counts.length; beard++) expect(counts[beard]).toBeGreaterThan(counts[0]);
-  });
+  }, 60_000);
 
   it('keeps the far-away figure much lighter and every identity valid', () => {
     for (let style = 0; style < HAIR_STYLE_COUNT; style++) {

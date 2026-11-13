@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
 import { KitDesign, PlayerVisualIdentity } from '../../models/visual.model';
 import { hash32, mixHex } from '../../core/visual-identity';
+import { PlayerStyle } from './player-style';
 
 const TAU = Math.PI * 2;
 /** Iris colours; browns come up most often. */
@@ -16,6 +17,8 @@ export interface HeadContext {
   /** Adds a part in head space: the origin is the head joint, +Y up, +Z the face. */
   add(geometry: THREE.BufferGeometry, color: string, x: number, y: number, z: number, scale?: THREE.Vector3, rotation?: THREE.Euler): void;
   identity: PlayerVisualIdentity;
+  /** What he wears on his face and ears; absent for plain figures. */
+  style?: PlayerStyle;
   kit: KitDesign;
   skin: string;
   hair: string;
@@ -87,9 +90,9 @@ export function buildHead(c: HeadContext): void {
   const browTilt = ((seed >>> 6) % 5 - 2) * 0.06;
   const browLift = ((seed >>> 9) % 3) * 0.004;
   for (const sign of [-1, 1]) {
-    ball('#f6f3ea', sign * eyeX, eyeY, eyeZ, 0.029, 0.021, 0.012, 10);
-    ball(eyeColor, sign * (eyeX - 0.002), eyeY + 0.001, eyeZ + 0.008, 0.0145, 0.0155, 0.006, 8);
-    ball('#11161c', sign * (eyeX - 0.002), eyeY + 0.001, eyeZ + 0.0115, 0.0075, 0.0085, 0.004, 6);
+    ball('#f6f3ea', sign * eyeX, eyeY, eyeZ, 0.026, 0.016, 0.012, 10);
+    ball(eyeColor, sign * (eyeX - 0.002), eyeY + 0.001, eyeZ + 0.008, 0.013, 0.0135, 0.006, 8);
+    ball('#11161c', sign * (eyeX - 0.002), eyeY + 0.001, eyeZ + 0.0115, 0.0066, 0.0072, 0.004, 6);
     if (!compact) {
       ball('#ffffff', sign * (eyeX - 0.002) + 0.005, eyeY + 0.007, eyeZ + 0.0135, 0.0028, 0.0028, 0.002, 5);
       // Upper lid and the shadow under the brow.
@@ -120,7 +123,12 @@ export function buildHead(c: HeadContext): void {
   // Chin: rounder or squarer with the jaw.
   ball(skin, 0, -0.128, D * 0.6, W * (0.32 + jaw * 0.1), 0.034, 0.05, 8);
 
+  // Brow ridge and cheekbones give the face planes: the eyes sit in their shadow.
+  slab(skin, 0, 0.036, eyeZ - 0.004, W * 1.46, 0.02, 0.03, -0.3);
+  for (const sign of [-1, 1]) ball(skin, sign * W * 0.6, -0.034, D * 0.6, 0.032, 0.022, 0.034, 8);
+
   buildBeard(c, { ball, slab }, W, D, mouthY, mouthZ, mouthWidth);
+  buildFaceGear(c, { ball, slab }, W, D, eyeX, eyeY, eyeZ);
   buildHair(c, { ball, slab, tube, cap }, W, D, { hairLight, hairDark, scalp });
 
   if (identity.headAccessory !== 'none') {
@@ -307,5 +315,23 @@ function buildHair(c: HeadContext, t: { ball: Ball; slab: Slab; tube: Tube; cap:
       // A thin band holds it off the forehead.
       c.add(new THREE.TorusGeometry(1, 0.07, compact ? 4 : 6, compact ? 10 : 20), c.kit.trim, 0, 0.082, -0.012, new THREE.Vector3(W * 1.1, D * 1.16, 0.014 / 0.07), new THREE.Euler(Math.PI / 2 - 0.22, 0, 0));
       return;
+  }
+}
+
+function buildFaceGear(c: HeadContext, t: { ball: Ball; slab: Slab }, W: number, D: number, eyeX: number, eyeY: number, eyeZ: number): void {
+  const style = c.style;
+  if (!style || c.compact) return;
+  const { ball, slab } = t;
+  if (style.earring) ball('#f2c14e', (c.identity.seed % 2 ? 1 : -1) * (W * 0.99 + 0.012), -0.042, -0.01, 0.007, 0.007, 0.007, 6);
+  if (style.face === 'nose-strip') slab('#f1f3ee', 0, -0.012, D * 0.99 + 0.012, 0.05, 0.012, 0.006, -0.32);
+  if (style.face === 'eye-black') for (const sign of [-1, 1]) slab('#14171c', sign * eyeX, eyeY - 0.03, eyeZ + 0.004, 0.036, 0.009, 0.006, 0, sign * -0.3, sign * -0.08);
+  if (style.face === 'goggles') {
+    // Wrap-around sports goggles: two tinted lenses, a bridge and a strap round the head.
+    for (const sign of [-1, 1]) {
+      slab('#1c2733', sign * eyeX, eyeY + 0.002, eyeZ + 0.016, 0.054, 0.034, 0.012, 0, sign * -0.28, 0);
+      slab(style.accent, sign * eyeX, eyeY + 0.022, eyeZ + 0.017, 0.056, 0.006, 0.014, 0, sign * -0.28, 0);
+    }
+    slab('#1c2733', 0, eyeY + 0.004, eyeZ + 0.022, 0.03, 0.012, 0.01);
+    c.add(new THREE.TorusGeometry(1, 0.06, 5, 18), '#1c2733', 0, eyeY + 0.004, -0.012, new THREE.Vector3(W * 1.06, D * 1.12, 0.016 / 0.06), new THREE.Euler(Math.PI / 2, 0, 0));
   }
 }

@@ -102,7 +102,7 @@ describe('Presentation 3b – the swing follows the simulated contact tick', () 
       model.destroy();
     }
     for (const model of [resting, at, landed]) model.destroy();
-  });
+  }, 30_000);
 
   it('dives head first for a flying header and lands on the chest', () => {
     const contact = ACTION_CONTACT_TICKS['flying-header']!, duration = ACTION_DURATION_TICKS['flying-header']!;

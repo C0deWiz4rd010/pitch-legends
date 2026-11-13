@@ -5,6 +5,8 @@ import { PlayerRuntimeSnapshot } from '../../models/match.model';
 import { hash32 } from '../../core/visual-identity';
 import { blendJointSkin } from './joint-skinning';
 import { buildHead } from './player-head';
+import { buildBody } from './player-body';
+import { PlayerStyle, createPlayerStyle } from './player-style';
 import { createLimbSurface } from './limb-surface';
 import { ACTION_CONTACT_TICKS, ACTION_DURATION_TICKS } from '../../core/football/action-timing';
 import { advanceGait, GaitMemory, newGait, strideFor, turnStepAmount } from './animation/locomotion';
@@ -16,6 +18,8 @@ import { KIT_PATTERN_ID, PlayerTraces, PrintCell, Surface, acquirePrint, createF
 const SKIN = ['#f5d0a9', '#e9b989', '#d99a68', '#bf7b50', '#9b5c3d', '#75422f', '#573126', '#35221f'];
 const HAIR = ['#17141d', '#2c1b18', '#4b2e24', '#71462b', '#9b673d', '#c89b62', '#d9c6a2', '#702c32'];
 const TAU = Math.PI * 2;
+/** Size of the head on the body; the head module models it at full size. */
+export const HEAD_SCALE = 0.87;
 
 /** A separate visual seed never advances the match's random number generator. */
 export interface PlayerAppearanceRecipe {
@@ -28,6 +32,8 @@ export interface PlayerAppearanceRecipe {
   skin: string;
   hair: string;
   identity: PlayerVisualIdentity;
+  /** How he wears his kit and what he adds to it (see player-style). */
+  style: PlayerStyle;
 }
 
 export function createAppearanceRecipe(identity: PlayerVisualIdentity): PlayerAppearanceRecipe {
@@ -42,6 +48,7 @@ export function createAppearanceRecipe(identity: PlayerVisualIdentity): PlayerAp
     skin: SKIN[identity.skinTone % SKIN.length],
     hair: HAIR[identity.hairColor % HAIR.length],
     identity: { ...identity },
+    style: createPlayerStyle(identity),
   };
 }
 
@@ -194,42 +201,21 @@ export function createProceduralFootballer(identity: PlayerVisualIdentity, kit: 
     data.add(new THREE.CylinderGeometry(top, bottom, height, coarse?6:8), color, indices[joint], bind[joint].clone().add(new THREE.Vector3(x, y, z)), new THREE.Vector3(1, 1, depth), undefined, extraFor(joint, color));
   };
   // Athletic shoulders, tapered jersey and shorts; visible joints are rounded.
-  cylinder('spine', kit.shirt, 0, 0.095, 0, shoulder * 0.57, shoulder * 0.43, 0.385 * scale, 0.60);
-  sphere('chest', kit.shirt, 0, 0.047, 0, shoulder * 0.57, 0.095, shoulder * 0.35);
-  cylinder('hips', kit.shorts, 0, -0.02, 0, shoulder * 0.46, shoulder * 0.48, 0.165, 0.66);
+  // Torso, shorts, legs, boots, arms and hands: see player-body.
+  buildBody({
+    part: (geometry, color, joint, x, y, z, partScale, rotation, surface) => data.add(geometry, color, indices[joint], bind[joint].clone().add(new THREE.Vector3(x, y, z)), partScale, rotation, surface === undefined ? extraFor(joint, color) : { surface }),
+    skinned: (geometry, color, surface, shirt) => data.add(geometry, color, 0, new THREE.Vector3(), undefined, undefined, { surface, torso: shirt ? torso : undefined }),
+    bind, index: indices, identity, style: recipe.style, kit, skin: recipe.skin, scale, shoulder, shirtDepth: front, goalkeeper, coarse, simple,
+  });
   // Neck, skull, face, hair and beard: see player-head.
+  // Heroic proportions: the head is built at full size and set on the body a little smaller.
+  const headScale = HEAD_SCALE;
   buildHead({
-    add: (geometry, color, x, y, z, scale, rotation) => data.add(geometry, color, indices.head, bind.head.clone().add(new THREE.Vector3(x, y, z)), scale, rotation, extraFor('head', color)),
-    identity, kit, skin: recipe.skin, hair: recipe.hair, headWidth: recipe.headWidth, headDepth: recipe.headDepth, compact: coarse,
+    add: (geometry, color, x, y, z, partScale, rotation) => data.add(geometry, color, indices.head, bind.head.clone().add(new THREE.Vector3(x * headScale, (y + 0.02) * headScale - 0.02, z * headScale)),
+      (partScale ?? new THREE.Vector3(1, 1, 1)).clone().multiplyScalar(headScale), rotation, extraFor('head', color)),
+    identity, style: recipe.style, kit, skin: recipe.skin, hair: recipe.hair, headWidth: recipe.headWidth, headDepth: recipe.headDepth, compact: coarse,
   });
 
-  for (const side of ['left', 'right'] as const) {
-    const sign = side === 'left' ? 1 : -1;
-    const leg = `${side}Thigh` as Joint;
-    const calf = `${side}Shin` as Joint;
-    const foot = `${side}Foot` as Joint;
-    const arm = `${side}Arm` as Joint;
-    const forearm = `${side}Forearm` as Joint;
-    const hand = `${side}Hand` as Joint;
-    const width = identity.bodyBuild === 'strong' ? 1.10 : identity.bodyBuild === 'slim' ? 0.91 : 1;
-    cylinder(leg, kit.shorts, 0, -0.086, 0, 0.118 * width, 0.108 * width, 0.20, 0.94);
-    cylinder(leg, recipe.skin, 0, -thigh * 0.66, 0, 0.087 * width, 0.069 * width, thigh * 0.70);
-    sphere(calf, recipe.skin, 0, 0, 0, 0.073, 0.073, 0.073);
-    cylinder(calf, kit.socks, 0, -shin * 0.5, 0, 0.073 * width, 0.045, shin * 0.91);
-    cylinder(calf, kit.trim, 0, -0.065, 0, 0.075 * width, 0.075 * width, 0.028);
-    sphere(foot, identity.bootColor, 0, -0.031, 0.061, 0.072, 0.060, 0.157);
-    box(foot, '#19202b', 0, -0.069, 0.07, 0.125, 0.022, 0.252);
-    if (!simple) box(foot, '#f7f8ee', 0, 0.017, 0.09, 0.047, 0.009, 0.090);
-    if (identity.bootStyle % 3 === 0 && !simple) box(foot, kit.trim, sign * 0.063, -0.02, 0.069, 0.007, 0.024, 0.14);
-    sphere(arm, kit.shirt, 0, -0.020, 0, 0.099 * width, 0.10, 0.091);
-    cylinder(arm, kit.sleeve === 'raglan' ? kit.secondary : kit.shirt, sign * 0.02, -0.088, 0, 0.095 * width, 0.08 * width, 0.16);
-    const sleeve = identity.longSleeves || goalkeeper ? kit.shirt : recipe.skin;
-    data.add(createLimbSurface(bind[arm].clone().lerp(bind[forearm], .42), bind[forearm], bind[hand], indices[arm], indices[forearm], width, coarse),
-      sleeve, indices[arm], new THREE.Vector3(), undefined, undefined, { surface: sleeve === recipe.skin ? Surface.Skin : Surface.Fabric });
-    if (kit.sleeve === 'cuff') cylinder(arm, kit.trim, sign * 0.025, -0.149, 0, 0.083, 0.083, 0.028);
-    if (identity.wristTape === side || identity.wristTape === 'both') cylinder(hand, '#e9f0ed', 0, 0.035, 0, 0.052, 0.052, 0.043);
-    sphere(hand, goalkeeper ? ['#f5f1d7', '#e1ff70', '#4ccbd4'][identity.goalkeeperGloves % 3] : recipe.skin, 0, -0.029, 0.009, goalkeeper ? 0.068 : 0.048, 0.074, goalkeeper ? 0.053 : 0.037);
-  }
   // The software renderer has no pattern shader: raised colour panels keep all eight kit patterns visible there.
   if (compact) for (const zSign of [-1, 1]) {
     const z = front * zSign;

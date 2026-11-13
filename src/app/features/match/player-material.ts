@@ -127,7 +127,7 @@ const FRAGMENT_COLOR = /* glsl */ `
   // Grass and mud from slides: blotches that sit low on the body first; rain turns them from green to brown.
   float low = 1.0 - smoothstep(0.35, 1.3, vBind.y);
   float blotch = traceNoise(vBind.xy * 11.0 + vBind.z * 7.0 + playerTrace.w * 31.0);
-  float stain = smoothstep(1.02 - playerTrace.x * (0.3 + 0.6 * low), 1.12 - playerTrace.x * (0.3 + 0.6 * low), blotch + 0.25 * low) * (isFabric + isSkin * 0.6);
+  float stain = smoothstep(1.02 - playerTrace.x * (0.3 + 0.6 * low), 1.12 - playerTrace.x * (0.3 + 0.6 * low), blotch + 0.25 * low) * (isFabric + isSkin * 0.6) * smoothstep(0.0, 0.06, playerTrace.x);
   diffuseColor.rgb = mix(diffuseColor.rgb, mix(vec3(0.13, 0.21, 0.07), vec3(0.17, 0.12, 0.07), playerTrace.y), stain * 0.78);
   // Soaked cloth is darker.
   diffuseColor.rgb *= 1.0 - 0.2 * playerTrace.y * isFabric;

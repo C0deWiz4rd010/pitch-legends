@@ -11,6 +11,7 @@ import { createAppearanceRecipe, createProceduralFootballer, measureFootSlide, p
 import { clipsEnabled, loadClipSet, setClipsEnabled } from './animation/clip-store';
 import { ACTION_CONTACT_TICKS } from '../../core/football/action-timing';
 import { checkPose, checkWeights } from './animation/rig-check';
+import { styleTraits } from './player-style';
 
 /** Where the studio puts the ball for an action with a contact: height, distance in front of the figure, and the kind of contact. */
 const STUDIO_CONTACTS: Partial<Record<PlayerActionState, { z: number; y: number; kind: 'foot' | 'head' }>> = {
@@ -107,6 +108,14 @@ const SPEEDS: { value: number; de: string; en: string }[] = [
           </div>
         </section>
         <section>
+          <h2>{{ i18n.pick('Sein Stil', 'His style') }}</h2>
+          <p class="note">{{ i18n.pick('Jeder Spieler stellt sich seinen Auftritt selbst zusammen – aus Körperbau, Trageweise und Ausrüstung.', 'Every player puts his own look together – from build, the way he wears the kit and what he adds to it.') }}</p>
+          <ul class="traits">
+            <li class="frame">{{ frameLabel() }}</li>
+            @for (trait of traits(); track trait.de) { <li>{{ i18n.pick(trait.de, trait.en) }}</li> }
+          </ul>
+        </section>
+        <section>
           <h2>{{ i18n.pick('Bewegung', 'Motion') }}</h2>
           @for (group of groups; track group.id) {
             <h3>{{ i18n.pick(group.de, group.en) }}</h3>
@@ -170,6 +179,8 @@ const SPEEDS: { value: number; de: string; en: string }[] = [
     .gallery .active { border-color:var(--accent); box-shadow:0 0 0 2px var(--accent); }
     .wide { width:100%; margin-top:.7rem; } .kits { display:grid; grid-template-columns:1fr 1fr; gap:.5rem; } .kits button { display:flex; align-items:center; gap:.5rem; text-align:left; }
     .kits i { width:1rem; height:1rem; border-radius:50%; border:2px solid #ffffff55; flex:none; }
+    .traits { display:flex; flex-wrap:wrap; gap:.35rem; margin:0; padding:0; list-style:none; } .traits li { font-size:.76rem; padding:.3rem .65rem; border-radius:999px; background:var(--raise); border:1px solid var(--line); }
+    .traits .frame { border-color:var(--gold); color:var(--gold); } .note { margin:0 0 .7rem; }
     .chips { display:flex; flex-wrap:wrap; gap:.35rem; } .chips button { border-radius:999px; padding:.35rem .7rem; }
     details { font-size:.8rem; color:var(--muted); } summary { cursor:pointer; color:var(--ink); font-weight:600; padding:.3rem 0; }
     .field { display:grid; gap:.3rem; margin:.7rem 0; font-size:.75rem; } .field input { background:#06131a; color:var(--ink); border:1px solid var(--line); border-radius:8px; padding:.45rem .6rem; font:inherit; width:7rem; }
@@ -217,6 +228,11 @@ export class PlayerLabPage implements AfterViewInit, OnDestroy {
   /** Goalkeepers wear gloves and their own kit: the figure is rebuilt when the motion changes sides. */
   private readonly keeper = computed(() => this.action().startsWith('keeper-'));
   protected readonly moveLabel = computed(() => { const move = MOVES.find((entry) => entry.value === this.action()); return move ? this.i18n.pick(move.de, move.en) : ''; });
+  protected readonly traits = computed(() => styleTraits(this.recipe().style));
+  protected readonly frameLabel = computed(() => {
+    const frame = this.recipe().style.frame;
+    return frame === 'lean' ? this.i18n.pick('Drahtig', 'Wiry') : frame === 'powerful' ? this.i18n.pick('Kraftpaket', 'Powerhouse') : frame === 'compact' ? this.i18n.pick('Kompakt', 'Compact') : this.i18n.pick('Ausgewogen', 'Balanced');
+  });
   protected readonly buildLabel = computed(() => {
     const build = this.recipe().identity.bodyBuild;
     return build === 'strong' ? this.i18n.pick('kräftig', 'strong') : build === 'slim' ? this.i18n.pick('schlank', 'slim') : this.i18n.pick('athletisch', 'athletic');
