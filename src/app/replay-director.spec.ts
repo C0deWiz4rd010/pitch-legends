@@ -57,3 +57,37 @@ describe('Replay director', () => {
     expect(lit(1.001)).toEqual(first);
   });
 });
+
+import { HeroShot, celebrationShot } from './features/match/replay-director';
+
+describe('Celebration close-up', () => {
+  const shot = (elapsed: number, heading = 0): HeroShot => celebrationShot(elapsed, 10, -5, heading, { x: 0, y: 0, z: 0, lookX: 0, lookY: 0, lookZ: 0, fov: 0, blend: 0 });
+  const reach = (hero: HeroShot) => Math.hypot(hero.x - 10, hero.z + 5);
+
+  it('takes over from the match camera within a second and looks at the scorer', () => {
+    expect(shot(0).blend).toBe(0);
+    expect(shot(0.4).blend).toBeGreaterThan(0.2);
+    expect(shot(1).blend).toBe(1);
+    const hero = shot(1);
+    expect([hero.lookX, hero.lookZ]).toEqual([10, -5]);
+    expect(hero.lookY).toBeGreaterThan(0.9);
+  });
+
+  it('starts close at chest height in front of him and pulls back and up for the group', () => {
+    const close = shot(0.8), wide = shot(2.4);
+    expect(reach(close)).toBeLessThan(5.8);
+    expect(close.y).toBeLessThan(1.5);
+    // In front: on the side he runs towards.
+    expect(close.x - 10).toBeGreaterThan(2);
+    expect(reach(wide)).toBeGreaterThan(reach(close) + 2.5);
+    expect(wide.y).toBeGreaterThan(close.y + 0.8);
+    expect(wide.fov).toBeGreaterThan(close.fov);
+  });
+
+  it('circles him as the seconds pass and follows the way he runs', () => {
+    const early = shot(0.5), later = shot(2);
+    expect(Math.atan2(early.z + 5, early.x - 10)).not.toBeCloseTo(Math.atan2(later.z + 5, later.x - 10), 1);
+    const turned = shot(0.8, Math.PI);
+    expect(turned.x - 10).toBeLessThan(-2);
+  });
+});

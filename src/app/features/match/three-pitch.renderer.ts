@@ -4,7 +4,7 @@ import * as THREE from 'three';
 import { ArcadeActor, ArcadeMatch, FIELD_LENGTH, FIELD_WIDTH, GOAL_WIDTH, GOAL_HEIGHT, PITCH, applyPitch } from '../../core/services/arcade-match';
 import { resolveMatchKits, MatchKitSelection } from '../../core/kit-visuals';
 import { contrastRatio, contrastText, hash32 } from '../../core/visual-identity';
-import { ReplayShot } from './replay-director';
+import { HeroShot, ReplayShot, celebrationShot } from './replay-director';
 import { MatchRenderFrame, MatchRenderState, MatchSnapshot, PlayerRuntimeSnapshot } from '../../models/match.model';
 import { MATCH_TICK } from '../../core/football/match-types';
 import { RefereeRig } from './animation/referee';
@@ -193,6 +193,8 @@ export class ThreePitchRenderer {
   private readonly spinQuat = new THREE.Quaternion();
   private readonly camPosition = new THREE.Vector3();
   private readonly camLook = new THREE.Vector3();
+  private readonly heroPoint = new THREE.Vector3();
+  private readonly heroShot: HeroShot = { x: 0, y: 0, z: 0, lookX: 0, lookY: 0, lookZ: 0, fov: 36, blend: 0 };
   private readonly camIntro = new THREE.Vector3();
   /** Simulation time shown so far: pose blends and the ball roll follow it, so slow motion slows them too. */
   private poseClock = 0;
@@ -893,6 +895,14 @@ export class ThreePitchRenderer {
     const standZ = focusZ * stand;
     const position = this.camPosition.set(focusX, distance * Math.sin(angle), standZ + distance * Math.cos(angle));
     const look = this.camLook.set(focusX, 0, THREE.MathUtils.lerp(standZ, focusZ, 0.7));
+    if (celebration && !reduced) {
+      // The scorer's moment from close up: at chest height in front of him, circling, then back for the group.
+      const hero = celebrationShot(this.celebration!.elapsed, (celebration.x - FIELD_LENGTH / 2) * mirror, celebration.y - FIELD_WIDTH / 2,
+        Math.atan2(celebration.facingY, celebration.facingX * mirror), this.heroShot);
+      position.lerp(this.heroPoint.set(hero.x, hero.y, hero.z), hero.blend);
+      look.lerp(this.heroPoint.set(hero.lookX, hero.lookY, hero.lookZ), hero.blend);
+      fov = THREE.MathUtils.lerp(fov, hero.fov, hero.blend);
+    }
     // The goal lands like a punch: the picture pushes in and towards the goal for a moment.
     const punch = reduced ? 0 : Math.max(0, 1 - (this.time - this.goalTime) / 0.45);
     if (punch > 0 && !replay) {

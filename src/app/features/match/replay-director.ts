@@ -39,3 +39,25 @@ export function flashLit(index: number, seconds: number): boolean {
   const step = Math.floor(seconds * 16);
   return ((index * 37 + step * 101 + ((index * step) % 7) * 13) % 19) === 0;
 }
+
+/** Camera of the celebration close-up, in scene coordinates. */
+export interface HeroShot { x: number; y: number; z: number; lookX: number; lookY: number; lookZ: number; fov: number; /** 0 to 1: how far the close-up has taken over from the match camera. */ blend: number }
+
+const smoothstep = (value: number, from: number, to: number) => { const t = Math.min(1, Math.max(0, (value - from) / (to - from))); return t * t * (3 - 2 * t); };
+
+/**
+ * The scorer's moment: the camera drops to chest height in front of him, circles slowly while he runs off, and pulls
+ * back and up as his team-mates arrive, so the group ends up in the picture. `heading` is the direction he runs in.
+ */
+export function celebrationShot(elapsed: number, x: number, z: number, heading: number, out: HeroShot): HeroShot {
+  const wide = smoothstep(elapsed, 1.3, 2.3);
+  const orbit = heading + 0.55 - elapsed * 0.3;
+  const reach = 5.2 + wide * 3.2;
+  out.x = x + Math.cos(orbit) * reach;
+  out.y = 1.25 + wide * 1.1;
+  out.z = z + Math.sin(orbit) * reach;
+  out.lookX = x; out.lookY = 1.02 - wide * 0.1; out.lookZ = z;
+  out.fov = 36 + wide * 4;
+  out.blend = smoothstep(elapsed, 0.1, 0.8);
+  return out;
+}
