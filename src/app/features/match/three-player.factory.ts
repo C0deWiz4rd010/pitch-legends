@@ -4,6 +4,7 @@ import { PlayerVisualIdentity, KitDesign } from '../../models/visual.model';
 import { PlayerRuntimeSnapshot } from '../../models/match.model';
 import { hash32 } from '../../core/visual-identity';
 import { blendJointSkin } from './joint-skinning';
+import { buildHead } from './player-head';
 import { createLimbSurface } from './limb-surface';
 import { ACTION_CONTACT_TICKS, ACTION_DURATION_TICKS } from '../../core/football/action-timing';
 import { advanceGait, GaitMemory, newGait, strideFor, turnStepAmount } from './animation/locomotion';
@@ -189,46 +190,11 @@ export function createProceduralFootballer(identity: PlayerVisualIdentity, kit: 
   cylinder('spine', kit.shirt, 0, 0.095, 0, shoulder * 0.57, shoulder * 0.43, 0.385 * scale, 0.60);
   sphere('chest', kit.shirt, 0, 0.047, 0, shoulder * 0.57, 0.095, shoulder * 0.35);
   cylinder('hips', kit.shorts, 0, -0.02, 0, shoulder * 0.46, shoulder * 0.48, 0.165, 0.66);
-  cylinder('head', recipe.skin, 0, -0.15, 0, 0.066, 0.077, 0.13);
-  sphere('head', recipe.skin, 0, -0.006, 0, recipe.headWidth * 0.52, 0.151, recipe.headDepth * 0.50, 12);
-  // Chin, nose, ears and eyes remain coherent in every hair/body variant.
-  sphere('head', recipe.skin, 0, -0.102, 0.02, recipe.headWidth * 0.37, 0.063, 0.089);
-  sphere('head', recipe.skin, 0, -0.032, recipe.headDepth * 0.50, 0.026, 0.041, 0.046);
-  for (const sign of [-1, 1]) {
-    sphere('head', recipe.skin, sign * recipe.headWidth * 0.51, -0.02, -0.005, 0.026, 0.045, 0.028);
-    sphere('head', '#f8f6ed', sign * 0.046, 0.018, 0.106, 0.026, 0.016, 0.009);
-    sphere('head', '#202b34', sign * 0.046, 0.018, 0.114, 0.012, 0.013, 0.006);
-    box('head', recipe.hair, sign * 0.046, 0.044, 0.108, 0.050, 0.011, 0.013, sign * -0.07);
-  }
-  box('head', '#7f4639', 0, -0.083, 0.104, 0.048, 0.009, 0.009);
-  const hairStyle = identity.hairStyle % 18;
-  if (hairStyle !== 0) {
-    const cap = new THREE.SphereGeometry(1, 10, 5, 0, TAU, 0, hairStyle === 1 ? 1.36 : 1.55);
-    data.add(cap, recipe.hair, indices.head, bind.head.clone().add(new THREE.Vector3(0, 0.025, -0.007)), new THREE.Vector3(recipe.headWidth * 0.55, hairStyle === 1 ? 0.136 : 0.154, recipe.headDepth * 0.54));
-    if ([3, 7, 11, 15].includes(hairStyle)) {
-      // Rounded curls / afro are generated from a stable, separate seed.
-      for (let i = 0; i < 10; i++) {
-        const angle = i / 10 * TAU;
-        sphere('head', recipe.hair, Math.cos(angle) * 0.09, 0.117 + i % 2 * 0.027, Math.sin(angle) * 0.09 - 0.012, 0.064, 0.068, 0.062);
-      }
-    } else if ([4, 8, 12, 16].includes(hairStyle)) {
-      sphere('head', recipe.hair, 0, 0.129, 0.055, 0.112, 0.072, 0.081);
-      box('head', recipe.hair, 0.013, 0.153, 0.042, 0.11, 0.065, 0.116, 0.22);
-    } else if ([5, 9, 13, 17].includes(hairStyle)) {
-      sphere('head', recipe.hair, 0, 0.024, -0.13, 0.091, 0.113, 0.06);
-      sphere('head', recipe.hair, 0, 0.082, -0.169, 0.059, 0.062, 0.061);
-    } else if ([2, 6, 10, 14].includes(hairStyle)) {
-      box('head', recipe.hair, 0, 0.16, 0, 0.063, 0.065, 0.22);
-    }
-  }
-  if (identity.facialHair > 0) {
-    if (identity.facialHair > 1) sphere('head', recipe.hair, 0, -0.109, 0.033, recipe.headWidth * 0.39, 0.050 + identity.facialHair * 0.003, 0.085);
-    box('head', recipe.hair, 0, -0.063, 0.118, 0.069, 0.018, 0.012);
-  }
-  if (identity.headAccessory !== 'none') {
-    const protective = identity.headAccessory === 'protective-cap';
-    cylinder('head', protective ? '#233344' : kit.trim, 0, protective ? 0.052 : 0.072, 0, recipe.headWidth * 0.56, recipe.headWidth * 0.56, protective ? 0.14 : 0.032, 1.03);
-  }
+  // Neck, skull, face, hair and beard: see player-head.
+  buildHead({
+    add: (geometry, color, x, y, z, scale, rotation) => data.add(geometry, color, indices.head, bind.head.clone().add(new THREE.Vector3(x, y, z)), scale, rotation),
+    identity, kit, skin: recipe.skin, hair: recipe.hair, headWidth: recipe.headWidth, headDepth: recipe.headDepth, compact,
+  });
 
   for (const side of ['left', 'right'] as const) {
     const sign = side === 'left' ? 1 : -1;

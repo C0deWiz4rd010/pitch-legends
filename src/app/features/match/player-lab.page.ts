@@ -78,6 +78,7 @@ const SPEEDS: { value: number; de: string; en: string }[] = [
           </div>
         </div>
         <p class="hint">{{ i18n.pick('Ziehen dreht die Figur', 'Drag to turn the figure') }}</p>
+        <button class="zoom" [attr.aria-pressed]="closeUp()" (click)="closeUp.set(!closeUp())">{{ closeUp() ? i18n.pick('Ganze Figur', 'Whole figure') : i18n.pick('Nahaufnahme', 'Close-up') }}</button>
         <div class="transport">
           <button class="play" (click)="paused.set(!paused())">{{ paused() ? '▶ ' + i18n.pick('Abspielen', 'Play') : 'Ⅱ ' + i18n.pick('Pause', 'Pause') }}</button>
           <label class="scrub"><span>{{ moveLabel() }} · {{ cursor().toFixed(2) }} s</span><input [attr.aria-label]="i18n.pick('Bewegungsablauf', 'Timeline')" type="range" min="0" max="2.19" step=".01" [ngModel]="cursor()" (ngModelChange)="seek(+$event)" /></label>
@@ -148,6 +149,7 @@ const SPEEDS: { value: number; de: string; en: string }[] = [
     .card strong { font-size:1rem; letter-spacing:.02em; } .card ul { display:flex; flex-wrap:wrap; gap:.3rem; margin:.35rem 0 0; padding:0; list-style:none; max-width:13rem; }
     .card li { font-size:.7rem; color:var(--muted); background:var(--raise); border-radius:999px; padding:.15rem .5rem; }
     .hint { position:absolute; z-index:2; left:50%; bottom:7.4rem; transform:translateX(-50%); margin:0; font-size:.7rem; color:var(--muted); pointer-events:none; }
+    .zoom { position:absolute; z-index:2; left:1.6rem; top:7.2rem; border-radius:999px; }
     .error { position:absolute; inset:40% 2rem auto; text-align:center; color:#ffd0c4; }
     .transport { position:absolute; z-index:2; left:1.2rem; right:1.2rem; bottom:1.1rem; display:grid; grid-template-columns:auto minmax(0,1fr); align-items:center; gap:.6rem 1rem; padding:.7rem .9rem; background:#0c1f29e6; border:1px solid var(--line); border-radius:14px; }
     .transport label { display:grid; gap:.25rem; font-size:.7rem; color:var(--muted); min-width:0; } .turn { grid-template-columns:auto minmax(0,1fr); align-items:center; gap:.6rem; }
@@ -175,7 +177,7 @@ const SPEEDS: { value: number; de: string; en: string }[] = [
     @media (max-width:900px) {
       :host { height:auto; min-height:100dvh; display:block; } main { display:block; } .stage { height:62dvh; min-height:420px; }
       .title { max-width:11rem; left:1rem; top:1rem; } h1 { font-size:1.3rem; } .card { right:.8rem; top:.8rem; padding:.4rem .6rem .4rem .4rem; } .card img { width:44px; height:44px; } .card ul { display:none; }
-      .transport { left:.6rem; right:.6rem; bottom:.6rem; } .transport .turn { display:none; } .speed { grid-column:1 / -1; } .speed button { flex:1; } .hint { display:none; }
+      .transport { left:.6rem; right:.6rem; bottom:.6rem; } .transport .turn { display:none; } .zoom { left:1rem; top:5.6rem; } .speed { grid-column:1 / -1; } .speed button { flex:1; } .hint { display:none; }
       aside { border-left:0; overflow:visible; }
     }
   `],
@@ -192,6 +194,8 @@ export class PlayerLabPage implements AfterViewInit, OnDestroy {
   readonly awayKit = signal(false);
   readonly rotation = signal(-20);
   readonly paused = signal(false);
+  /** The camera moves in on the head and shoulders. */
+  readonly closeUp = signal(false);
   readonly timeScale = signal(1);
   readonly cursor = signal(0);
   readonly action = signal<PlayerActionState>('jog');
@@ -233,6 +237,7 @@ export class PlayerLabPage implements AfterViewInit, OnDestroy {
   private distance = 0;
   private aspect = 1;
   private drag: { pointer: number; x: number; rotation: number } | null = null;
+  private readonly headPosition = new THREE.Vector3();
   private readonly marker = new THREE.Mesh(new THREE.SphereGeometry(.045,8,6),new THREE.MeshBasicMaterial({color:'#ffcb69',wireframe:true,depthTest:false}));
   private readonly ball = new THREE.Mesh(new THREE.IcosahedronGeometry(.11,1),new THREE.MeshStandardMaterial({color:'#f7edd8',roughness:.8}));
   private disposed = false;
@@ -323,6 +328,13 @@ export class PlayerLabPage implements AfterViewInit, OnDestroy {
    * little below the figure's middle so the transport bar never covers the feet.
    */
   private frameCamera(): void {
+    if (this.closeUp() && this.model) {
+      // Head and shoulders, following the head through the motion.
+      const head = this.model.joints.head.getWorldPosition(this.headPosition);
+      this.camera.position.set(head.x * .6, head.y - .04, 2.3 * Math.max(1, .8 / this.aspect));
+      this.camera.lookAt(head.x * .6, head.y - .12, 0);
+      return;
+    }
     const diving=this.action()==='keeper-dive';
     const distance=(diving?6.1:5.4)*Math.max(1,.95/this.aspect);
     this.camera.position.set(0,1.5,distance);
@@ -378,8 +390,9 @@ export class PlayerLabPage implements AfterViewInit, OnDestroy {
     const keeper=action.startsWith('keeper-');
     if(keeper) state.actionTarget={x:action==='keeper-dive'?1.05:0,y:.35,z:action==='keeper-dive'?.60:action==='keeper-punch'?2.3:action==='keeper-smother'?.15:1.10};
     poseFootballer(this.model,state,tick,this.elapsed,false,0,undefined,this.limp()?1:0);
-    this.frameCamera();
     this.model.mesh.rotation.y=this.rotation()*Math.PI/180;
+    this.model.mesh.updateMatrixWorld(true);
+    this.frameCamera();
     this.skeleton!.visible=this.skeletonVisible();this.marker.visible=this.contactsVisible();this.marker.position.set(state.actionTarget?.x??0,state.actionTarget?.z??contactSpec?.z??.11,state.actionTarget?.y??contactSpec?.y??.56).applyAxisAngle(new THREE.Vector3(0,1,0),this.model.mesh.rotation.y);
     // The ball waits at the contact point and flies off after the contact tick.
     const sinceContact=(tick-contactTick)/60;
