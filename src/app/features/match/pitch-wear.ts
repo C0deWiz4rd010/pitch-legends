@@ -28,3 +28,20 @@ export function meanWear(data: Uint8Array): number {
   for (let i = 0; i < data.length; i++) sum += data[i];
   return sum / (data.length * 255);
 }
+
+/** Scrapes (slide tackles, knee slides) live in a finer map of their own, so ordinary footsteps never turn into bare soil. */
+export const SCUFF_WIDTH = WEAR_WIDTH * 2;
+export const SCUFF_HEIGHT = WEAR_HEIGHT * 2;
+
+/** One scrape at a point of the pitch, spread over the four nearest texels so a slide leaves a smooth streak. Saturates at 255. */
+export function stampScuff(data: Uint8Array, x: number, y: number, length: number, width: number, strength = 60): void {
+  const fx = Math.min(SCUFF_WIDTH - 1.001, Math.max(0, (x / length) * SCUFF_WIDTH - 0.5));
+  const fy = Math.min(SCUFF_HEIGHT - 1.001, Math.max(0, (1 - y / width) * SCUFF_HEIGHT - 0.5));
+  const column = Math.floor(fx), row = Math.floor(fy), u = fx - column, v = fy - row;
+  const add = (c: number, r: number, share: number) => {
+    const at = r * SCUFF_WIDTH + c;
+    data[at] = Math.min(255, data[at] + Math.round(strength * share));
+  };
+  add(column, row, (1 - u) * (1 - v)); add(column + 1, row, u * (1 - v));
+  add(column, row + 1, (1 - u) * v); add(column + 1, row + 1, u * v);
+}

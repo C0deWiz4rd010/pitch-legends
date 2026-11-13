@@ -25,7 +25,9 @@ import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { MatchCameraPreset } from '../../models/match.model';
-import { WEAR_HEIGHT, WEAR_WIDTH, stampWear } from './pitch-wear';
+import { SCUFF_HEIGHT, SCUFF_WIDTH, WEAR_HEIGHT, WEAR_WIDTH, stampScuff, stampWear } from './pitch-wear';
+import { PitchSurface, createPitchSurface, snowCover } from './pitch-surface';
+import { puddleSpots } from '../../core/football/weather';
 import { CosmeticDef } from '../../core/meta/legend-path';
 import { CosmeticSlot } from '../../models/meta.model';
 import { KitPattern } from '../../models/visual.model';
@@ -53,19 +55,6 @@ const GradeShader = {
   vertexShader: 'varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
   fragmentShader: 'uniform sampler2D tDiffuse; uniform vec3 tint; uniform float saturation; uniform float contrast; uniform float vignetteOffset; uniform float vignetteDarkness; varying vec2 vUv; void main() { vec4 c = texture2D(tDiffuse, vUv); vec2 v = (vUv - 0.5) * vignetteOffset; c.rgb = mix(c.rgb, vec3(1.0 - vignetteDarkness), dot(v, v)); float l = dot(c.rgb, vec3(0.2126, 0.7152, 0.0722)); vec3 g = mix(vec3(l), c.rgb, saturation) * tint; g = (g - 0.18) * contrast + 0.18; gl_FragColor = vec4(max(g, 0.0), c.a); }',
 };
-
-/** Lays the wear map over the grass: worn turf turns browner. Works for the lit and the unlit pitch material alike. */
-function addWear(material: THREE.Material, texture: THREE.Texture, mirror: { value: number }): void {
-  material.onBeforeCompile = (shader) => {
-    shader.uniforms['wearMap'] = { value: texture };
-    shader.uniforms['wearMirror'] = mirror;
-    shader.fragmentShader = 'uniform sampler2D wearMap;\nuniform float wearMirror;\n' + shader.fragmentShader.replace('#include <map_fragment>', `#include <map_fragment>
-      vec2 wearUv = vec2(wearMirror > 0.0 ? vMapUv.x : 1.0 - vMapUv.x, vMapUv.y);
-      float worn = texture2D(wearMap, wearUv).r;
-      diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * vec3(0.78, 0.7, 0.52), min(1.0, worn * 2.4) * 0.85);`);
-  };
-  material.customProgramCacheKey = () => 'pitch-wear';
-}
 
 export interface Grade { tint: [number, number, number]; saturation: number; contrast: number }
 /** The look of each atmosphere; bad weather drains the colour. Pure, so the tests can check the table. */
@@ -156,6 +145,11 @@ export class ThreePitchRenderer {
   private readonly wear = new Uint8Array(WEAR_WIDTH * WEAR_HEIGHT);
   private readonly wearTexture = new THREE.DataTexture(this.wear, WEAR_WIDTH, WEAR_HEIGHT, THREE.RedFormat, THREE.UnsignedByteType);
   private readonly wearMirror = { value: 1 };
+  /** Scrapes of slide tackles: a finer map, uploaded with the wear. */
+  private readonly scuff = new Uint8Array(SCUFF_WIDTH * SCUFF_HEIGHT);
+  private readonly scuffTexture = new THREE.DataTexture(this.scuff, SCUFF_WIDTH, SCUFF_HEIGHT, THREE.RedFormat, THREE.UnsignedByteType);
+  private scuffDirty = false;
+  private pitchSurface: PitchSurface | null = null;
   private wearClock = 0;
   private wearStamp = false;
   private wearUploaded = 0;
@@ -554,6 +548,7 @@ export class ThreePitchRenderer {
         this.spawnTurf((player.contact.x - FIELD_LENGTH / 2) * mirror, player.contact.y - FIELD_WIDTH / 2, 7, 2.4);
       }
       // Footsteps wear the turf: ten stamps a second are plenty; the camera mirror is undone so wear stays where it happened.
+      if (!replay && player.action === 'slide' && state.tick - player.actionStartedTick < 34 && Math.hypot(player.vx, player.vy) > 1.5) { stampScuff(this.scuff, player.x, player.y, FIELD_LENGTH, FIELD_WIDTH, 44); this.scuffDirty = true; }
       if (this.wearStamp) stampWear(this.wear, player.x, player.y, FIELD_LENGTH, FIELD_WIDTH, Math.hypot(player.vx, player.vy) > 3 ? 3 : 1);
       this.matrixDummy.position.copy(model.mesh.position).setY(0.014);
       this.matrixDummy.rotation.set(-Math.PI / 2, 0, 0);
@@ -618,6 +613,8 @@ export class ThreePitchRenderer {
     }
     this.shadow.count = index;
     if (this.wearStamp && this.time - this.wearUploaded > 0.5) { this.wearTexture.needsUpdate = true; this.wearUploaded = this.time; }
+    // A fresh scrape shows at once: it is the mark of the tackle the player just made.
+    if (this.scuffDirty && this.wearClock % 3 === 0) { this.scuffTexture.needsUpdate = true; this.scuffDirty = false; }
     this.mastShadows.count = mastIndex;
     this.mastShadows.visible = this.floodlit && this.quality !== 'low' && mastIndex > 0;
     this.mastShadows.instanceMatrix.needsUpdate = true;
@@ -680,6 +677,7 @@ export class ThreePitchRenderer {
     this.configureComposer();
     this.resize();
     this.canvas.dataset['quality'] = quality;
+    this.pitchSurface?.setDetail(quality === 'low' ? 0 : 1);
     this.stadium.traverse(object => { if (object.name === 'crowd') object.visible = quality !== 'low'; });
   }
 
@@ -1095,15 +1093,17 @@ export class ThreePitchRenderer {
     surround.position.y = -0.04;
     surround.receiveShadow = true;
     this.stadium.add(surround);
-    const pitchTexture = createPitchTexture(match.home.visuals.seed, match.config.weather !== 'clear', match.config.weather === 'snow');
-    pitchTexture.anisotropy = this.software?1:Math.min(8, this.renderer.capabilities.getMaxAnisotropy());
-    const wet = match.config.weather !== 'clear';
-    this.pitchMaterial = this.software ? new THREE.MeshBasicMaterial({ map: pitchTexture, color: snowy ? '#c4d6cc' : '#74ab83' })
-      : new THREE.MeshStandardMaterial({ map: pitchTexture, bumpMap: createGrassBump(), bumpScale: 0.35, roughness: wet ? (snowy ? 0.8 : 0.5) : 0.94, metalness: 0, color: snowy ? '#e9f3f1' : '#ffffff', envMapIntensity: snowy ? 0.55 : wet ? 0.75 : 0.3 });
     this.wear.fill(0);
-    this.wearTexture.minFilter = this.wearTexture.magFilter = THREE.LinearFilter;
-    this.wearTexture.needsUpdate = true;
-    addWear(this.pitchMaterial, this.wearTexture, this.wearMirror);
+    this.scuff.fill(0);
+    for (const texture of [this.wearTexture, this.scuffTexture]) { texture.minFilter = texture.magFilter = THREE.LinearFilter; texture.needsUpdate = true; }
+    // The grass is a shader: mown bands that change with the camera, wear, puddles where water stands and a growing snow cover.
+    this.pitchSurface = createPitchSurface({
+      length: FIELD_LENGTH, width: FIELD_WIDTH, seed: match.home.visuals.seed, weather, sky: bg, wear: this.wearTexture, scuff: this.scuffTexture,
+      puddles: puddleSpots(match.config.seed, weather, FIELD_LENGTH, FIELD_WIDTH), mirror: this.wearMirror, unlit: this.software,
+      bump: this.software ? undefined : createGrassBump(), cage: match.pitch.id === 'small',
+    });
+    this.pitchSurface.setDetail(this.quality === 'low' ? 0 : 1);
+    this.pitchMaterial = this.pitchSurface.material;
     const pitch = new THREE.Mesh(new THREE.PlaneGeometry(FIELD_LENGTH, FIELD_WIDTH), this.pitchMaterial);
     pitch.rotation.x = -Math.PI / 2;
     pitch.receiveShadow = true;
@@ -1114,6 +1114,14 @@ export class ThreePitchRenderer {
     markings.position.y = 0.012;
     markings.receiveShadow = true;
     this.stadium.add(markings);
+    if (snowy) {
+      // The ground staff keep the lines free: a swept strip of grass under every marking.
+      const swept = new THREE.Mesh(createPitchMarkings(0.6), this.software ? new THREE.MeshBasicMaterial({ color: '#2f6b47' })
+        : new THREE.MeshStandardMaterial({ color: '#2c6a44', roughness: 0.9, envMapIntensity: 0.3, polygonOffset: true, polygonOffsetFactor: -1 }));
+      swept.position.y = 0.006;
+      swept.receiveShadow = true;
+      this.stadium.add(swept);
+    }
     this.buildGoals();
     if (match.pitch.id === 'small') {
       this.buildCage(match, night);
@@ -1492,6 +1500,7 @@ export class ThreePitchRenderer {
     const reduced = match.config.camera.reducedMotion;
     const goalAge = this.time - this.goalTime;
     this.crowdUniform.value = this.time;
+    if (match.config.weather === 'snow') this.pitchSurface?.setSnow(snowCover(match.footballMinute));
     this.crowdEnergy.value = reduced ? 0 : goalAge < 4 ? 0.12 : 0.009;
     this.weather.visible = !reduced && match.config.weather !== 'clear' && match.config.weather !== 'snow' && this.quality !== 'low';
     if (this.weather.visible) {
@@ -1811,60 +1820,6 @@ export function groundView(camera: THREE.Camera, out = new Float32Array(8)): Flo
   return out;
 }
 
-/** Real mowing and white paint in one inexpensive, locally generated texture. */
-function createPitchTexture(seed: number, wet: boolean, snow = false): THREE.CanvasTexture {
-  const canvas = document.createElement('canvas');
-  canvas.width = 2048; canvas.height = 1326;
-  const ctx = canvas.getContext('2d');
-  if (ctx) {
-    const sx = canvas.width / FIELD_LENGTH, sy = canvas.height / FIELD_WIDTH;
-    for (let stripe = 0; stripe < 10; stripe++) {
-      ctx.fillStyle = stripe % 2 ? wet ? '#246743' : '#2b8048' : wet ? '#205b39' : '#226e3e';
-      ctx.fillRect(stripe * canvas.width / 10, 0, canvas.width / 10 + 1, canvas.height);
-    }
-    // Reproducible, faint blades/wear avoid both a flat plane and noisy shimmer.
-    for (let i = 0; i < 26000; i++) {
-      const n = hash32(`${seed}|grass|${i}`);
-      ctx.fillStyle = i % 2 ? 'rgba(233,239,153,.050)' : 'rgba(13,56,32,.050)';
-      ctx.fillRect(n % canvas.width, (n >>> 12) % canvas.height, 1, 2 + i % 3);
-    }
-    // Worn goal mouths.
-    for (const x of [4.5 * FIELD_LENGTH / 105, FIELD_LENGTH - 4.5 * FIELD_LENGTH / 105]) {
-      const y = FIELD_WIDTH / 2;
-      const grad = ctx.createRadialGradient(x * sx, y * sy, 0, x * sx, y * sy, 3.8 * sx);
-      grad.addColorStop(0, 'rgba(152,127,70,.13)'); grad.addColorStop(1, 'rgba(152,127,70,0)');
-      ctx.fillStyle = grad; ctx.fillRect((x - 4) * sx, (y - 5) * sy, 8 * sx, 10 * sy);
-    }
-    // Large, soft patches break up the uniform colour; markings are separate geometry.
-    for (let i = 0; i < 40; i++) {
-      const n = hash32(`${seed}|patch|${i}`);
-      const px = n % canvas.width, py = (n >>> 11) % canvas.height, radius = 60 + (n >>> 20) % 160;
-      const grad = ctx.createRadialGradient(px, py, 0, px, py, radius);
-      grad.addColorStop(0, i % 2 ? 'rgba(210,230,120,.05)' : 'rgba(8,40,20,.06)'); grad.addColorStop(1, 'rgba(0,0,0,0)');
-      ctx.fillStyle = grad; ctx.fillRect(px - radius, py - radius, radius * 2, radius * 2);
-    }
-    // A gentle light fall-off towards the far touchline.
-    const light = ctx.createLinearGradient(0, 0, 0, canvas.height);
-    light.addColorStop(0, 'rgba(0,20,10,.08)'); light.addColorStop(1, 'rgba(255,255,220,.05)');
-    ctx.fillStyle = light; ctx.fillRect(0, 0, canvas.width, canvas.height);
-    if (snow) {
-      // A cover of snow: the grass shows through in the mowing stripes and in patches where the cover is thin.
-      ctx.fillStyle = 'rgba(232,241,246,.66)'; ctx.fillRect(0, 0, canvas.width, canvas.height);
-      for (let stripe = 0; stripe < 10; stripe += 2) { ctx.fillStyle = 'rgba(70,120,90,.10)'; ctx.fillRect(stripe * canvas.width / 10, 0, canvas.width / 10, canvas.height); }
-      for (let i = 0; i < 90; i++) {
-        const n = hash32(`${seed}|thin|${i}`);
-        const px = n % canvas.width, py = (n >>> 11) % canvas.height, radius = 30 + (n >>> 20) % 90;
-        const thin = ctx.createRadialGradient(px, py, 0, px, py, radius);
-        thin.addColorStop(0, 'rgba(60,110,80,.22)'); thin.addColorStop(1, 'rgba(60,110,80,0)');
-        ctx.fillStyle = thin; ctx.fillRect(px - radius, py - radius, radius * 2, radius * 2);
-      }
-    }
-  }
-  const texture = new THREE.CanvasTexture(canvas);
-  texture.colorSpace = THREE.SRGBColorSpace;
-  return texture;
-}
-
 /** Gradient dome: zenith colour overhead fading to the horizon (and fog) colour. */
 function createSkyDome(zenith: string, horizon: string, radius = 280): THREE.Mesh {
   const geometry = new THREE.SphereGeometry(radius, 24, 12);
@@ -1948,8 +1903,8 @@ function createGrassBump(): THREE.CanvasTexture {
 }
 
 /** All pitch markings merged into one flat mesh (sim coordinates: x 0..105, y 0..68). */
-function createPitchMarkings(): THREE.BufferGeometry {
-  const width = 0.12, parts: THREE.BufferGeometry[] = [];
+function createPitchMarkings(width = 0.12): THREE.BufferGeometry {
+  const parts: THREE.BufferGeometry[] = [];
   const place = (geometry: THREE.BufferGeometry, x: number, y: number) => {
     geometry.rotateX(-Math.PI / 2);
     geometry.translate(x - FIELD_LENGTH / 2, 0, y - FIELD_WIDTH / 2);
@@ -1963,7 +1918,7 @@ function createPitchMarkings(): THREE.BufferGeometry {
   };
   const rect = (x: number, y: number, w: number, h: number) => { line(x, y, x + w, y); line(x + w, y, x + w, y + h); line(x + w, y + h, x, y + h); line(x, y + h, x, y); };
   const arc = (x: number, y: number, r: number, start: number, length: number) => place(new THREE.RingGeometry(r - width / 2, r + width / 2, 72, 1, start, length), x, y);
-  const spot = (x: number, y: number) => place(new THREE.CircleGeometry(0.17, 16), x, y);
+  const spot = (x: number, y: number) => place(new THREE.CircleGeometry(0.11 + width / 2, 16), x, y);
   const L = FIELD_LENGTH, W = FIELD_WIDTH, mid = W / 2, p = PITCH;
   const boxW = p.penaltyHalfWidth * 2, areaHalf = GOAL_WIDTH / 2 + p.goalAreaDepth;
   rect(0.06, 0.06, L - 0.12, W - 0.12);
