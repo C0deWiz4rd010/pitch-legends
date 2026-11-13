@@ -4,7 +4,7 @@ import * as THREE from 'three';
 import { ArcadeActor, ArcadeMatch, FIELD_LENGTH, FIELD_WIDTH, GOAL_WIDTH, GOAL_HEIGHT, PITCH, applyPitch } from '../../core/services/arcade-match';
 import { resolveMatchKits, MatchKitSelection } from '../../core/kit-visuals';
 import { contrastRatio, contrastText, hash32 } from '../../core/visual-identity';
-import { ReplayShot, flashLit } from './replay-director';
+import { ReplayShot } from './replay-director';
 import { MatchRenderFrame, MatchRenderState, MatchSnapshot, PlayerRuntimeSnapshot } from '../../models/match.model';
 import { MATCH_TICK } from '../../core/football/match-types';
 import { RefereeRig } from './animation/referee';
@@ -28,6 +28,7 @@ import { MatchCameraPreset } from '../../models/match.model';
 import { SCUFF_HEIGHT, SCUFF_WIDTH, WEAR_HEIGHT, WEAR_WIDTH, stampScuff, stampWear } from './pitch-wear';
 import { PitchSurface, createPitchSurface, snowCover } from './pitch-surface';
 import { puddleSpots } from '../../core/football/weather';
+import { Ground, createGround } from './stadium/ground';
 import { CosmeticDef } from '../../core/meta/legend-path';
 import { CosmeticSlot } from '../../models/meta.model';
 import { KitPattern } from '../../models/visual.model';
@@ -110,9 +111,12 @@ export class ThreePitchRenderer {
   /** The composer outlives quality changes (rebuilding it mid-match stalls); it only draws on the high profile. */
   private composerActive = false;
   private bloom: UnrealBloomPass | null = null;
-  private readonly flags: THREE.Mesh[] = [];
-  /** The scrolling LED board textures. */
-  private readonly ledTextures: THREE.Texture[] = [];
+  /** Stands, supporters, lights, flags and LED boards of the ground (not in the five-a-side cage). */
+  private ground: Ground | null = null;
+  /** Who scored the goal the ground is celebrating, read from the score. */
+  private goalBy: 'home' | 'away' | null = null;
+  private seenHome = 0;
+  private seenAway = 0;
   private turf!: THREE.Points;
   private readonly turfVelocity = new Float32Array(64 * 3);
   private readonly turfLife = new Float32Array(64);
@@ -122,8 +126,6 @@ export class ThreePitchRenderer {
   private shake = 0;
   /** Camera of the goal replay, chosen by the page from what happened (see replay-director). */
   private replayShot: ReplayShot = 'broadcast';
-  /** Camera flashes in the stands after a goal; rebuilt with the stadium. */
-  private flashes: THREE.Points<THREE.BufferGeometry, THREE.PointsMaterial> | null = null;
   private celebration: { scorerId: string; elapsed: number } | null = null;
   private pitchMaterial: THREE.MeshStandardMaterial | THREE.MeshBasicMaterial | null = null;
   private sunHeight = 75;
@@ -192,8 +194,6 @@ export class ThreePitchRenderer {
   private readonly hud: HTMLCanvasElement;
   private readonly hudContext: CanvasRenderingContext2D | null;
   private readonly resizeObserver: ResizeObserver | null;
-  private readonly crowdUniform = { value: 0 };
-  private readonly crowdEnergy = { value: 0.01 };
   private readonly goalNets: THREE.Mesh[] = [];
   private readonly netRestPositions: Float32Array[] = [];
   private readonly confetti: THREE.Points;
@@ -641,7 +641,6 @@ export class ThreePitchRenderer {
     this.updateAtmosphere(match, dt);
     this.updateTurf(dt);
     if (this.bloom) this.bloom.strength = 0.25 + Math.max(0, 1 - (this.time - this.goalTime) / 1.5) * 0.45;
-    this.updateFlashes();
     this.renderer.info.reset();
     this.gpuTimer?.begin();
     if (this.composer && this.composerActive) this.composer.render(dt);
@@ -678,7 +677,7 @@ export class ThreePitchRenderer {
     this.resize();
     this.canvas.dataset['quality'] = quality;
     this.pitchSurface?.setDetail(quality === 'low' ? 0 : 1);
-    this.stadium.traverse(object => { if (object.name === 'crowd') object.visible = quality !== 'low'; });
+    this.ground?.setQuality(quality);
   }
 
   /** Render resolution for a profile: the device's pixel ratio capped per profile, times the render scale chosen in the settings. */
@@ -882,9 +881,9 @@ export class ThreePitchRenderer {
         fov = 46;
       } else if (this.replayShot === 'behind-goal') {
         // Behind the goal, looking back up the pitch at the finish.
-        position.set(goalSide * (FIELD_LENGTH / 2 + 10), 4.2, bz * 0.3);
+        position.set(goalSide * (FIELD_LENGTH / 2 + 3.3), 2.9, bz * 0.3);
         look.set(bx - goalSide * 6, 0.8, bz);
-        fov = 42;
+        fov = 50;
       } else {
         // Low touchline camera level with the ball.
         position.set(this.cameraX * 0.85, 2.6, FIELD_WIDTH / 2 + 7);
@@ -921,24 +920,6 @@ export class ThreePitchRenderer {
     if (preset && preset in CAMERA_PRESETS) return preset;
     const zoom = match.config.camera.zoom || 1;
     return zoom < 0.72 ? 'tactic' : zoom < 0.92 ? 'tv' : 'arcade';
-  }
-
-  /** For three seconds after a goal the stands sparkle with camera flashes, thinning out towards the end. */
-  private updateFlashes(): void {
-    const flashes = this.flashes;
-    if (!flashes) return;
-    const age = this.time - this.goalTime;
-    const active = age >= 0 && age < 3 && this.quality !== 'low';
-    if (flashes.visible !== active) flashes.visible = active;
-    if (!active) return;
-    const color = flashes.geometry.getAttribute('color') as THREE.BufferAttribute;
-    const out = color.array as Float32Array;
-    const fade = 1 - age / 3;
-    for (let index = 0, count = color.count; index < count; index++) {
-      const lit = flashLit(index, this.time) ? fade : 0;
-      out[index * 3] = lit; out[index * 3 + 1] = lit; out[index * 3 + 2] = lit * 0.92;
-    }
-    color.needsUpdate = true;
   }
 
   /** Camera shake from the woodwork and blocks; goals trigger it separately. */
@@ -999,7 +980,10 @@ export class ThreePitchRenderer {
       disposeTree(this.stadium);
       this.stadium.clear();
       this.goalNets.length = 0;
-      this.ledTextures.length = 0;
+      this.ground = null;
+      this.goalBy = null;
+      this.seenHome = match.homeScore;
+      this.seenAway = match.awayScore;
       this.netRestPositions.length = 0;
       this.netEntry = null;
       this.netHit = null;
@@ -1128,137 +1112,14 @@ export class ThreePitchRenderer {
       return;
     }
 
-    const structures: { position: number[]; scale: number[]; color: string }[] = [];
-    const addBox = (x: number, y: number, z: number, w: number, h: number, d: number, color: string) => structures.push({ position: [x, y, z], scale: [w, h, d], color });
     const theme = match.home.visuals.stadium;
-    // The style of the ground: compact ones have fewer rows, bowls rise higher and close their corners, industrial ones show their steel.
-    const rows = Math.max(4, 5 + Math.min(5, match.home.facilities.stadium) + (theme.standStyle === 'compact' ? -1 : theme.standStyle === 'bowl' ? 1 : 0));
-    const stand = theme.standStyle === 'industrial' ? ['#46535a', '#374349'] : theme.standStyle === 'classic' ? ['#4a4338', '#3b352c'] : ['#354858', '#2b3d4b'];
-    const seatColor = theme.seatColor;
-    // Four compact stands form a coherent, deliberately stylized ground.
-    // The camera sits in the near main stand, so only the far long side is built (it would block the view).
-    for (const side of [-1, 1]) {
-      for (let row = 0; row < rows; row++) {
-        const y = 0.7 + row * 0.62;
-        if (side < 0) addBox(0, y / 2, side * (41 + row * 0.95), 116, y, 0.98, row % 2 ? stand[0] : stand[1]);
-        addBox(side * (59 + row * 0.95), y / 2, 0, 0.98, y, 79, row % 2 ? stand[0] : stand[1]);
-        // A bowl fills the corners with a curved-looking block between the stands.
-        if (theme.standStyle === 'bowl') for (const end of [-1, 1]) addBox(end * (57.5 + row * 0.7), y / 2, side * (39.5 + row * 0.7), 3.2 + row * 0.7, y, 3.2 + row * 0.7, row % 2 ? stand[0] : stand[1]);
-      }
-      addBox(0, 0.46, side * 37.6, 111, 0.90, 0.26, '#f1ebd2');
-      addBox(side * 56.4, 0.46, 0, 0.26, 0.90, 76, '#f1ebd2');
-      if (side < 0) addBox(0, rows * 0.62 + 0.7, side * (42 + rows * 0.95), 120, 0.55, 0.6, seatColor);
-      addBox(side * (60 + rows * 0.95), rows * 0.62 + 0.7, 0, 0.6, 0.55, 82, seatColor);
-      // Back walls close the bowl; bigger grounds (stadium level 2+) get cantilever roofs.
-      const top = rows * 0.62 + 0.7;
-      if (side < 0) addBox(0, (top + 1.6) / 2, side * (42.6 + rows * 0.95), 122, top + 1.6, 0.4, '#1d2a35');
-      addBox(side * (60.6 + rows * 0.95), (top + 1.6) / 2, 0, 0.4, top + 1.6, 84, '#1d2a35');
-      if (match.home.facilities.stadium >= 2) {
-        const depth = rows * 0.95 + 3;
-        if (side < 0) addBox(0, top + 3.2, side * (40.5 + depth / 2), 124, 0.28, depth, '#2c3a45');
-        addBox(side * (58.5 + depth / 2), top + 3.2, 0, depth, 0.28, 86, '#2c3a45');
-        // Industrial grounds show their trusses twice as often.
-        if (side < 0) for (let x = -54; x <= 54; x += theme.standStyle === 'industrial' ? 9 : 18) addBox(x, (top + 3.2) / 2 + 0.8, side * (42.4 + rows * 0.95), theme.standStyle === 'industrial' ? 0.45 : 0.3, top + 3.2 - 1.6, 0.3, '#56646d');
-      }
-      for (let x = -48; x <= 48; x += 16) {
-        addBox(x, 0.5, side * 37.78, 12, 0.54, 0.12, x % 32 ? match.home.visuals.kits.home.shirt : '#163748');
-      }
-    }
-    // Braced floodlight towers frame the ground without lighting each lamp separately.
-    for (const sx of [-1, 1]) for (const sz of [-1, 1]) {
-      const x = sx * 62, z = sz * 44;
-      addBox(x, 8, z, 0.45, 16, 0.45, '#8da2a6');
-      addBox(x, 16, z, 5.2, 2, 0.55, '#c2c8c1');
-    }
-    // Lamp faces are emissive, so bloom makes them glow (especially at night).
-    const lampMaterial = new THREE.MeshBasicMaterial({ color: new THREE.Color('#fff6d8').multiplyScalar(night ? 4 : 2.6) });
-    for (const sx of [-1, 1]) for (const sz of [-1, 1]) {
-      const lamp = new THREE.Mesh(new THREE.BoxGeometry(4.8, 1.5, 0.1), lampMaterial);
-      lamp.position.set(sx * 62, 16, sz * 44 + (sz > 0 ? -0.3 : 0.3));
-      lamp.lookAt(0, 0, 0);
-      this.stadium.add(lamp);
-      if (night) {
-        const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTexture(), color: '#fff3cf', transparent: true, opacity: 0.55, depthWrite: false, blending: THREE.AdditiveBlending }));
-        glow.position.copy(lamp.position);
-        glow.scale.setScalar(14);
-        this.stadium.add(glow);
-      }
-    }
-    // Benches and technical areas on the far touchline.
-    for (const x of [-13, 13]) {
-      addBox(x, 1.25, -38.7, 9.5, 0.14, 2.5, '#b6cbd0');
-      addBox(x, 0.62, -39.8, 9.5, 1.3, 0.12, '#426976');
-      addBox(x, 0.4, -39, 8.8, 0.2, 0.55, seatColor);
-      for (const offset of [-4.5, 4.5]) addBox(x + offset, 0.65, -39, 0.12, 1.3, 2.3, '#8ba9b0');
-    }
-    const boxes = new THREE.InstancedMesh(new THREE.BoxGeometry(), new THREE.MeshStandardMaterial({ roughness: 0.88 }), structures.length);
-    const dummy = new THREE.Object3D();
-    structures.forEach((part, i) => {
-      dummy.position.fromArray(part.position);
-      dummy.scale.fromArray(part.scale);
-      dummy.updateMatrix();
-      boxes.setMatrixAt(i, dummy.matrix);
-      boxes.setColorAt(i, new THREE.Color(part.color));
+    this.ground = createGround({
+      seed: match.home.visuals.seed, theme, level: match.home.facilities.stadium, clubName: match.home.name,
+      home: match.home.visuals.kits.home, away: this.kits?.away ?? match.away.visuals.kits.away, decor: this.decorColor(match),
+      atmosphere: night ? 'night' : sunset ? 'sunset' : 'day', weather, quality: this.quality, software: this.software,
+      english: typeof document !== 'undefined' && document.documentElement.lang === 'en', softDot: this.softDot!, glow: glowTexture(),
     });
-    boxes.receiveShadow = false;
-    this.stadium.add(boxes);
-    this.buildCrowd(match, rows);
-    for (const x of [-52.5, 52.5]) for (const z of [-34, 34]) {
-      const flag = new THREE.Group();
-      const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 1.6, 5), new THREE.MeshStandardMaterial({ color: '#eeeac9' }));
-      pole.position.y = 0.8;
-      const cloth = new THREE.Mesh(new THREE.PlaneGeometry(0.6, 0.38), new THREE.MeshStandardMaterial({ color: this.decorColor(match) ?? '#ffd967', side: THREE.DoubleSide }));
-      // Pivot at the pole so the cloth waves around it.
-      cloth.geometry.translate(0.3, 0, 0);
-      cloth.position.set(0, 1.36, 0);
-      this.flags.push(cloth);
-      flag.add(pole, cloth);
-      flag.position.set(x, 0, z);
-      this.stadium.add(flag);
-    }
-    // LED boards: the wordmarks of the game itself (no external advertising or brands), in the colours and the pattern of the
-    // club's ground, scrolling slowly; the slogans come from the ground's seed so every ground reads differently.
-    const slogans = ['PITCH LEGENDS', 'PLAY BEAUTIFUL', 'THE GAME IS YOURS', 'ONE MORE MATCH', 'LEGENDS ARE MADE HERE', 'FOR THE LOVE OF THE GAME', 'EVERY WEEK COUNTS', 'FIGHT FOR EVERY BALL'];
-    const start = theme.sponsorSeed % slogans.length;
-    const text = [0, 1, 2, 3].map((i) => slogans[(start + i * 3) % slogans.length]).join('     •     ');
-    const bannerCanvas = document.createElement('canvas');
-    bannerCanvas.width = 1024;
-    bannerCanvas.height = 64;
-    const ctx = bannerCanvas.getContext('2d');
-    if (ctx) {
-      const kit = match.home.visuals.kits.home;
-      ctx.fillStyle = '#102c36'; ctx.fillRect(0, 0, 1024, 64);
-      // The pattern of the ground runs along the bottom and top edge of the board.
-      ctx.fillStyle = kit.shirt;
-      const pattern = theme.bannerPattern;
-      for (let x = 0; x < 1024; x += 32) {
-        if (pattern === 'stripe' || pattern === 'hoops' || pattern === 'sash') ctx.fillRect(x, 0, 16, 5), ctx.fillRect(x + 16, 59, 16, 5);
-        else if (pattern === 'chevron') ctx.fillRect(x, 0, 16, 3 + (x / 32) % 3 * 2), ctx.fillRect(x, 61 - (x / 32) % 3 * 2, 16, 3 + (x / 32) % 3 * 2);
-        else if (pattern === 'halves' || pattern === 'quarters') ctx.fillRect(x < 512 ? 0 : 512, 0, 512, 4), ctx.fillRect(x < 512 ? 512 : 0, 60, 512, 4);
-        else ctx.fillRect(0, 0, 1024, 4), ctx.fillRect(0, 60, 1024, 4);
-      }
-      ctx.fillStyle = this.decorColor(match) ?? '#f4e5ac'; ctx.font = 'bold 25px sans-serif'; ctx.textAlign = 'center';
-      ctx.fillText(text, 512, 41, 1000);
-    }
-    const bannerTexture = new THREE.CanvasTexture(bannerCanvas);
-    bannerTexture.colorSpace = THREE.SRGBColorSpace;
-    bannerTexture.wrapS = THREE.RepeatWrapping;
-    this.ledTextures.push(bannerTexture);
-    const bannerMaterial = new THREE.MeshBasicMaterial({ map: bannerTexture });
-    const banner = new THREE.Mesh(new THREE.PlaneGeometry(98, 0.86), bannerMaterial);
-    banner.position.set(0, 0.6, -37.43);
-    this.stadium.add(banner);
-    // The same board runs round the ends, a little out of step.
-    for (const end of [-1, 1]) {
-      const endTexture = bannerTexture.clone();
-      endTexture.needsUpdate = true;
-      endTexture.offset.x = end * 0.25;
-      this.ledTextures.push(endTexture);
-      const endBoard = new THREE.Mesh(new THREE.PlaneGeometry(60, 0.86), new THREE.MeshBasicMaterial({ map: endTexture }));
-      endBoard.position.set(end * 56.65, 0.6, 0);
-      endBoard.rotation.y = -end * Math.PI / 2;
-      this.stadium.add(endBoard);
-    }
+    this.stadium.add(this.ground.group);
   }
 
   /** Five-a-side: boards around the pitch, a fence behind the goals and four light masts. */
@@ -1334,60 +1195,6 @@ export class ThreePitchRenderer {
       this.netRestPositions.push(new Float32Array((geometry.getAttribute('position') as THREE.BufferAttribute).array));
       this.stadium.add(mesh);
     }
-  }
-
-  private buildCrowd(match: ArcadeMatch, rows: number): void {
-    const positions: THREE.Vector3[] = [];
-    for (const sign of [-1, 1]) {
-      for (let row = 0; row < rows; row++) {
-        const step = this.quality === 'high' ? 1.20 : 1.80;
-        for (let along = -54; along <= 54; along += step) {
-          if (Math.abs(along % 16) < 1.3 || hash32(`${along}-${row}-${sign}`) % 10 === 0) continue;
-          if (sign < 0) positions.push(new THREE.Vector3(along, 0.84 + row * 0.62, sign * (41 + row * 0.95)));
-        }
-        for (let along = -37; along <= 37; along += step) {
-          if (Math.abs(along % 12) < 1.2 || hash32(`${along}-${row}-${sign}-end`) % 9 === 0) continue;
-          positions.push(new THREE.Vector3(sign * (59 + row * 0.95), 0.84 + row * 0.62, along));
-        }
-      }
-    }
-    // Camera flashes: a share of the seats can light up for a moment after a goal.
-    const bulbs: number[] = [];
-    for (let index = 0; index < positions.length; index++) {
-      if (hash32(`flash-${index}`) % 14 === 0) bulbs.push(positions[index].x, positions[index].y + 0.35, positions[index].z);
-    }
-    const flashGeometry = new THREE.BufferGeometry();
-    flashGeometry.setAttribute('position', new THREE.Float32BufferAttribute(bulbs, 3));
-    flashGeometry.setAttribute('color', new THREE.Float32BufferAttribute(new Float32Array(bulbs.length), 3));
-    this.flashes = new THREE.Points(flashGeometry, new THREE.PointsMaterial({ size: 1.1, map: this.softDot, vertexColors: true, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false }));
-    this.flashes.name = 'flashes';
-    this.flashes.frustumCulled = false;
-    this.flashes.visible = false;
-    this.stadium.add(this.flashes);
-    const material = new THREE.MeshLambertMaterial();
-    material.onBeforeCompile = (shader) => {
-      shader.uniforms['crowdTime'] = this.crowdUniform;
-      shader.uniforms['crowdEnergy'] = this.crowdEnergy;
-      shader.vertexShader = 'uniform float crowdTime; uniform float crowdEnergy;\n' + shader.vertexShader;
-      shader.vertexShader = shader.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\n#ifdef USE_INSTANCING\ntransformed.y += sin(crowdTime * 5.0 + instanceMatrix[3].x * 2.3 + instanceMatrix[3].z) * crowdEnergy;\n#endif');
-    };
-    const bodies = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.13, 0.19, 0.40, 5), material, positions.length);
-    const heads = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(0.13, 0), material, positions.length);
-    const dummy = new THREE.Object3D();
-    const colors = [match.home.visuals.kits.home.shirt, match.home.visuals.kits.home.secondary, '#f2e5c8', '#384960', '#c88669', '#98adb7'];
-    positions.forEach((position, i) => {
-      dummy.position.copy(position);
-      dummy.updateMatrix();
-      bodies.setMatrixAt(i, dummy.matrix);
-      bodies.setColorAt(i, new THREE.Color(colors[hash32(`fan-${match.home.visuals.seed}-${i}`) % colors.length]));
-      dummy.position.y += 0.31;
-      dummy.updateMatrix();
-      heads.setMatrixAt(i, dummy.matrix);
-      heads.setColorAt(i, new THREE.Color(['#ecc5a1', '#ca956e', '#925e46', '#543a32'][i % 4]));
-    });
-    bodies.name = heads.name = 'crowd';
-    bodies.visible = heads.visible = this.quality !== 'low';
-    this.stadium.add(bodies, heads);
   }
 
   /**
@@ -1499,9 +1306,18 @@ export class ThreePitchRenderer {
   private updateAtmosphere(match: ArcadeMatch, dt: number): void {
     const reduced = match.config.camera.reducedMotion;
     const goalAge = this.time - this.goalTime;
-    this.crowdUniform.value = this.time;
+    // Who scored: the stands of that side celebrate.
+    if (match.homeScore !== this.seenHome || match.awayScore !== this.seenAway) {
+      this.goalBy = match.homeScore > this.seenHome ? 'home' : match.awayScore > this.seenAway ? 'away' : this.goalBy;
+      this.seenHome = match.homeScore; this.seenAway = match.awayScore;
+    }
+    const stage = match.phase;
+    this.ground?.update({
+      time: this.time, dt, reduced, goalAge, goalBy: this.goalBy, homeLeads: match.homeScore > match.awayScore,
+      preKickoff: match.rule.phase === 'kickoff' && match.homeScore + match.awayScore === 0 && match.footballMinute < 1 && stage !== 'halftime' && stage !== 'fulltime',
+      interval: stage === 'halftime' || stage === 'fulltime' || stage === 'report', cameraZ: this.camera.position.z, viewportHeight: this.height * this.pixelRatio,
+    });
     if (match.config.weather === 'snow') this.pitchSurface?.setSnow(snowCover(match.footballMinute));
-    this.crowdEnergy.value = reduced ? 0 : goalAge < 4 ? 0.12 : 0.009;
     this.weather.visible = !reduced && match.config.weather !== 'clear' && match.config.weather !== 'snow' && this.quality !== 'low';
     if (this.weather.visible) {
       this.weather.position.y = -(this.time * (match.config.weather === 'storm' ? 14 : 10) % 11.4);
@@ -1532,8 +1348,6 @@ export class ThreePitchRenderer {
       this.snow.position.x = this.weather.position.x;
       this.snow.position.z = this.weather.position.z;
     }
-    if (!reduced) this.ledTextures.forEach((texture, i) => { texture.offset.x = ((i === 0 ? 0 : i === 1 ? -0.25 : 0.25) + this.time * 0.012) % 1; });
-    if (!reduced) this.flags.forEach((cloth, i) => { cloth.rotation.y = Math.sin(this.time * (match.config.weather === 'storm' ? 6 : 3) + i * 1.7) * 0.45; });
     if (match.config.weather === 'storm' && !reduced) {
       const flash = lightningFlash(this.time);
       this.fill.intensity = this.fillBase * (1 + 2.2 * flash);
@@ -2008,6 +1822,9 @@ function disposeTree(root: THREE.Object3D): void {
     if (mesh.material) for (const material of Array.isArray(mesh.material) ? mesh.material : [mesh.material]) {
       materials.add(material);
       for (const value of Object.values(material)) if (value instanceof THREE.Texture) textures.add(value);
+      // Shader materials keep their textures in uniforms.
+      const uniforms = (material as THREE.ShaderMaterial).uniforms;
+      if (uniforms) for (const uniform of Object.values(uniforms)) if (uniform?.value instanceof THREE.Texture) textures.add(uniform.value);
     }
   });
   geometries.forEach(geometry => geometry.dispose());
