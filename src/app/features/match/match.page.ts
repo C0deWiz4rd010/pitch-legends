@@ -43,6 +43,7 @@ import { Mentality, PressingIntensity, Width } from '../../models/enums';
 import { ratingColor } from '../../shared/rating-color';
 import { playerName } from '../../core/ratings';
 import { I18nService } from '../../core/services/i18n.service';
+import { IMPACT_TIME, impactTimeScale } from './impact-time';
 import { ARCADE_MATCH_TUNING, ArcadeMatch, FIELD_LENGTH, MATCH_TICK, ShootoutPrompt } from '../../core/services/arcade-match';
 import { AudioService } from '../../core/services/audio.service';
 import { GraphicsPrefsService } from '../../core/services/graphics-prefs.service';
@@ -231,6 +232,9 @@ export class MatchPage implements OnDestroy {
   private lastSimulationCost = 0;
   private lastMetricsAt = 0;
   private replayElapsed = 0;
+  /** Timestamp of the last big moment (woodwork, flying save) and the events already looked at for one. */
+  private impactAt = -Infinity;
+  private impactEventCount = 0;
   private prevHome = 0;
   private prevAway = 0;
   private previousRule = '';
@@ -727,13 +731,21 @@ export class MatchPage implements OnDestroy {
       const reduced = this.arcade.config.camera.reducedMotion;
       // First the scorer celebrates in close-up, then the replay slows down towards the finish.
       const celebrate = reduced || !frames.length ? 0 : 2.4;
-      const scorer = this.celebrationScorer(frames.at(-1));
-      if (this.replayElapsed < celebrate && scorer && this.renderer) {
-        this.renderer.renderCelebration(this.arcade, this.celebrationFrame(frames.at(-1)!, scorer, this.replayElapsed), scorer, this.replayElapsed, renderDelta);
+      // Hit-stop: the frame the ball crossed the line stands for a moment before anything else happens.
+      const hitStop = reduced ? 0 : IMPACT_TIME.goalFreeze;
+      if (this.replayElapsed < hitStop && this.currentRenderState) {
+        this.renderer?.render(this.arcade, { previous: this.currentRenderState, current: this.currentRenderState, alpha: 1, deltaSeconds: renderDelta });
         this.raf = requestAnimationFrame((time) => this.loop(time));
         return;
       }
-      const playback = replayPlayback(frames.length, Math.max(0, this.replayElapsed - celebrate), reduced);
+      const replayElapsed = this.replayElapsed - hitStop;
+      const scorer = this.celebrationScorer(frames.at(-1));
+      if (replayElapsed < celebrate && scorer && this.renderer) {
+        this.renderer.renderCelebration(this.arcade, this.celebrationFrame(frames.at(-1)!, scorer, replayElapsed), scorer, replayElapsed, renderDelta);
+        this.raf = requestAnimationFrame((time) => this.loop(time));
+        return;
+      }
+      const playback = replayPlayback(frames.length, Math.max(0, replayElapsed - celebrate), reduced);
       const current = this.currentRenderState ?? this.arcade.renderState();
       const index = Math.max(0, Math.floor(playback.cursor));
       const replay = frames.length ? interpolateThreeReplay(frames[index], frames[Math.min(frames.length - 1, index + 1)], playback.cursor - index, this.replayScratch) : undefined;
@@ -746,7 +758,9 @@ export class MatchPage implements OnDestroy {
       const simulationStarted = performance.now();
       const tacticalTimeScale = this.showTactics() ? 0.15 : 1;
       const simulationSpeed = this.selectedMode() === 'coach' && this.autoEnabled() ? this.speed() : 1;
-      this.fixedAccumulator += Math.min(rawDelta, 0.5) * simulationSpeed * tacticalTimeScale;
+      // A big moment freezes and slows the picture for the player; never in coach fast-forward, drills or with reduced motion.
+      const impactScale = simulationSpeed === 1 && !this.challenge && !this.arcade.config.camera.reducedMotion ? impactTimeScale((timestamp - this.impactAt) / 1000) : 1;
+      this.fixedAccumulator += Math.min(rawDelta, 0.5) * simulationSpeed * tacticalTimeScale * impactScale;
       const input = this.arcade.controllerMode === 'human' ? this.readInput() : EMPTY_MATCH_COMMAND;
       let steps = 0;
       while (this.fixedAccumulator >= MATCH_TICK && steps < ARCADE_MATCH_TUNING.maxCatchUpSteps) {
@@ -765,6 +779,7 @@ export class MatchPage implements OnDestroy {
         steps++;
         if (this.challenge?.done) break;
       }
+      this.watchImpacts(timestamp);
       if (this.fixedAccumulator > 0.25) {
         // A delayed GPU frame must not strand the player in a pause menu.
         // Discard wall-clock debt, keeping every simulated tick at exactly 60 Hz.
@@ -916,6 +931,18 @@ export class MatchPage implements OnDestroy {
       hasUltimate: this.arcade.hasUltimate(this.arcade.controlledSide),
       restartSeconds: this.arcade.restartCountdown,
     };
+  }
+
+  /** Woodwork and flying saves start the freeze and slow motion, at most once per cooldown. */
+  private watchImpacts(timestamp: number): void {
+    const events = this.arcade!.events;
+    if (events.length < this.impactEventCount) this.impactEventCount = 0;
+    for (let index = this.impactEventCount; index < events.length; index++) {
+      const event = events[index];
+      const flyingSave = event.type === 'save' && this.arcade!.actors.some((actor) => actor.player.id === event.playerId && actor.action === 'keeper-dive');
+      if ((event.messageKey === 'match.post' || flyingSave) && timestamp - this.impactAt > IMPACT_TIME.cooldown * 1000) this.impactAt = timestamp;
+    }
+    this.impactEventCount = events.length;
   }
 
   private celebrate(side: 'home' | 'away'): void {
