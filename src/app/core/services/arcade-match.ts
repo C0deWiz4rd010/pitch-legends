@@ -55,6 +55,9 @@ import { partnerBonus } from '../rpg/partners';
 import { canUse } from '../rpg/stat-block';
 import { StatBlock, buildStatBlock, newAttributes, rawStatBlock, refreshAttributes, refreshHooks, resolveAttribute, resolveHook } from '../rpg/stat-block';
 import { shotAngleQuality, shotXg } from '../football/xg';
+import { ARCADE_MATCH_TUNING, MATCH_TUNING as T } from '../football/tuning';
+
+export { ARCADE_MATCH_TUNING } from '../football/tuning';
 
 export { FIELD_LENGTH, FIELD_WIDTH, GOAL_HEIGHT, GOAL_WIDTH, MATCH_TICK, PITCH, applyPitch } from '../football/match-types';
 
@@ -65,22 +68,6 @@ export interface ScenarioSetup {
   restart?: { phase: 'penalty' | 'freeKick'; side: Side };
 }
 export type { ArcadeActor, ArcadeBall } from '../football/match-types';
-
-export const ARCADE_MATCH_TUNING = {
-  sprintMin: 6,
-  sprintMax: 9.4,
-  jogRatio: 0.68,
-  ballJogRatio: 0.95,
-  ballSprintRatio: 0.91,
-  acceleration: 18,
-  braking: 30,
-  maxCatchUpSteps: 8,
-  aiFirstTouchAssist: 10,
-  aiIntendedReceiverBonus: 8,
-  /** Crowd-backed composure: slightly tighter passing/finishing, cleaner touches and tackles at home. */
-  homeComposure: 0.15,
-  intendedReceiverControlBias: 0.12,
-} as const;
 
 export function arcadeSprintSpeed(pace: number): number {
   const normalized = clamp((pace - 40) / 59, 0, 1);
@@ -112,45 +99,15 @@ function normaliseCommand(input: InputFrame | MatchCommand): MatchCommand {
   };
 }
 
-/**
- * Deterministic 60 Hz match simulation shared by PLAY, COACH and headless SIM.
- * World values are metres; the renderer is deliberately only a consumer.
- */
-/** What an AI passer adds to the score of a target he thinks may be offside: attackers are sometimes found anyway. */
-const OFFSIDE_RISK_PENALTY = 0.2;
-/** How strongly AI passers avoid crowded passing lanes; higher means safer, shorter passing. */
-const AI_LANE_CAUTION = 1.8;
-/** Scales the execution error of AI passes (below 1 means cleaner passing); human passes keep their full error. */
-const AI_PASS_SKILL = 1;
-/** Interception attempts on a pass in flight happen every this many ticks per defender. */
-const INTERCEPT_SHARE = 72;
-/** A human-controlled restart is taken for the player after this many seconds. */
-const RESTART_AUTO_SECONDS = 8;
-/** Share of the normal speed while a kick or tackle is still being recovered from. */
-const RECOVERY_SPEED = 0.55;
-/** Share of a keeper's reach he covers with a poor read; reaction and the shot's roll add the rest. */
-const KEEPER_REACH_BASE = 0.45;
-/** Value an AI passer subtracts from a team-mate who may be offside. */
-const OFFSIDE_PASS_COST = 0.006;
-/** How far away a slide may start, and how long a missed one (or a missed standing tackle) keeps the player slow. */
-const SLIDE_LUNGE_REACH = 3.2;
-const SLIDE_MISS_TICKS = 48;
-const TACKLE_MISS_TICKS = 24;
-/** Assist levels with a timing finish: a second shoot press inside the wind-up cleans up the strike (off for the strongest assist). */
-const TIMED_FINISH: Record<AssistPreset, boolean> = { assisted: false, balanced: true, manual: true };
-/** How long a requested run in behind lasts, and how long a feint freezes a defender who bit. */
-const RUN_REQUEST_TICKS = 120;
-const FEINT_FREEZE_TICKS = 18;
-/** Share of AI aerial chances (volley, diving header, scissor kick) that are taken instead of controlling the ball. */
-const AI_VOLLEY_SHARE = 34;
-const AI_FLYING_HEADER_SHARE = 18;
-const AI_BICYCLE_SHARE = 6;
-
 export type { ShootoutPrompt } from '../football/shootout';
 
 type Point = { x: number; y: number; z: number };
 type AerialKind = 'volley' | 'bicycle-kick' | 'flying-header';
 
+/**
+ * Deterministic 60 Hz match simulation shared by PLAY, COACH and headless SIM.
+ * World values are metres; the renderer is deliberately only a consumer.
+ */
 export class ArcadeMatch {
   readonly home: Team;
   readonly away: Team;
@@ -1059,7 +1016,7 @@ export class ArcadeMatch {
 
   private moveActor(actor: ArcadeActor, dx: number, dy: number, sprint: boolean, dt: number, speedScale = 1): void {
     const recoveringUntil = this.football.recoveryUntil?.[actor.player.id];
-    if (recoveringUntil !== undefined && recoveringUntil > this.tick) speedScale *= RECOVERY_SPEED;
+    if (recoveringUntil !== undefined && recoveringUntil > this.tick) speedScale *= T.recovery.speed;
     const previousX = actor.x;
     const previousY = actor.y;
     const magnitude = len2(dx, dy);
@@ -1306,7 +1263,7 @@ export class ArcadeMatch {
     if (winding && winding.actorId === actor.player.id && this.isHumanControlled(actor)) {
       // Inside the wind-up: the modifier cancels the kick (a shot becomes a feint), a second shoot press times the finish.
       if (input.modifier && !this.previousInput.modifier) this.cancelKick(actor);
-      else if (winding.type === 'shoot' && !winding.timed && TIMED_FINISH[this.config.assist] && input.shoot && !this.previousInput.shoot) {
+      else if (winding.type === 'shoot' && !winding.timed && T.shot.timedFinish[this.config.assist] && input.shoot && !this.previousInput.shoot) {
         winding.timed = true;
         this.football.ignoreRelease = true;
       }
@@ -1428,10 +1385,10 @@ export class ArcadeMatch {
       if (gap > 4.5) continue;
       const bite = clamp(0.7 - this.stat(defender, 'defending') / 220 - (this.aiLevel(defender.side) === 'hard' ? 0.1 : 0) - Math.max(0, gap - 2.5) * 0.08, 0.15, 0.8);
       if (!this.rng.bool(bite)) continue;
-      defender.tackleCooldown = Math.max(defender.tackleCooldown, FEINT_FREEZE_TICKS / 60);
+      defender.tackleCooldown = Math.max(defender.tackleCooldown, T.feint.freezeTicks / 60);
       defender.vx *= 0.25; defender.vy *= 0.25;
-      this.startRecovery(defender, FEINT_FREEZE_TICKS);
-      if (!this.isHumanControlled(defender)) defender.decisionCooldown += FEINT_FREEZE_TICKS / 60;
+      this.startRecovery(defender, T.feint.freezeTicks);
+      if (!this.isHumanControlled(defender)) defender.decisionCooldown += T.feint.freezeTicks / 60;
     }
   }
 
@@ -1450,7 +1407,7 @@ export class ArcadeMatch {
       if (score < bestScore) { bestScore = score; best = mate; }
     }
     if (!best) return;
-    this.football.runRequest = { id: best.player.id, side: best.side, untilTick: this.tick + RUN_REQUEST_TICKS };
+    this.football.runRequest = { id: best.player.id, side: best.side, untilTick: this.tick + T.run.requestTicks };
     best.decisionCooldown = 0;
   }
 
@@ -1503,7 +1460,7 @@ export class ArcadeMatch {
         const gap = distance(actor, candidate) || 1;
         const alignment = stick && !cutBack ? ((candidate.x - actor.x) * aimX + (candidate.y - actor.y) * aimY) / (gap * aim) : 0;
         return { candidate, score: this.passLanePressure(actor, candidate) * 1.4 + Math.abs(candidate.y - FIELD_WIDTH / 2) * 0.05
-          + Math.abs(goalX - candidate.x) * 0.04 - Math.max(0, candidate.vx * direction) * 0.08 + (this.isOffside(candidate, actor) ? OFFSIDE_RISK_PENALTY : 0) - alignment * 1.6 };
+          + Math.abs(goalX - candidate.x) * 0.04 - Math.max(0, candidate.vx * direction) * 0.08 + (this.isOffside(candidate, actor) ? T.ai.offsideRiskPenalty : 0) - alignment * 1.6 };
       })
       .sort((a, b) => a.score - b.score)[0]?.candidate;
   }
@@ -1550,7 +1507,7 @@ export class ArcadeMatch {
         const runBonus = through ? Math.max(0, (candidate.vx * this.attackDirection(actor.side) + 1) * 0.12) : 0;
         const forwardGain = (candidate.x - actor.x) * this.attackDirection(actor.side);
         const preferredDistance = this.teamOf(actor.side).tactics.passing === 'direct' ? 25 : this.teamOf(actor.side).tactics.passing === 'short' ? 10 : 17;
-        return { candidate, angle, length, lanePressure, score: angle * (humanPass ? 2.2 : 0.25) + Math.abs(length - (humanPass ? 8 + power * 24 : preferredDistance)) * 0.035 + lanePressure * (humanPass ? 0.45 : AI_LANE_CAUTION) - runBonus - (humanPass ? 0 : forwardGain * 0.025) + (this.isOffside(candidate, actor) ? OFFSIDE_RISK_PENALTY * 0.8 : 0) };
+        return { candidate, angle, length, lanePressure, score: angle * (humanPass ? 2.2 : 0.25) + Math.abs(length - (humanPass ? 8 + power * 24 : preferredDistance)) * 0.035 + lanePressure * (humanPass ? 0.45 : T.ai.laneCaution) - runBonus - (humanPass ? 0 : forwardGain * 0.025) + (this.isOffside(candidate, actor) ? T.ai.offsideRiskPenalty * 0.8 : 0) };
       })
       .sort((a, b) => a.score - b.score);
     const assistedOptions = humanPass
@@ -1592,7 +1549,7 @@ export class ArcadeMatch {
     // The trivela pass: bent with the outside of the boot, it finds its man through traffic a little more often.
     const trivela = !flat && pressure > 0.25 && canUse(this.statsOf(actor), 'trivela-pass') ? 0.88 : 1;
     const partnerPass = (target ? partnerBonus(this.partnerStrength(actor, target)).passErrorMul : 1) * trivela;
-    const error = this.hook(actor, HK.passError, ((100 - this.stat(actor,'passing')) / 100 * 0.075 + pressure * 0.045 + weakFoot * 0.018 + fatigue * 0.04) * (humanPass ? 1 : AI_PASS_SKILL) * (flat ? 1.3 : 1) * partnerPass);
+    const error = this.hook(actor, HK.passError, ((100 - this.stat(actor,'passing')) / 100 * 0.075 + pressure * 0.045 + weakFoot * 0.018 + fatigue * 0.04) * (humanPass ? 1 : T.ai.passSkill) * (flat ? 1.3 : 1) * partnerPass);
     const angleError = this.rng.gaussian(0, error * manualFactor * this.composure(actor.side));
     const cos = Math.cos(angleError);
     const sin = Math.sin(angleError);
@@ -1628,13 +1585,13 @@ export class ArcadeMatch {
     const volley = forceVolley || this.ball.z > 0.35;
     const techniqueFactor = (driven ? 1.3 : 1) * (volley ? 1.2 : 1) * accuracy;
     const baseError = this.hook(actor, HK.shotError, ((100 - this.stat(actor,'shooting')) / 100 * 2.15 + pressure * 1.35 + (1 - balance) * 0.9 + weakFoot + fatigue + Math.max(0, distanceToGoal - 20) * 0.15) * techniqueFactor);
-    const assistFactor = this.config.assist === 'assisted' ? 0.72 : this.config.assist === 'manual' ? 1.18 : 0.92;
+    const assistFactor = T.shot.assistError[this.config.assist];
     const manual = this.isHumanControlled(actor) && this.config.assist === 'manual';
     const manualX = Math.abs(aimX) > 0.04 ? aimX : direction * 0.04;
     const aimedY = manual ? actor.y + aimY / manualX * (goalX - actor.x) : goalCentre + inputZone;
     // Shot dispersion uses a real standard deviation (× 2.4 since Phase H: about 55 % on target); the general generator's
     // bounded averaging helper otherwise put virtually every attempt on target.
-    const targetY = aimedY + this.rng.normal(0, this.composure(actor.side) * this.penaltyNerves * this.hook(actor, HK.composure, 1)) * (baseError + Math.max(0,distanceToGoal-12)*0.025) * assistFactor * 2.4;
+    const targetY = aimedY + this.rng.normal(0, this.composure(actor.side) * this.penaltyNerves * this.hook(actor, HK.composure, 1)) * (baseError + Math.max(0,distanceToGoal-12)*0.025) * assistFactor * T.shot.dispersion;
     // Finesse: the kicking foot decides the curl; the ball starts outside the target and bends back in.
     const curl = finesse ? this.curlSign(actor, targetY) : 0;
     const curlGain = finesse ? this.hook(actor, HK.curve, 1) : 1;
@@ -1770,7 +1727,7 @@ export class ArcadeMatch {
       const there = expectedThreat(clamp(mate.x + mate.vx * 0.6, 1, FIELD_LENGTH - 1), clamp(mate.y + mate.vy * 0.6, 1, FIELD_WIDTH - 1), direction);
       const completion = passCompletion(lane, gap, closestOpponentDistance(mate, this.actors));
       // A target who looks offside is still found now and then (attackers hover on the line), at a price.
-      const value = actionValue(completion, there - here, here) - (this.isOffside(mate, actor) ? OFFSIDE_PASS_COST : 0);
+      const value = actionValue(completion, there - here, here) - (this.isOffside(mate, actor) ? T.ai.offsidePassCost : 0);
       if (!best || value > best.value) best = { target: mate, value };
     }
     return best;
@@ -1848,7 +1805,7 @@ export class ArcadeMatch {
     const reach = sliding ? (kaiser ? 2.55 : 2.25) : 1.45;
     const gap = distance(actor, owner);
     // A slide can be started from further out: the lunge carries the player forward and, when short, leaves him on the floor.
-    if (gap > (sliding ? SLIDE_LUNGE_REACH : reach)) return;
+    if (gap > (sliding ? T.tackle.slideLungeReach : reach)) return;
     actor.tackleCooldown = sliding ? 1.15 : 0.45;
     this.setAction(actor, sliding ? 'slide' : 'standing-tackle');
     // A keeper who has the ball in his own area is protected: going in on him is mostly a foul.
@@ -1861,7 +1818,7 @@ export class ArcadeMatch {
       actor.vx = actor.vx * 0.4 + (owner.x - actor.x) / lunge * 5.5;
       actor.vy = actor.vy * 0.4 + (owner.y - actor.y) / lunge * 5.5;
     }
-    if (gap > reach) { this.startRecovery(actor, SLIDE_MISS_TICKS); return; }
+    if (gap > reach) { this.startRecovery(actor, T.recovery.slideMissTicks); return; }
     const relativeX = owner.x - actor.x;
     const relativeY = owner.y - actor.y;
     const approach = (relativeX * actor.facingX + relativeY * actor.facingY) / Math.max(0.1, len2(relativeX, relativeY));
@@ -1893,7 +1850,7 @@ export class ArcadeMatch {
       return;
     }
     // Missing costs time: the player is out of the play for a moment.
-    this.startRecovery(actor, sliding ? SLIDE_MISS_TICKS * 0.75 : TACKLE_MISS_TICKS);
+    this.startRecovery(actor, sliding ? T.recovery.slideMissTicks * 0.75 : T.recovery.tackleMissTicks);
     const foulRisk = clamp((sliding ? 0.22 : 0.07) + speed * 0.018 + Math.max(0, -approach) * 0.12, 0.03, 0.68);
     if (this.rng.bool(foulRisk)) this.callFoul(actor, owner, sliding, speed);
   }
@@ -2084,7 +2041,7 @@ export class ArcadeMatch {
     if (shot) form = shot.keeperQuality ??= this.rng.next();
     const keeperLevel = this.aiLevel(keeper.side);
     const levelSkill = keeperLevel === 'hard' ? 0.04 : keeperLevel === 'easy' ? -0.05 : 0;
-    const effectiveReach = this.keeperReach(keeper) * clamp(KEEPER_REACH_BASE + levelSkill + reaction * 0.3 + form * 0.3 - speed * 0.004, 0.45, 1);
+    const effectiveReach = this.keeperReach(keeper) * clamp(T.keeper.reachBase + levelSkill + reaction * 0.3 + form * 0.3 - speed * 0.004, 0.45, 1);
     if (reachDistance > 0.4 && reachDistance > effectiveReach) return;
     if (!this.legalRestartTouch(keeper)) return;
     if (shot) shot.checkedKeeper = true;
@@ -2260,7 +2217,7 @@ export class ArcadeMatch {
     if (this.lastPasser && !this.lastPasser.received && candidate.side !== this.lastPasser.side && candidate.player.id !== this.intendedReceiverId) {
       (this.football.interceptTried ??= []).push(candidate.player.id);
       // Some defenders read the pass too late; the share is a fixed seeded draw per pass and defender.
-      if (hash32(`${this.lastPasser.at}|${candidate.player.id}`) % 100 >= INTERCEPT_SHARE) return;
+      if (hash32(`${this.lastPasser.at}|${candidate.player.id}`) % 100 >= T.reception.interceptShare) return;
     }
     if (this.pendingOffsideTargetId === candidate.player.id || this.football.offsideCandidates.includes(candidate.player.id)) {
       this.stats(candidate.side).offsides++;
@@ -2470,9 +2427,9 @@ export class ArcadeMatch {
       const behind = (ball.x - actor.x) * direction;
       let type: AerialKind | null = null;
       const near = (point: Point) => len2(point.x - actor.x, point.y - actor.y);
-      if (goalDistance < 20 && behind < -0.3 && behind > -2.8 && ball.z > 1.1 && plan.t10.z > 1.0 && plan.t10.z < 2.6 && near(plan.t10) < 1.4 && roll('bicycle', AI_BICYCLE_SHARE)) type = 'bicycle-kick';
-      else if (goalDistance < 16 && speed >= 5 && ball.z > 0.2 && ball.z < 1.2 && plan.t12.z > 0.25 && plan.t12.z < 1.0 && near(plan.t12) > 0.9 && near(plan.t12) < 2.6 && roll('flying', AI_FLYING_HEADER_SHARE)) type = 'flying-header';
-      else if (ball.z > 0.12 && ball.z < 1.3 && plan.t4.z > 0.12 && plan.t4.z < 1.1 && near(plan.t4) < 0.95 && roll('volley', AI_VOLLEY_SHARE)) type = 'volley';
+      if (goalDistance < 20 && behind < -0.3 && behind > -2.8 && ball.z > 1.1 && plan.t10.z > 1.0 && plan.t10.z < 2.6 && near(plan.t10) < 1.4 && roll('bicycle', T.ai.bicycleShare)) type = 'bicycle-kick';
+      else if (goalDistance < 16 && speed >= 5 && ball.z > 0.2 && ball.z < 1.2 && plan.t12.z > 0.25 && plan.t12.z < 1.0 && near(plan.t12) > 0.9 && near(plan.t12) < 2.6 && roll('flying', T.ai.flyingHeaderShare)) type = 'flying-header';
+      else if (ball.z > 0.12 && ball.z < 1.3 && plan.t4.z > 0.12 && plan.t4.z < 1.1 && near(plan.t4) < 0.95 && roll('volley', T.ai.volleyShare)) type = 'volley';
       if (!type) continue;
       let aimY: number;
       let power: number;
@@ -2694,7 +2651,7 @@ export class ArcadeMatch {
       }
     }
     // A human restart waits for the kick; only after a long pause is it taken automatically (never in training scenarios).
-    const forced = !this.scenarioActive && this.rule.elapsed >= RESTART_AUTO_SECONDS;
+    const forced = !this.scenarioActive && this.rule.elapsed >= T.restart.autoSeconds;
     if (this.rule.elapsed < .42 || (human && !this.football.queuedAction && !forced)) return;
     const command = this.football.queuedAction;
     const indirect = this.rule.indirect;
@@ -3256,7 +3213,7 @@ export class ArcadeMatch {
   get restartCountdown(): number {
     const waiting = this.rule.phase !== 'playing' && this.rule.phase !== 'advantage' && this.rule.phase !== 'halftime' && this.rule.phase !== 'fulltime'
       && this.rule.restartSide === this.controlledSide && this.config.controllerMode === 'human' && !this.scenarioActive && !this.football.queuedAction;
-    return waiting ? Math.max(0, Math.ceil(RESTART_AUTO_SECONDS - this.rule.elapsed)) : 0;
+    return waiting ? Math.max(0, Math.ceil(T.restart.autoSeconds - this.rule.elapsed)) : 0;
   }
 
   hasUltimate(side: Side): boolean {
