@@ -14,17 +14,22 @@ test('procedural studio shares portraits and changes identity, kits and animatio
   const first = await portrait.getAttribute('src');
   await page.getByRole('button',{name:'Spieler 8',exact:true}).click();
   await expect.poll(() => portrait.getAttribute('src')).not.toBe(first);
-  await page.getByLabel('Bewegung',{exact:true}).selectOption('shot');
-  await page.getByLabel('Tempo',{exact:true}).selectOption({label:'Zeitlupe · ¼'});
+  await page.getByRole('button',{name:'Kraftschuss',exact:true}).click();
+  await expect(page.getByRole('button',{name:'Kraftschuss',exact:true})).toHaveAttribute('aria-pressed','true');
+  await page.getByRole('button',{name:'Zeitlupe ¼',exact:true}).click();
   await page.screenshot({path:info.outputPath('player-studio.png')});
-  await page.getByLabel('Bewegung',{exact:true}).selectOption('keeper-dive');
+  await page.getByRole('button',{name:'Hechten',exact:true}).click();
   await page.getByLabel('Bewegungsablauf',{exact:true}).fill('0.24');
   await expect(page.getByRole('button',{name:'▶ Abspielen'})).toBeVisible();
   await page.screenshot({path:info.outputPath('goalkeeper-dive.png')});
-  await page.getByLabel('Bewegung',{exact:true}).selectOption('keeper-catch');
+  await page.getByRole('button',{name:'Fangen',exact:true}).click();
   await page.getByLabel('Bewegungsablauf',{exact:true}).fill('0.25');
   await page.screenshot({path:info.outputPath('goalkeeper-catch.png')});
-  await page.getByLabel('Trikot',{exact:true}).selectOption({label:'Sunset · Auswärts'});
+  await page.getByRole('button',{name:'Sunset · Auswärts',exact:true}).click();
+  await expect(page.getByRole('button',{name:'Sunset · Auswärts',exact:true})).toHaveAttribute('aria-pressed','true');
+  // The whole figure stays inside the stage, above the transport bar.
+  const stage = await page.locator('.stage').boundingBox();
+  expect(stage!.y + stage!.height).toBeLessThanOrEqual((page.viewportSize()?.height ?? 0) + 1);
   await expect(page.getByLabel('Spieler-Seed')).toHaveValue('7');
   await page.getByRole('link',{name:/auf den platz/i}).click();
   await expect(page.locator('canvas[aria-label="Live football pitch"]')).toHaveAttribute('data-renderer','three-webgl2',{timeout:30_000});
