@@ -11,6 +11,7 @@ import { advanceGait, GaitMemory, newGait, strideFor, turnStepAmount } from './a
 import { blendSecondsFor, limpLoad } from './animation/kick-phase';
 import { poseBicycleKick, poseFakeShot, poseFlyingHeader, poseKeeperPunch, poseKeeperSmother, poseKick, poseWallJump } from './animation/action-poses';
 import { boneSlot, clipSet, ClipSet, sampleLocomotion, sampleSingle } from './animation/clip-store';
+import { KIT_PATTERN_ID, PlayerTraces, PrintCell, Surface, acquirePrint, createFootballerMaterial } from './player-material';
 
 const SKIN = ['#f5d0a9', '#e9b989', '#d99a68', '#bf7b50', '#9b5c3d', '#75422f', '#573126', '#35221f'];
 const HAIR = ['#17141d', '#2c1b18', '#4b2e24', '#71462b', '#9b673d', '#c89b62', '#d9c6a2', '#702c32'];
@@ -61,7 +62,20 @@ export interface ProceduralFootballer {
   goalkeeper: boolean;
   /** A cheer chosen by the player (Legends Path): the celebration number this figure always uses. */
   cheer?: number;
+  /** Switches between the full figure and the simplified one for the distance. */
+  setDetail(near: boolean): void;
+  /** What the match has left on him: mud, soaked cloth, sweat. Only drawn. */
+  setTraces(traces: PlayerTraces): void;
   destroy(): void;
+}
+
+/** Extra data of the vertices of one primitive: what it is made of, where it lies on the shirt, and the print it carries. */
+interface VertexExtra {
+  surface?: Surface;
+  /** The shirt's frame: pattern id, secondary colour, half width, lower edge and height of the torso. */
+  torso?: { id: number; colorB: string; half: number; y0: number; height: number };
+  /** Cell of the print atlas this primitive shows (left, bottom, right, top). */
+  print?: [number, number, number, number];
 }
 
 /** Merge rigid/smooth-skinned primitives into one geometry without material groups. */
@@ -71,8 +85,11 @@ class SkinGeometry {
   private colors: number[] = [];
   private skinIndices: number[] = [];
   private skinWeights: number[] = [];
+  private kitA: number[] = [];
+  private kitB: number[] = [];
+  private printUv: number[] = [];
 
-  add(geometry: THREE.BufferGeometry, color: string, bone: number, position: THREE.Vector3, scale = new THREE.Vector3(1, 1, 1), rotation = new THREE.Euler()): void {
+  add(geometry: THREE.BufferGeometry, color: string, bone: number, position: THREE.Vector3, scale = new THREE.Vector3(1, 1, 1), rotation = new THREE.Euler(), extra?: VertexExtra): void {
     const matrix = new THREE.Matrix4().compose(position, new THREE.Quaternion().setFromEuler(rotation), scale);
     geometry.applyMatrix4(matrix);
     const flat = geometry.index ? geometry.toNonIndexed() : geometry;
@@ -80,7 +97,13 @@ class SkinGeometry {
     const n = flat.getAttribute('normal');
     const indices = flat.getAttribute('skinIndex'), weights = flat.getAttribute('skinWeight');
     const shade = new THREE.Color(color);
+    const torso = extra?.torso, second = torso ? new THREE.Color(torso.colorB) : null;
+    const print = extra?.print, uv = print ? flat.getAttribute('uv') : null;
     for (let i = 0; i < p.count; i++) {
+      this.kitA.push(torso ? p.getX(i) / torso.half : 0, torso ? (p.getY(i) - torso.y0) / torso.height : 0, torso ? torso.id : 0, extra?.surface ?? Surface.Other);
+      this.kitB.push(second?.r ?? 0, second?.g ?? 0, second?.b ?? 0);
+      if (print && uv) this.printUv.push(print[0] + uv.getX(i) * (print[2] - print[0]), print[1] + uv.getY(i) * (print[3] - print[1]));
+      else this.printUv.push(-1, -1);
       this.positions.push(p.getX(i), p.getY(i), p.getZ(i));
       this.normals.push(n.getX(i), n.getY(i), n.getZ(i));
       this.colors.push(shade.r, shade.g, shade.b);
@@ -98,6 +121,9 @@ class SkinGeometry {
     geometry.setAttribute('color', new THREE.Float32BufferAttribute(this.colors, 3));
     geometry.setAttribute('skinIndex', new THREE.Uint16BufferAttribute(this.skinIndices, 4));
     geometry.setAttribute('skinWeight', new THREE.Float32BufferAttribute(this.skinWeights, 4));
+    geometry.setAttribute('kitA', new THREE.Float32BufferAttribute(this.kitA, 4));
+    geometry.setAttribute('kitB', new THREE.Float32BufferAttribute(this.kitB, 3));
+    geometry.setAttribute('printUv', new THREE.Float32BufferAttribute(this.printUv, 2));
     // Smooth-shaded primitives (head, hair, eyes) repeat vertices once per triangle; indexing shares them and cuts skinning work.
     const indexed = mergeVertices(geometry, 1e-4);
     geometry.dispose();
@@ -106,42 +132,10 @@ class SkinGeometry {
   }
 }
 
+/** The software renderer draws every player with one plain material; the full renderer gives each his own (see player-material). */
+let compactMaterial: THREE.MeshLambertMaterial | null = null;
+
 /** Seeded low-poly human, in metres, looking along local +Z. */
-/** One program for every player: all kit and skin colours live in vertex colours. */
-const SHARED_MATERIALS: { standard?: THREE.MeshStandardMaterial; compact?: THREE.MeshLambertMaterial } = {};
-function footballerMaterial(compact: boolean): THREE.MeshStandardMaterial | THREE.MeshLambertMaterial {
-  if (compact) return SHARED_MATERIALS.compact ??= new THREE.MeshLambertMaterial({ vertexColors: true });
-  return SHARED_MATERIALS.standard ??= new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.82, metalness: 0, flatShading: false });
-}
-
-/** Name and number printed on the back of the shirt, rendered once into a small texture. */
-function createBackPrint(kit: KitDesign, kitNumber: number, name: string): THREE.Mesh<THREE.PlaneGeometry, THREE.MeshStandardMaterial> | null {
-  if (typeof document === 'undefined') return null;
-  const canvas = document.createElement('canvas');
-  canvas.width = 128; canvas.height = 160;
-  const ctx = canvas.getContext('2d');
-  if (!ctx) return null;
-  ctx.fillStyle = kit.number;
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'alphabetic';
-  const label = name.toLocaleUpperCase().slice(0, 12);
-  ctx.font = `700 ${label.length > 8 ? 17 : 21}px system-ui, sans-serif`;
-  ctx.fillText(label, 64, 30);
-  ctx.font = '800 104px system-ui, sans-serif';
-  ctx.lineWidth = 5;
-  ctx.strokeStyle = kit.trim;
-  const digits = String(Math.max(0, kitNumber) % 100);
-  ctx.strokeText(digits, 64, 138);
-  ctx.fillText(digits, 64, 138);
-  const texture = new THREE.CanvasTexture(canvas);
-  texture.colorSpace = THREE.SRGBColorSpace;
-  texture.anisotropy = 4;
-  const material = new THREE.MeshStandardMaterial({ map: texture, transparent: true, alphaTest: 0.35, roughness: 0.8, polygonOffset: true, polygonOffsetFactor: -2 });
-  const print = new THREE.Mesh(new THREE.PlaneGeometry(0.30, 0.375), material);
-  print.name = 'back-print';
-  return print;
-}
-
 export function createProceduralFootballer(identity: PlayerVisualIdentity, kit: KitDesign, kitNumber = 10, goalkeeper = false, leftFooted = false, compact = false, backName = ''): ProceduralFootballer {
   const recipe = createAppearanceRecipe(identity);
   const scale = recipe.height / 1.82;
@@ -153,7 +147,6 @@ export function createProceduralFootballer(identity: PlayerVisualIdentity, kit: 
   const indices = {} as Record<Joint, number>;
   const joints = {} as Record<Joint, THREE.Bone>;
   const bind = {} as Record<Joint, THREE.Vector3>;
-  const data = new SkinGeometry();
   const bone = (name: Joint, parent: Joint | null, x: number, y: number, z: number) => {
     const joint = new THREE.Bone();
     joint.name = name;
@@ -177,14 +170,28 @@ export function createProceduralFootballer(identity: PlayerVisualIdentity, kit: 
     bone(`${side}Forearm`, `${side}Arm`, sign * 0.055, -0.25 * scale, 0);
     bone(`${side}Hand`, `${side}Forearm`, sign * 0.03, -0.23 * scale, 0);
   }
+  // Name and number live in one atlas for the whole match; the print is part of the shirt's own geometry.
+  const print: PrintCell | null = compact || !backName ? null : acquirePrint(kit, kitNumber, backName);
+  const front = shoulder * 0.347;
+  /** The whole figure as one skinned geometry; `simple` leaves out what cannot be seen from afar. */
+  const buildSkin = (simple: boolean): THREE.BufferGeometry => {
+  const coarse = compact || simple;
+  const data = new SkinGeometry();
+  // The shirt carries its pattern as coordinates for the shader (the software renderer keeps raised panels instead).
+  const torso = compact ? undefined : { id: KIT_PATTERN_ID[kit.pattern] ?? 0, colorB: kit.secondary, half: shoulder * 0.5, y0: bind.spine.y + 0.095 - 0.385 * scale / 2, height: 0.385 * scale };
+  const extraFor = (joint: Joint, color: string): VertexExtra => {
+    if (color === recipe.skin) return { surface: Surface.Skin };
+    if (joint.endsWith('Foot') || joint.endsWith('Hand') || joint === 'head') return { surface: Surface.Other };
+    return { surface: Surface.Fabric, torso: (joint === 'spine' || joint === 'chest') && color === kit.shirt ? torso : undefined };
+  };
   const sphere = (joint: Joint, color: string, x: number, y: number, z: number, sx: number, sy: number, sz: number, detail = 8) => {
-    data.add(new THREE.SphereGeometry(1, compact?6:detail, compact?4:6), color, indices[joint], bind[joint].clone().add(new THREE.Vector3(x, y, z)), new THREE.Vector3(sx, sy, sz));
+    data.add(new THREE.SphereGeometry(1, coarse?6:detail, coarse?4:6), color, indices[joint], bind[joint].clone().add(new THREE.Vector3(x, y, z)), new THREE.Vector3(sx, sy, sz), undefined, extraFor(joint, color));
   };
   const box = (joint: Joint, color: string, x: number, y: number, z: number, sx: number, sy: number, sz: number, angle = 0) => {
-    data.add(new THREE.BoxGeometry(sx, sy, sz), color, indices[joint], bind[joint].clone().add(new THREE.Vector3(x, y, z)), undefined, new THREE.Euler(0, 0, angle));
+    data.add(new THREE.BoxGeometry(sx, sy, sz), color, indices[joint], bind[joint].clone().add(new THREE.Vector3(x, y, z)), undefined, new THREE.Euler(0, 0, angle), extraFor(joint, color));
   };
   const cylinder = (joint: Joint, color: string, x: number, y: number, z: number, top: number, bottom: number, height: number, depth = 1) => {
-    data.add(new THREE.CylinderGeometry(top, bottom, height, compact?6:8), color, indices[joint], bind[joint].clone().add(new THREE.Vector3(x, y, z)), new THREE.Vector3(1, 1, depth));
+    data.add(new THREE.CylinderGeometry(top, bottom, height, coarse?6:8), color, indices[joint], bind[joint].clone().add(new THREE.Vector3(x, y, z)), new THREE.Vector3(1, 1, depth), undefined, extraFor(joint, color));
   };
   // Athletic shoulders, tapered jersey and shorts; visible joints are rounded.
   cylinder('spine', kit.shirt, 0, 0.095, 0, shoulder * 0.57, shoulder * 0.43, 0.385 * scale, 0.60);
@@ -192,8 +199,8 @@ export function createProceduralFootballer(identity: PlayerVisualIdentity, kit: 
   cylinder('hips', kit.shorts, 0, -0.02, 0, shoulder * 0.46, shoulder * 0.48, 0.165, 0.66);
   // Neck, skull, face, hair and beard: see player-head.
   buildHead({
-    add: (geometry, color, x, y, z, scale, rotation) => data.add(geometry, color, indices.head, bind.head.clone().add(new THREE.Vector3(x, y, z)), scale, rotation),
-    identity, kit, skin: recipe.skin, hair: recipe.hair, headWidth: recipe.headWidth, headDepth: recipe.headDepth, compact,
+    add: (geometry, color, x, y, z, scale, rotation) => data.add(geometry, color, indices.head, bind.head.clone().add(new THREE.Vector3(x, y, z)), scale, rotation, extraFor('head', color)),
+    identity, kit, skin: recipe.skin, hair: recipe.hair, headWidth: recipe.headWidth, headDepth: recipe.headDepth, compact: coarse,
   });
 
   for (const side of ['left', 'right'] as const) {
@@ -212,19 +219,19 @@ export function createProceduralFootballer(identity: PlayerVisualIdentity, kit: 
     cylinder(calf, kit.trim, 0, -0.065, 0, 0.075 * width, 0.075 * width, 0.028);
     sphere(foot, identity.bootColor, 0, -0.031, 0.061, 0.072, 0.060, 0.157);
     box(foot, '#19202b', 0, -0.069, 0.07, 0.125, 0.022, 0.252);
-    box(foot, '#f7f8ee', 0, 0.017, 0.09, 0.047, 0.009, 0.090);
-    if (identity.bootStyle % 3 === 0) box(foot, kit.trim, sign * 0.063, -0.02, 0.069, 0.007, 0.024, 0.14);
+    if (!simple) box(foot, '#f7f8ee', 0, 0.017, 0.09, 0.047, 0.009, 0.090);
+    if (identity.bootStyle % 3 === 0 && !simple) box(foot, kit.trim, sign * 0.063, -0.02, 0.069, 0.007, 0.024, 0.14);
     sphere(arm, kit.shirt, 0, -0.020, 0, 0.099 * width, 0.10, 0.091);
     cylinder(arm, kit.sleeve === 'raglan' ? kit.secondary : kit.shirt, sign * 0.02, -0.088, 0, 0.095 * width, 0.08 * width, 0.16);
-    data.add(createLimbSurface(bind[arm].clone().lerp(bind[forearm], .42), bind[forearm], bind[hand], indices[arm], indices[forearm], width, compact),
-      identity.longSleeves || goalkeeper ? kit.shirt : recipe.skin, indices[arm], new THREE.Vector3());
+    const sleeve = identity.longSleeves || goalkeeper ? kit.shirt : recipe.skin;
+    data.add(createLimbSurface(bind[arm].clone().lerp(bind[forearm], .42), bind[forearm], bind[hand], indices[arm], indices[forearm], width, coarse),
+      sleeve, indices[arm], new THREE.Vector3(), undefined, undefined, { surface: sleeve === recipe.skin ? Surface.Skin : Surface.Fabric });
     if (kit.sleeve === 'cuff') cylinder(arm, kit.trim, sign * 0.025, -0.149, 0, 0.083, 0.083, 0.028);
     if (identity.wristTape === side || identity.wristTape === 'both') cylinder(hand, '#e9f0ed', 0, 0.035, 0, 0.052, 0.052, 0.043);
     sphere(hand, goalkeeper ? ['#f5f1d7', '#e1ff70', '#4ccbd4'][identity.goalkeeperGloves % 3] : recipe.skin, 0, -0.029, 0.009, goalkeeper ? 0.068 : 0.048, 0.074, goalkeeper ? 0.053 : 0.037);
   }
-  // Raised colour panels keep all eight kit patterns visible without textures.
-  const front = shoulder * 0.347;
-  for (const zSign of [-1, 1]) {
+  // The software renderer has no pattern shader: raised colour panels keep all eight kit patterns visible there.
+  if (compact) for (const zSign of [-1, 1]) {
     const z = front * zSign;
     const patch = (x: number, y: number, width: number, height: number, angle = 0) => box('spine', kit.secondary, x, y, z, width, height, 0.008, angle);
     if (kit.pattern === 'halves') patch(-shoulder * 0.20, 0.086, shoulder * 0.40, 0.29);
@@ -249,10 +256,10 @@ export function createProceduralFootballer(identity: PlayerVisualIdentity, kit: 
   }
   box('spine', kit.trim, 0.105, 0.195, front + 0.013, 0.045, 0.051, 0.013);
   box('spine', kit.number, -0.104, 0.195, front + 0.013, 0.040, 0.015, 0.013);
-  // Seven-segment numbers are actual skinned geometry, legible without font loads;
-  // the full renderer prints name and number on the back instead.
-  const backPrint = compact || !backName ? null : createBackPrint(kit, kitNumber, backName);
-  const digits = backPrint ? '' : String(Math.max(0, kitNumber) % 100);
+  // The print: a patch just off the back of the shirt that shows its cell of the atlas (and the shirt's pattern under it).
+  if (print) data.add(new THREE.PlaneGeometry(0.30, 0.375), kit.shirt, indices.spine, bind.spine.clone().add(new THREE.Vector3(0, 0.10 * scale, -front - 0.02)), undefined, new THREE.Euler(0, Math.PI, 0), { surface: Surface.Fabric, torso, print: print.uv });
+  // Without a print (software renderer, studio figures without a name) seven-segment numbers are skinned geometry.
+  const digits = print ? '' : String(Math.max(0, kitNumber) % 100);
   const segments = ['abcdef', 'bc', 'abdeg', 'abcdg', 'bcfg', 'acdfg', 'acdefg', 'abc', 'abcdefg', 'abcdfg'];
   for (let i = 0; i < digits.length; i++) {
     const x = (i - (digits.length - 1) / 2) * -0.10;
@@ -275,25 +282,33 @@ export function createProceduralFootballer(identity: PlayerVisualIdentity, kit: 
     blend(`${side}Shin`, `${side}Foot`, .05, .08);
   }
   blend('chest', 'head', .06, .1);
-  const material = footballerMaterial(compact);
+  return geometry;
+  };
+  const geometry = buildSkin(false);
+  // The figure for the distance is built when it is first needed.
+  let farGeometry: THREE.BufferGeometry | null = null;
+  const own = compact ? null : createFootballerMaterial();
+  const material = own?.material ?? (compactMaterial ??= new THREE.MeshLambertMaterial({ vertexColors: true }));
+  own?.traces.set(0, 0, 0, (recipe.seed % 997) / 997);
   const mesh = new THREE.SkinnedMesh(geometry, material);
   mesh.name = `footballer-${recipe.seed}`;
   mesh.add(joints.hips);
   mesh.bind(new THREE.Skeleton(bones));
-  if (backPrint) {
-    // A rigid print follows the spine bone; it sits just off the jersey surface.
-    backPrint.position.set(0, 0.10 * scale, -front - 0.02);
-    backPrint.rotation.y = Math.PI;
-    joints.spine.add(backPrint);
-  }
   mesh.castShadow = true;
   mesh.receiveShadow = false;
   // Animated bounds can extend beyond the bind pose during diving and jumping.
   mesh.frustumCulled = false;
   return { mesh, joints, recipe, hipHeight: hip, thighLength: thigh, shinLength: shin, footedness: leftFooted ? -1 : 1, goalkeeper,
+    setDetail(near) {
+      if (compact) return;
+      const wanted = near ? geometry : (farGeometry ??= buildSkin(true));
+      if (mesh.geometry !== wanted) mesh.geometry = wanted;
+    },
+    setTraces(traces) { own?.traces.set(traces.mud, traces.wet, traces.sweat, traces.seed); },
     destroy() {
-      geometry.dispose(); mesh.skeleton.dispose(); mesh.removeFromParent();
-      if (backPrint) { backPrint.geometry.dispose(); backPrint.material.map?.dispose(); backPrint.material.dispose(); }
+      geometry.dispose(); farGeometry?.dispose(); mesh.skeleton.dispose(); mesh.removeFromParent();
+      own?.material.dispose();
+      print?.release();
     },
   };
 }
@@ -788,7 +803,11 @@ function poseCelebration(model: ProceduralFootballer, age: number, reducedMotion
       j.leftShin.rotation.x = j.rightShin.rotation.x = 2.2 * slide;
       j.spine.rotation.x = -0.35 * slide;
       j.head.rotation.x = -0.4 * slide;
-      j.leftArm.rotation.z = 1.4 * slide; j.rightArm.rotation.z = -1.4 * slide;
+      // Arms spread on the way down, then punched up and held.
+      const punch = THREE.MathUtils.smoothstep(age, 0.9, 1.3) * motion;
+      j.leftArm.rotation.z = (1.4 + punch * 1.2) * slide; j.rightArm.rotation.z = -(1.4 + punch * 1.2) * slide;
+      j.leftForearm.rotation.x = j.rightForearm.rotation.x = -0.5 * punch;
+      j.chest.rotation.y = Math.sin(age * 2.4) * 0.12 * punch;
       break;
     }
     case 2:
@@ -805,10 +824,15 @@ function poseCelebration(model: ProceduralFootballer, age: number, reducedMotion
       j.head.rotation.x = -0.25;
       break;
     }
-    default:
-      j.leftArm.rotation.z = 2.9; j.rightArm.rotation.z = -2.9;
+    default: {
+      // Both arms to the sky, turning slowly on the spot with small hops.
+      const hop = Math.abs(Math.sin(age * 5)) * motion;
+      j.leftArm.rotation.z = 2.9 - hop * 0.25; j.rightArm.rotation.z = -2.9 + hop * 0.25;
       j.head.rotation.x = -0.55;
       j.spine.rotation.x = -0.12;
+      j.hips.position.y += hop * 0.07;
+      j.hips.rotation.y = Math.sin(age * 1.6) * 0.5 * motion;
+    }
   }
 }
 

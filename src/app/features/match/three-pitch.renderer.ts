@@ -13,7 +13,9 @@ import { decideQuality } from './quality-policy';
 import { DEFAULT_GRAPHICS_PREFS, GraphicsPrefs } from '../../core/graphics-prefs';
 import { loadClipSet } from './animation/clip-store';
 import { createPlayerVisualIdentity } from '../../core/visual-identity';
-import { createProceduralFootballer, poseFootballer, ProceduralFootballer } from './three-player.factory';
+import { celebrationVariant, createProceduralFootballer, poseFootballer, ProceduralFootballer } from './three-player.factory';
+import { setFootballerRim } from './player-material';
+import { PlayerMarks, breathDue, farFigure, markPlayer, newMarks } from './player-traces';
 import { interpolateThreeFrame, playerInCameraSpace, RenderInterpolationScratch } from './three-render-state';
 import { usesSoftwareGraphics } from './graphics-capabilities';
 import { advanceBroadcastCamera } from './broadcast-camera';
@@ -134,6 +136,12 @@ export class ThreePitchRenderer {
   private readonly cullMatrix = new THREE.Matrix4();
   private readonly cullSphere = new THREE.Sphere(new THREE.Vector3(), 2.3);
   private readonly models = new Map<string, ProceduralFootballer>();
+  /** What the match has left on each player (mud, wet cloth, sweat) and whether he is drawn as the distant figure. */
+  private readonly marks = new Map<string, PlayerMarks>();
+  /** Breath in the cold: a few soft puffs in front of the players' faces. */
+  private readonly breath: THREE.Points<THREE.BufferGeometry, THREE.PointsMaterial>;
+  private readonly breathLife = new Float32Array(40);
+  private breathCursor = 0;
   private readonly matrixDummy = new THREE.Object3D();
   private readonly shadow: THREE.InstancedMesh;
   /** The ball's panels (pentagons, hexagons, stitching), so a ball design can repaint it. */
@@ -387,6 +395,13 @@ export class ThreePitchRenderer {
     this.turf = new THREE.Points(turfGeometry, new THREE.PointsMaterial({ color: '#3f7a3c', size: 0.17, map: this.softDot, alphaTest: 0.02, transparent: true, opacity: 0.9, depthWrite: false }));
     this.turf.frustumCulled = false;
     this.scene.add(this.turf);
+    const breathGeometry = new THREE.BufferGeometry();
+    breathGeometry.setAttribute('position', new THREE.Float32BufferAttribute(new Float32Array(40 * 3).fill(-100), 3));
+    breathGeometry.setAttribute('color', new THREE.Float32BufferAttribute(new Float32Array(40 * 4), 4));
+    this.breath = new THREE.Points(breathGeometry, new THREE.PointsMaterial({ size: 0.34, map: this.softDot, vertexColors: true, transparent: true, depthWrite: false, alphaTest: 0.01 }));
+    this.breath.frustumCulled = false;
+    this.breath.visible = false;
+    this.scene.add(this.breath);
     this.configureComposer();
 
     const confettiGeometry = new THREE.BufferGeometry();
@@ -511,6 +526,7 @@ export class ThreePitchRenderer {
     this.watchEvents(match);
     let index = 0;
     let mastIndex = 0;
+    const cold = match.config.weather === 'snow' && this.quality !== 'low' && !match.config.camera.reducedMotion;
     // The wear map is stamped every sixth frame of the live match (not in replays) and uploaded twice a second.
     this.wearMirror.value = mirror;
     this.wearStamp = !replay && ++this.wearClock % 6 === 0;
@@ -537,6 +553,16 @@ export class ThreePitchRenderer {
       this.cullSphere.center.copy(model.mesh.position).setY(1);
       if (!this.cullFrustum.intersectsSphere(this.cullSphere)) { model.mesh.visible = false; continue; }
       model.mesh.rotation.y = Math.atan2(player.facingX * mirror, player.facingY);
+      const marks = this.marks.get(player.id) ?? newMarks(this.marks, player.id, model.recipe.seed);
+      // Far players are drawn as the simplified figure; the switch has a margin, so nobody flickers at the border.
+      const far = farFigure(marks.far, this.camera.position.distanceTo(model.mesh.position));
+      if (far !== marks.far) { marks.far = far; model.setDetail(!far); }
+      if (!replay && simDt > 0) {
+        if (markPlayer(marks, player.action, state.tick - player.actionStartedTick, player.fitness, match.config.weather, simDt)) model.setTraces(marks);
+        if (cold && breathDue(marks, simDt, Math.hypot(player.vx, player.vy))) this.spawnBreath(model.mesh.position.x + player.facingX * mirror * 0.22, model.recipe.height - 0.14, model.mesh.position.z + player.facingY * 0.22);
+        // A knee slide after a goal leaves its track in the grass.
+        if (player.action === 'celebrate' && celebrationVariant(model) === 1 && state.tick - player.actionStartedTick < 60 && Math.hypot(player.vx, player.vy) > 0.6) { stampScuff(this.scuff, player.x, player.y, FIELD_LENGTH, FIELD_WIDTH, 30); this.scuffDirty = true; }
+      }
       // Injuries are known to the match, not to the render state; the limp is a render-only flag that never feeds back.
       poseFootballer(model, playerInCameraSpace(player,mirror,this.mirroredPlayer), state.tick, this.poseClock, match.config.camera.reducedMotion,player.id===state.controlledPlayerId&&!replay?match.actionPower:0, lookAt, match.isInjured(player.id) ? 1 : 0);
       if (player.action === 'slide' && state.tick - player.actionStartedTick < 3 && this.turfSpawned.get(player.id) !== player.actionStartedTick) {
@@ -640,6 +666,7 @@ export class ThreePitchRenderer {
     }
     this.updateAtmosphere(match, dt);
     this.updateTurf(dt);
+    this.updateBreath(dt);
     if (this.bloom) this.bloom.strength = 0.25 + Math.max(0, 1 - (this.time - this.goalTime) / 1.5) * 0.45;
     this.renderer.info.reset();
     this.gpuTimer?.begin();
@@ -946,6 +973,29 @@ export class ThreePitchRenderer {
     pos.needsUpdate = true;
   }
 
+  private spawnBreath(x: number, y: number, z: number): void {
+    const i = this.breathCursor = (this.breathCursor + 1) % 40;
+    (this.breath.geometry.getAttribute('position') as THREE.BufferAttribute).setXYZ(i, x, y, z);
+    this.breathLife[i] = 1;
+  }
+
+  /** Puffs of breath rise, spread and fade within a second. */
+  private updateBreath(dt: number): void {
+    const position = this.breath.geometry.getAttribute('position') as THREE.BufferAttribute, color = this.breath.geometry.getAttribute('color') as THREE.BufferAttribute;
+    let alive = false;
+    for (let i = 0; i < 40; i++) {
+      const life = this.breathLife[i];
+      if (life <= 0) continue;
+      alive = true;
+      this.breathLife[i] = life - dt * 1.1;
+      position.setY(i, position.getY(i) + dt * 0.35);
+      color.setXYZW(i, 1, 1, 1, Math.max(0, life) * 0.42);
+      if (this.breathLife[i] <= 0) position.setY(i, -100);
+    }
+    this.breath.visible = alive;
+    if (alive) { position.needsUpdate = true; color.needsUpdate = true; }
+  }
+
   private updateTurf(dt: number): void {
     const pos = this.turf.geometry.getAttribute('position') as THREE.BufferAttribute;
     let alive = false;
@@ -973,6 +1023,8 @@ export class ThreePitchRenderer {
       this.mapDots = { home: dot(this.kits.home.shirt), away: dot(this.kits.away.shirt) };
       for (const model of this.models.values()) model.destroy();
       this.models.clear();
+      this.marks.clear();
+      this.breathLife.fill(0);
       this.referee?.destroy();
       this.referee = null;
       this.auraRarity.clear();
@@ -1071,6 +1123,8 @@ export class ThreePitchRenderer {
     this.fillBase = this.fill.intensity;
     this.rimBase = this.rim.intensity;
     this.rim.color.set(sunset ? '#ffc38a' : '#d4e6ff');
+    // A rim of light on every player separates him from the grass: cool under floodlights, warm in the evening sun.
+    setFootballerRim(sunset ? '#ffc38a' : night ? '#cfe0ff' : '#eaf2ff', this.software ? 0 : night ? 0.3 : sunset ? 0.26 : 0.16);
     this.stadium.add(createSkyDome(sky.zenith, sky.horizon), createSkyline(sky.horizon, match.home.visuals.seed));
     const surround = new THREE.Mesh(new THREE.PlaneGeometry(160, 116), new THREE.MeshStandardMaterial({ color: '#204c38', roughness: 1 }));
     surround.rotation.x = -Math.PI / 2;
