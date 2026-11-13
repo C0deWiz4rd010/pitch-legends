@@ -3,7 +3,7 @@ import { AURA_FROM, RARITY_DEFS, Rarity, atLeast } from '../../data/rarity';
 import * as THREE from 'three';
 import { ArcadeActor, ArcadeMatch, FIELD_LENGTH, FIELD_WIDTH, GOAL_WIDTH, GOAL_HEIGHT, PITCH, applyPitch } from '../../core/services/arcade-match';
 import { resolveMatchKits, MatchKitSelection } from '../../core/kit-visuals';
-import { hash32 } from '../../core/visual-identity';
+import { contrastRatio, contrastText, hash32 } from '../../core/visual-identity';
 import { MatchRenderFrame, MatchRenderState, MatchSnapshot, PlayerRuntimeSnapshot } from '../../models/match.model';
 import { MATCH_TICK } from '../../core/football/match-types';
 import { RefereeRig } from './animation/referee';
@@ -220,6 +220,8 @@ export class ThreePitchRenderer {
   private height = 720;
   private matchId = '';
   private kits: MatchKitSelection | null = null;
+  /** Minimap dots wear the shirts: fill is the shirt colour, the rim keeps dark kits readable on the dark panel. */
+  private mapDots = { home: { fill: '#73e4cf', rim: '#06120b', weight: 0.6 }, away: { fill: '#fc9b9f', rim: '#06120b', weight: 0.6 } };
   private time = 0;
   private goalTime = -100;
   /** Scene side of the net that was hit: -1 or 1, indexing goalNets 0 and 1. */
@@ -931,6 +933,9 @@ export class ThreePitchRenderer {
       this.matchId = match.matchId;
       this.cameraInitialized=false;
       this.kits = resolveMatchKits(match.home, match.away);
+      // A shirt close to the panel colour gets a strong rim, every other one a hairline.
+      const dot = (shirt: string) => ({ fill: shirt, rim: contrastText(shirt), weight: contrastRatio(shirt, '#0a1a21') < 3 ? 1.2 : 0.6 });
+      this.mapDots = { home: dot(this.kits.home.shirt), away: dot(this.kits.away.shirt) };
       for (const model of this.models.values()) model.destroy();
       this.models.clear();
       this.referee?.destroy();
@@ -1493,8 +1498,12 @@ export class ThreePitchRenderer {
       if (!p.active) continue;
       const x = mapX + (state.attackDirection > 0 ? p.x : FIELD_LENGTH - p.x) / FIELD_LENGTH * mapW;
       const y = mapY + p.y / FIELD_WIDTH * mapH;
-      ctx.fillStyle = p.id === state.controlledPlayerId ? '#ffe36e' : p.side === match.controlledSide ? '#73e4cf' : '#fc9b9f';
-      ctx.beginPath(); ctx.arc(x, y, (p.id === state.controlledPlayerId ? 3.4 : 2.35) * s, 0, Math.PI * 2); ctx.fill();
+      const dot = this.mapDots[p.side], selected = p.id === state.controlledPlayerId;
+      ctx.fillStyle = dot.fill;
+      ctx.beginPath(); ctx.arc(x, y, (selected ? 3.4 : 2.5) * s, 0, Math.PI * 2); ctx.fill();
+      // The controlled player keeps his gold marker as a ring around the shirt colour.
+      ctx.strokeStyle = selected ? '#ffe36e' : dot.rim; ctx.lineWidth = (selected ? 1.6 : dot.weight) * s; ctx.globalAlpha = selected || dot.weight > 1 ? 1 : 0.6;
+      ctx.stroke(); ctx.globalAlpha = 1;
     }
     ctx.fillStyle = '#ffffff';
     ctx.beginPath(); ctx.arc(mapX + (state.attackDirection > 0 ? state.ball.x : FIELD_LENGTH - state.ball.x) / FIELD_LENGTH * mapW, mapY + state.ball.y / FIELD_WIDTH * mapH, 2.4 * s, 0, Math.PI * 2); ctx.fill();
