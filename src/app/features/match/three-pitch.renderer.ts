@@ -22,7 +22,6 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
-import { VignetteShader } from 'three/addons/shaders/VignetteShader.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { MatchCameraPreset } from '../../models/match.model';
 import { WEAR_HEIGHT, WEAR_WIDTH, stampWear } from './pitch-wear';
@@ -43,11 +42,14 @@ const AURA_FLASH = new THREE.Color('#ffffff');
 const BALL_PANEL = '#1c3651';
 const BALL_BODY = '#fcfaf1';
 
-/** Colour grading before tone mapping: a tint, a saturation and a contrast, chosen per atmosphere and weather. */
+/**
+ * Vignette and colour grading before tone mapping, in one full-screen pass: a tint, a saturation and a contrast, chosen per
+ * atmosphere and weather. One pass instead of two keeps it affordable on the balanced profile.
+ */
 const GradeShader = {
-  uniforms: { tDiffuse: { value: null as THREE.Texture | null }, tint: { value: new THREE.Vector3(1, 1, 1) }, saturation: { value: 1 }, contrast: { value: 1 } },
+  uniforms: { tDiffuse: { value: null as THREE.Texture | null }, tint: { value: new THREE.Vector3(1, 1, 1) }, saturation: { value: 1 }, contrast: { value: 1 }, vignetteOffset: { value: 1.02 }, vignetteDarkness: { value: 0.85 } },
   vertexShader: 'varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
-  fragmentShader: 'uniform sampler2D tDiffuse; uniform vec3 tint; uniform float saturation; uniform float contrast; varying vec2 vUv; void main() { vec4 c = texture2D(tDiffuse, vUv); float l = dot(c.rgb, vec3(0.2126, 0.7152, 0.0722)); vec3 g = mix(vec3(l), c.rgb, saturation) * tint; g = (g - 0.18) * contrast + 0.18; gl_FragColor = vec4(max(g, 0.0), c.a); }',
+  fragmentShader: 'uniform sampler2D tDiffuse; uniform vec3 tint; uniform float saturation; uniform float contrast; uniform float vignetteOffset; uniform float vignetteDarkness; varying vec2 vUv; void main() { vec4 c = texture2D(tDiffuse, vUv); vec2 v = (vUv - 0.5) * vignetteOffset; c.rgb = mix(c.rgb, vec3(1.0 - vignetteDarkness), dot(v, v)); float l = dot(c.rgb, vec3(0.2126, 0.7152, 0.0722)); vec3 g = mix(vec3(l), c.rgb, saturation) * tint; g = (g - 0.18) * contrast + 0.18; gl_FragColor = vec4(max(g, 0.0), c.a); }',
 };
 
 /** Lays the wear map over the grass: worn turf turns browner. Works for the lit and the unlit pitch material alike. */
@@ -201,10 +203,11 @@ export class ThreePitchRenderer {
   private readonly mobile: boolean;
   /** Started on the high profile: only then do shadow map and post-processing exist, and they stay for the whole match. */
   private readonly startedHigh: boolean;
+  /** The match started on a profile with post-processing (high or balanced): the composer then draws the whole match. */
+  private readonly startedPost: boolean;
   /** Quality follows the frame time; a fixed profile chosen in the settings never changes. */
   private readonly adaptive: boolean;
   private gpuTimer: GpuTimer | null = null;
-  private vignettePass: ShaderPass | null = null;
   private gradePass: ShaderPass | null = null;
   private grade: Grade = { tint: [1, 1, 1], saturation: 1, contrast: 1 };
   private readonly interpolation: RenderInterpolationScratch = { players: [], owned: [] };
@@ -271,9 +274,11 @@ export class ThreePitchRenderer {
     this.adaptive = prefs.quality === 'auto';
     this.pixelRatio = this.pixelRatioFor(this.quality);
     this.cadence=new RenderCadence(prefs.frameCap > 0 ? 1 / prefs.frameCap : this.software ? 1 / 30 : 0);
-    this.renderer = new THREE.WebGLRenderer({ canvas, alpha: false, antialias: !this.software, powerPreference: 'high-performance' });
     if (this.software) { this.quality = 'low'; this.pixelRatio = .35; }
     this.startedHigh = this.quality === 'high' && !this.software;
+    this.startedPost = this.quality !== 'low' && !this.software;
+    // With post-processing the picture is anti-aliased in the composer's own target; smoothing the canvas as well would do it twice.
+    this.renderer = new THREE.WebGLRenderer({ canvas, alpha: false, antialias: !this.software && !this.startedPost, powerPreference: 'high-performance' });
     const timer = new GpuTimer(this.renderer.getContext() as WebGL2RenderingContext);
     this.gpuTimer = timer.available ? timer : null;
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -654,29 +659,25 @@ export class ThreePitchRenderer {
   }
 
   /**
-   * Tone mapping, bloom and vignette as a post-process. Once a match starts on the high profile the composer is used for the
-   * whole match: dropping a profile only switches the bloom and vignette passes off, so the materials keep their programs.
+   * Tone mapping, bloom, vignette and grade as a post-process. A match that starts on the high or the balanced profile uses the
+   * composer throughout: changing the profile only switches passes on and off, so the materials keep their programs. Balanced
+   * gets the look (grade and vignette in one pass) without the bloom.
    */
   private configureComposer(): void {
-    const wanted = this.startedHigh;
+    const wanted = this.startedPost;
     (this.shadow.material as THREE.MeshBasicMaterial).opacity = this.quality === 'high' ? 0.14 : 0.30;
     // On the shadow-map profile the ball already casts a real shadow; its blob only keeps it readable.
     (this.ballShadow.material as THREE.MeshBasicMaterial).opacity = this.quality === 'high' ? 0.18 : 0.50;
     this.composerActive = wanted;
     if (!wanted) return;
     if (this.composer) { this.setPostPasses(); return; }
-    const target = new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, samples: 4 });
+    const target = new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, samples: this.startedHigh ? 4 : 2 });
     const composer = new EffectComposer(this.renderer, target);
     composer.addPass(new RenderPass(this.scene, this.camera));
     // Only genuinely bright sources (lamps, goal flash) bloom; lit kits and markings stay crisp.
     this.bloom = new UnrealBloomPass(new THREE.Vector2(640, 360), 0.25, 0.4, 2.2);
     composer.addPass(this.bloom);
-    const vignette = new ShaderPass(VignetteShader);
-    vignette.uniforms['offset'].value = 1.02;
-    vignette.uniforms['darkness'].value = 0.85;
-    composer.addPass(vignette);
-    this.vignettePass = vignette;
-    // The grade comes last before tone mapping, so it works on the full range of the picture.
+    // Vignette and grade come last before tone mapping, so they work on the full range of the picture.
     this.gradePass = new ShaderPass(GradeShader);
     composer.addPass(this.gradePass);
     this.pushGrade();
@@ -686,10 +687,8 @@ export class ThreePitchRenderer {
   }
 
   private setPostPasses(): void {
-    const on = this.quality === 'high';
-    if (this.bloom) this.bloom.enabled = on;
-    if (this.vignettePass) this.vignettePass.enabled = on;
-    if (this.gradePass) this.gradePass.enabled = on;
+    if (this.bloom) this.bloom.enabled = this.quality === 'high';
+    if (this.gradePass) this.gradePass.enabled = this.quality !== 'low';
   }
 
   /** Sets the colour grade of the ground: its atmosphere and the weather of the match. */
