@@ -31,7 +31,7 @@ export const MATCH_TUNING = {
     /** How strongly AI passers avoid crowded passing lanes; higher means safer, shorter passing. */
     laneCaution: 1.8,
     /** Scales the execution error of AI passes (below 1 means cleaner passing); human passes keep their full error. */
-    passSkill: 1,
+    passSkill: 0.92,
     /** Value an AI passer subtracts from a team-mate who may be offside. */
     offsidePassCost: 0.006,
     /** Share of AI aerial chances (volley, diving header, scissor kick) that are taken instead of controlling the ball. */
@@ -57,6 +57,24 @@ export const MATCH_TUNING = {
   keeper: {
     /** Share of a keeper's reach he covers with a poor read; reaction and the shot's roll add the rest. */
     reachBase: 0.45,
+    /** Dives: how early a shot is read (seconds of flight), the reaction time and what the body covers without a push. */
+    diveHorizon: 0.55,
+    reactionBase: 0.3,
+    reactionPerSkill: 0.0018,
+    diveBodyReach: 1.1,
+    /** Share of the ball's distance from goal the keeper comes out when he is alone against the carrier. */
+    oneOnOneDepth: 0.42,
+    /** Highest ball he takes with his hands standing, and when he comes for a cross. */
+    /** How far from the body a ball can still be held, and what holding it at a stretch costs in catch chance. */
+    catchReach: 2.1,
+    stretchCatchCost: 0.3,
+    handHeight: 2.45,
+    claimHeight: 2.8,
+    /** Seconds he keeps the ball in his hands at least, and at most, before it is released. */
+    holdMin: 0.9,
+    holdMax: 6,
+    /** Up to this distance the ball is thrown, beyond it kicked. */
+    throwRange: 30,
   },
   tackle: {
     /** How far away a slide may start. */
@@ -66,7 +84,7 @@ export const MATCH_TUNING = {
     /** Assist levels with a timing finish: a second shoot press inside the wind-up cleans up the strike (off for the strongest assist). */
     timedFinish: { assisted: false, balanced: true, manual: true } as Record<AssistPreset, boolean>,
     /** Standard deviations of shot dispersion per unit of error (about 55 % on target). */
-    dispersion: 2.4,
+    dispersion: 2.3,
     /** Error multiplier per assist level. */
     assistError: { assisted: 0.72, balanced: 0.92, manual: 1.18 } as Record<AssistPreset, number>,
   },

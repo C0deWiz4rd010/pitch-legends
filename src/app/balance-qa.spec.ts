@@ -113,7 +113,9 @@ describe('Phase H: balance and QA fixes', () => {
     // About 86 with the talents generated players start with (3 matches, so it moves a little); the unfixed engine had over 100.
     expect(shots / 3).toBeLessThan(92);
     expect(completed / passes).toBeGreaterThan(0.65);
-    expect(edge / samples).toBeLessThan(0.015);
+    // Keepers now throw the ball out to a defender near them, who collects it close to his own line: a little under 2 %
+    // of the samples (the parked players this guards against stood there for a quarter of the match).
+    expect(edge / samples).toBeLessThan(0.022);
   }, 60_000);
 
   it('turns through the shortest arc, snaps when close and keeps half turns counter-clockwise', () => {

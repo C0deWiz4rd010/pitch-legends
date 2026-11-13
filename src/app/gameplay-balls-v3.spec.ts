@@ -76,9 +76,11 @@ describe('Phase 2 – goalkeeper', () => {
     Object.assign(keeper, { active: true, x: 1.5, y: 34, vx: 0, vy: 0, decisionCooldown: 100 });
     Object.assign(match.ball, { ownerId: null, x: 2.5, y: 35.2, z: 2.0, vx: -14, vy: 0, vz: 0, controlledTouch: 1, lastTouch: 'away', lastTouchPlayerId: placed[0].player.id });
     internals(match)['activeShot'] = { shooterId: placed[0].player.id, side: 'away', xG: 0.3, targetY: 34, checkedKeeper: false, keeperQuality: 0.9 };
-    internals(match)['rng'].bool = () => true;
+    // The first roll is the catch at full stretch (missed here), the second the tip over the bar.
+    let rolls = 0;
+    internals(match)['rng'].bool = () => rolls++ > 0;
     internals(match)['handlePostsAndKeeper']();
-    // Not caught (the catch radius is 1.15 m), so it is tipped: up and back over the goal line.
+    // Not held, so it is tipped: up and back over the goal line.
     expect(match.ball.vz).toBeGreaterThan(4);
     expect(match.ball.vx).toBeLessThan(0);
   });

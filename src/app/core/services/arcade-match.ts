@@ -1076,7 +1076,7 @@ export class ArcadeMatch {
 
   moveAi(actor: ArcadeActor, dt: number): void {
     if(actor.player.positionGroup==='GK') {
-      const dive=keeperDiveTarget(actor,this.ball,this.activeShot);
+      const dive=keeperDiveTarget(actor,this.ball,this.activeShot,this.stat(actor,'goalkeeping'));
       if(dive) {
         this.setAction(actor,'keeper-dive');
         actor.actionTarget=dive;

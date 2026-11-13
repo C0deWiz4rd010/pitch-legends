@@ -452,6 +452,8 @@ export interface MatchCheckpoint {
       runRequest?: { id: string; side: Side; untilTick: number } | null;
       /** AI give-and-go: the receiver hands the ball straight back to the runner. */
       oneTwoReturn?: { receiverId: string; runnerId: string; untilTick: number } | null;
+      /** The keeper with the ball in his hands and the tick he got it: he looks for a team-mate before he lets go. */
+      keeperHold?: { id: string; sinceTick: number } | null;
       /** A yellow card held back during an advantage; shown at the next stoppage. */
       pendingYellow?: string | null;
       /** Cards waiting for the next stoppage because the referee played advantage. */

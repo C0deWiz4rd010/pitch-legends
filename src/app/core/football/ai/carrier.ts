@@ -3,6 +3,7 @@ import { clamp } from '../../util';
 import { ArcadeActor, FIELD_LENGTH, FIELD_WIDTH, distance, len2 } from '../match-types';
 import { closestOpponentDistance, passLanePressure } from '../pitch-analysis';
 import { keeperPositionIntent } from '../keeper-ai';
+import { keeperClaimTarget, keeperDistribute, keeperIsAlone } from './keeper';
 import { actionValue, dribbleSuccess, expectedThreat, passCompletion } from '../xt';
 import { MATCH_TUNING as T } from '../tuning';
 import type { ArcadeMatch } from '../../services/arcade-match';
@@ -36,10 +37,7 @@ export function chooseAiIntent(m: ArcadeMatch, actor: ArcadeActor): void {
     const captain = team.tactics.captainId === actor.player.id;
     const patience = team.tactics.tempo === 'slow' ? .16 : team.tactics.tempo === 'fast' ? .40 : .26;
     if (actor.player.positionGroup === 'GK') {
-      const long = team.tactics.buildUp === 'long-ball' || pressureDistance < 6;
-      m.pass(actor, false, long, long ? .85 : .40, direction, m.rng.float(-.4,.4));
-      m.setAction(actor, long ? 'keeper-kick' : 'keeper-throw');
-      if(!long && actor.contact) { actor.contact.kind='hand';m.ball.vz=1.8; }
+      keeperDistribute(m, actor, direction, pressureDistance);
     } else if (goalDistance < shotRange && shootingLane && shotValue >= shotThreshold && !m.betterPlacedTeammate(actor, shotValue)) {
       const keeper = m.actors.find(other=>other.active && other.side!==actor.side && other.player.positionGroup==='GK');
       const farCorner = keeper && keeper.y > FIELD_WIDTH/2 ? -.78 : .78;
@@ -96,7 +94,10 @@ export function chooseAiIntent(m: ArcadeMatch, actor: ArcadeActor): void {
   }
 
   if (actor.player.positionGroup === 'GK') {
-    const intent = keeperPositionIntent(actor, m.ball, !!owner, direction);
+    // Without the ball there is nothing left to hold (a whistle or a lost ball ends it).
+    if (m.football.keeperHold?.id === actor.player.id) m.football.keeperHold = null;
+    const claim = keeperClaimTarget(m, actor, direction);
+    const intent = claim ? { action: 'keeper-rush' as const, ...claim } : keeperPositionIntent(actor, m.ball, !!owner, direction, keeperIsAlone(m, actor, owner, direction));
     m.setAction(actor, intent.action);
     actor.intentX = intent.x;
     actor.intentY = intent.y;
