@@ -45,7 +45,8 @@ import { playerName } from '../../core/ratings';
 import { I18nService } from '../../core/services/i18n.service';
 import { IMPACT_TIME, impactTimeScale } from './impact-time';
 import { aimFromSticks } from './aim-input';
-import { ARCADE_MATCH_TUNING, ArcadeMatch, FIELD_LENGTH, MATCH_TICK, ShootoutPrompt } from '../../core/services/arcade-match';
+import { pickReplayShot } from './replay-director';
+import { ARCADE_MATCH_TUNING, ArcadeMatch, FIELD_LENGTH, FIELD_WIDTH, MATCH_TICK, ShootoutPrompt } from '../../core/services/arcade-match';
 import { AudioService } from '../../core/services/audio.service';
 import { GraphicsPrefsService } from '../../core/services/graphics-prefs.service';
 import { ControlHelpService } from '../../core/services/control-help.service';
@@ -948,8 +949,11 @@ export class MatchPage implements OnDestroy {
 
   private celebrate(side: 'home' | 'away'): void {
     const scorer = [...(this.arcade?.events ?? [])].reverse().find((event) => event.type === 'goal' && event.side === side);
-    this.flash.set(scorer?.ownGoal ? this.i18n.pick('EIGENTOR', 'OWN GOAL') : scorer?.playerName ?? 'GOAL');
+    const name = scorer?.ownGoal ? this.i18n.pick('EIGENTOR', 'OWN GOAL') : scorer?.playerName ?? 'GOAL';
+    this.flash.set(scorer ? `${name} · ${scorer.minute}'` : name);
     this.renderer?.triggerGoal();
+    // The replay camera follows the goal: a long-range strike, a header, a solo run and a tap-in are each shown differently.
+    this.renderer?.setReplayShot(pickReplayShot(this.arcade?.replaySnapshots() ?? [], scorer?.ownGoal ? null : scorer?.playerId ?? null, FIELD_LENGTH, FIELD_WIDTH));
     this.replayElapsed = 0;
     setTimeout(() => this.flash.set(null), 1500);
   }
@@ -1042,7 +1046,7 @@ export class MatchPage implements OnDestroy {
     let cache = this.celebrationCache;
     if (!cache || cache.frame !== frame || cache.scorerId !== scorerId) {
       const mates = new Set(frame.players.filter(player => player.active && player.side === scorer.side && player.id !== scorerId && player.action !== 'keeper-ready')
-        .sort((a, b) => Math.hypot(a.x - scorer.x, a.y - scorer.y) - Math.hypot(b.x - scorer.x, b.y - scorer.y)).slice(0, 2).map(player => player.id));
+        .sort((a, b) => Math.hypot(a.x - scorer.x, a.y - scorer.y) - Math.hypot(b.x - scorer.x, b.y - scorer.y)).slice(0, 4).map(player => player.id));
       const players = frame.players.map(player => ({ ...player }));
       cache = this.celebrationCache = { frame, scorerId, mates, out: { ...frame, ball: { ...frame.ball, vx: 0, vy: 0, vz: 0 }, players } };
     }

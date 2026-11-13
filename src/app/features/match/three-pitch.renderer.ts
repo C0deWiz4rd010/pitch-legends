@@ -4,6 +4,7 @@ import * as THREE from 'three';
 import { ArcadeActor, ArcadeMatch, FIELD_LENGTH, FIELD_WIDTH, GOAL_WIDTH, GOAL_HEIGHT, PITCH, applyPitch } from '../../core/services/arcade-match';
 import { resolveMatchKits, MatchKitSelection } from '../../core/kit-visuals';
 import { contrastRatio, contrastText, hash32 } from '../../core/visual-identity';
+import { ReplayShot, flashLit } from './replay-director';
 import { MatchRenderFrame, MatchRenderState, MatchSnapshot, PlayerRuntimeSnapshot } from '../../models/match.model';
 import { MATCH_TICK } from '../../core/football/match-types';
 import { RefereeRig } from './animation/referee';
@@ -129,7 +130,10 @@ export class ThreePitchRenderer {
   private readonly turfSpawned = new Map<string, number>();
   private lastEventCount = 0;
   private shake = 0;
-  private replayVariant = 0;
+  /** Camera of the goal replay, chosen by the page from what happened (see replay-director). */
+  private replayShot: ReplayShot = 'broadcast';
+  /** Camera flashes in the stands after a goal; rebuilt with the stadium. */
+  private flashes: THREE.Points<THREE.BufferGeometry, THREE.PointsMaterial> | null = null;
   private celebration: { scorerId: string; elapsed: number } | null = null;
   private pitchMaterial: THREE.MeshStandardMaterial | THREE.MeshBasicMaterial | null = null;
   private sunHeight = 75;
@@ -473,7 +477,6 @@ export class ThreePitchRenderer {
   triggerGoal(): void {
     this.goalTime = this.time;
     this.shake = Math.max(this.shake, 0.5);
-    this.replayVariant = (this.replayVariant + 1) % 3;
     const side = this.ball.position.x >= 0 ? 1 : -1;
     this.netSide = side;
     for (let i = 0; i < 160; i++) {
@@ -481,6 +484,8 @@ export class ThreePitchRenderer {
       this.confettiVelocity.set([((hash32(`gx${i}`) % 100) / 100 - 0.5) * 7, 4 + (hash32(`gy${i}`) % 80) / 10, ((hash32(`gz${i}`) % 100) / 100 - 0.5) * 8], i * 3);
     }
   }
+
+  setReplayShot(shot: ReplayShot): void { this.replayShot = shot; }
 
   /** The scorer is shown celebrating in a close shot before the replay. */
   renderCelebration(match: ArcadeMatch, snapshot: MatchSnapshot, scorerId: string, elapsed: number, deltaSeconds: number): void {
@@ -629,6 +634,7 @@ export class ThreePitchRenderer {
     this.updateAtmosphere(match, dt);
     this.updateTurf(dt);
     if (this.bloom) this.bloom.strength = 0.25 + Math.max(0, 1 - (this.time - this.goalTime) / 1.5) * 0.45;
+    this.updateFlashes();
     this.renderer.info.reset();
     this.gpuTimer?.begin();
     if (this.composer && this.composerActive) this.composer.render(dt);
@@ -859,9 +865,20 @@ export class ThreePitchRenderer {
     const standZ = focusZ * stand;
     const position = this.camPosition.set(focusX, distance * Math.sin(angle), standZ + distance * Math.cos(angle));
     const look = this.camLook.set(focusX, 0, THREE.MathUtils.lerp(standZ, focusZ, 0.7));
-    if (replay && !celebration && !reduced && this.replayVariant > 0) {
+    // The goal lands like a punch: the picture pushes in and towards the goal for a moment.
+    const punch = reduced ? 0 : Math.max(0, 1 - (this.time - this.goalTime) / 0.45);
+    if (punch > 0 && !replay) {
+      fov -= 3.5 * punch * punch;
+      position.x += this.netSide * 1.4 * punch * punch;
+    }
+    if (replay && !celebration && !reduced && this.replayShot !== 'broadcast') {
       const goalSide = Math.sign(bx) || 1;
-      if (this.replayVariant === 1) {
+      if (this.replayShot === 'chase') {
+        // Behind the dribbler, running at the goal with him.
+        position.set(bx - goalSide * 11, 3.4, bz + 2.5);
+        look.set(bx + goalSide * 8, 1, bz * 0.6);
+        fov = 46;
+      } else if (this.replayShot === 'behind-goal') {
         // Behind the goal, looking back up the pitch at the finish.
         position.set(goalSide * (FIELD_LENGTH / 2 + 10), 4.2, bz * 0.3);
         look.set(bx - goalSide * 6, 0.8, bz);
@@ -882,7 +899,9 @@ export class ThreePitchRenderer {
       position.y += Math.sin(this.time * 53 + 1.3) * this.shake * 0.16;
     }
     this.shake *= Math.exp(-6 * dt);
-    if (this.camera.fov !== fov) this.camera.fov = fov;
+    // Inside a replay the lens eases to its new angle instead of jumping.
+    if (replay && !celebration && Math.abs(this.camera.fov - fov) > 0.05 && Math.abs(this.camera.fov - fov) < 9) this.camera.fov += (fov - this.camera.fov) * (1 - Math.exp(-9 * dt));
+    else if (this.camera.fov !== fov) this.camera.fov = fov;
     this.camera.position.copy(position);
     this.camera.lookAt(look);
     this.updateFrustum();
@@ -900,6 +919,24 @@ export class ThreePitchRenderer {
     if (preset && preset in CAMERA_PRESETS) return preset;
     const zoom = match.config.camera.zoom || 1;
     return zoom < 0.72 ? 'tactic' : zoom < 0.92 ? 'tv' : 'arcade';
+  }
+
+  /** For three seconds after a goal the stands sparkle with camera flashes, thinning out towards the end. */
+  private updateFlashes(): void {
+    const flashes = this.flashes;
+    if (!flashes) return;
+    const age = this.time - this.goalTime;
+    const active = age >= 0 && age < 3 && this.quality !== 'low';
+    if (flashes.visible !== active) flashes.visible = active;
+    if (!active) return;
+    const color = flashes.geometry.getAttribute('color') as THREE.BufferAttribute;
+    const out = color.array as Float32Array;
+    const fade = 1 - age / 3;
+    for (let index = 0, count = color.count; index < count; index++) {
+      const lit = flashLit(index, this.time) ? fade : 0;
+      out[index * 3] = lit; out[index * 3 + 1] = lit; out[index * 3 + 2] = lit * 0.92;
+    }
+    color.needsUpdate = true;
   }
 
   /** Camera shake from the woodwork and blocks; goals trigger it separately. */
@@ -1300,6 +1337,19 @@ export class ThreePitchRenderer {
         }
       }
     }
+    // Camera flashes: a share of the seats can light up for a moment after a goal.
+    const bulbs: number[] = [];
+    for (let index = 0; index < positions.length; index++) {
+      if (hash32(`flash-${index}`) % 14 === 0) bulbs.push(positions[index].x, positions[index].y + 0.35, positions[index].z);
+    }
+    const flashGeometry = new THREE.BufferGeometry();
+    flashGeometry.setAttribute('position', new THREE.Float32BufferAttribute(bulbs, 3));
+    flashGeometry.setAttribute('color', new THREE.Float32BufferAttribute(new Float32Array(bulbs.length), 3));
+    this.flashes = new THREE.Points(flashGeometry, new THREE.PointsMaterial({ size: 1.1, map: this.softDot, vertexColors: true, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false }));
+    this.flashes.name = 'flashes';
+    this.flashes.frustumCulled = false;
+    this.flashes.visible = false;
+    this.stadium.add(this.flashes);
     const material = new THREE.MeshLambertMaterial();
     material.onBeforeCompile = (shader) => {
       shader.uniforms['crowdTime'] = this.crowdUniform;
