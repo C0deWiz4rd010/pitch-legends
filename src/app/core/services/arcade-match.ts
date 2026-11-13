@@ -117,7 +117,7 @@ function normaliseCommand(input: InputFrame | MatchCommand): MatchCommand {
 export type { ShootoutPrompt } from '../football/shootout';
 
 export type Point = { x: number; y: number; z: number };
-export type AerialKind = 'volley' | 'bicycle-kick' | 'flying-header';
+export type AerialKind = 'volley' | 'side-volley' | 'bicycle-kick' | 'flying-header';
 
 /**
  * Deterministic 60 Hz match simulation shared by PLAY, COACH and headless SIM.
@@ -1014,12 +1014,15 @@ export class ArcadeMatch {
       this.setAction(actor, 'jockey');
       return;
     }
-    // With the ball, the same button shields it: slower, but the carrier is much harder to tackle.
+    // With the ball, the same button shields it: slower, but the carrier is much harder to tackle. On the move that is
+    // close control: the ball stays at the foot with short touches and the body turns quickly.
     const shielding = !!input.jockey && this.ball.ownerId === actor.player.id;
-    this.moveActor(actor, worldX, input.moveY, input.sprint && !shielding, dt, shielding ? 0.62 : 1);
     const moving = len2(worldX, input.moveY) > 0.1;
-    // A shielding carrier shows the wide, low stance of a defender with his back to the opponent.
-    this.setAction(actor, shielding ? 'jockey' : !moving ? 'idle' : input.sprint ? 'sprint' : this.ball.ownerId === actor.player.id ? 'carry' : 'jog');
+    const close = shielding && moving;
+    this.moveActor(actor, worldX, input.moveY, input.sprint && !shielding, dt, close ? T.dribble.closeSpeed : shielding ? 0.62 : 1);
+    if (close) turnFacing(actor, worldX, input.moveY, T.dribble.closeTurn * dt);
+    // A shielding carrier who stands shows the wide, low stance of a defender with his back to the opponent.
+    this.setAction(actor, close ? 'close-control' : shielding ? 'jockey' : !moving ? 'idle' : input.sprint ? 'sprint' : this.ball.ownerId === actor.player.id ? 'carry' : 'jog');
     if (input.skill && !this.previousInput.skill) this.performSkill(actor, worldX, input.moveY);
   }
 
@@ -1048,6 +1051,13 @@ export class ArcadeMatch {
     const braking = ARCADE_MATCH_TUNING.braking * (0.9 + attrs.dribbling * 0.0015);
     const counterSteering = actor.vx * targetVx + actor.vy * targetVy < 0;
     const rate = targetSpeed === 0 || counterSteering ? braking : acceleration;
+    if (counterSteering && targetSpeed > 0 && (recoveringUntil === undefined || recoveringUntil <= this.tick)) {
+      // Turning back at speed: the standing leg has to plant first, shorter for a good dribbler.
+      const speedSquared = actor.vx * actor.vx + actor.vy * actor.vy;
+      if (speedSquared > T.turn.minSpeed * T.turn.minSpeed && actor.vx * targetVx + actor.vy * targetVy < -0.5 * Math.sqrt(speedSquared) * targetSpeed) {
+        this.startRecovery(actor, Math.round(T.turn.plantTicks - attrs.dribbling * T.turn.plantPerDribbling));
+      }
+    }
     // Inline form of accelerateTowards: no temporary object for every player and tick.
     const changeX = targetVx - actor.vx;
     const changeY = targetVy - actor.vy;
@@ -1307,7 +1317,7 @@ export class ArcadeMatch {
     if (owner) {
       const speed = len2(owner.vx, owner.vy);
       const sprinting = speed > this.maxSpeed(owner, false) * 0.98;
-      const close = owner.action === 'ball-roll' || owner.action === 'drag-back';
+      const close = owner.action === 'ball-roll' || owner.action === 'drag-back' || owner.action === 'close-control';
       const reach = sprinting ? 2.0 : 1.35;
       if (distance(owner, this.ball) > reach || this.ball.z > 1.4) {
         this.ball.ownerId = null;

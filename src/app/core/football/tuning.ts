@@ -31,13 +31,14 @@ export const MATCH_TUNING = {
     /** How strongly AI passers avoid crowded passing lanes; higher means safer, shorter passing. */
     laneCaution: 1.8,
     /** Scales the execution error of AI passes (below 1 means cleaner passing); human passes keep their full error. */
-    passSkill: 0.92,
+    passSkill: 0.86,
     /** Value an AI passer subtracts from a team-mate who may be offside. */
     offsidePassCost: 0.006,
     /** Share of AI aerial chances (volley, diving header, scissor kick) that are taken instead of controlling the ball. */
     volleyShare: 34,
     flyingHeaderShare: 18,
     bicycleShare: 6,
+    sideVolleyShare: 12,
   },
   reception: {
     /** Interception attempts on a pass in flight happen every this many ticks per defender. */
@@ -84,7 +85,9 @@ export const MATCH_TUNING = {
     /** Assist levels with a timing finish: a second shoot press inside the wind-up cleans up the strike (off for the strongest assist). */
     timedFinish: { assisted: false, balanced: true, manual: true } as Record<AssistPreset, boolean>,
     /** Standard deviations of shot dispersion per unit of error (about 55 % on target). */
-    dispersion: 2.3,
+    dispersion: 2.15,
+    /** A side volley is hit harder than a shot from the ground and is that much less accurate. */
+    sideVolleyError: 1.3,
     /** Error multiplier per assist level. */
     assistError: { assisted: 0.72, balanced: 0.92, manual: 1.18 } as Record<AssistPreset, number>,
   },
@@ -92,6 +95,20 @@ export const MATCH_TUNING = {
     /** Side spin a full curl input puts on a lofted and on a flat ball. */
     curlLob: 3.5,
     curlFlat: 2.2,
+    /** Standard deviation of the pass angle per unit of error: the spread of the old bounded generator, now with real tails. */
+    errorDeviation: 0.34,
+  },
+  dribble: {
+    /** Close control (held with the ball while moving): share of the speed, and the extra turn rate in radians per second. */
+    closeSpeed: 0.65,
+    closeTurn: 7,
+  },
+  turn: {
+    /** A change of direction of more than 120 degrees above this speed (m/s) plants the standing leg first. */
+    minSpeed: 6.2,
+    /** Ticks the plant lasts for a player without any dribbling, and what each point of dribbling takes off. */
+    plantTicks: 10,
+    plantPerDribbling: 0.06,
   },
   run: {
     /** How long a requested run in behind lasts. */

@@ -97,7 +97,7 @@ export class PlayerLabPage implements AfterViewInit, OnDestroy {
     { value:'keeper-dive',label:'Torwart · hechten' }, { value:'celebrate',label:'Torjubel' },
     { value:'keeper-parry',label:'Torwart · abwehren' }, { value:'keeper-throw',label:'Torwart · abwerfen' },
     { value:'heavy-touch',label:'Schwere Annahme' }, { value:'jockey',label:'Abschirmen / Stellen' },
-    { value:'volley',label:'Volley' }, { value:'bicycle-kick',label:'Fallrückzieher' }, { value:'flying-header',label:'Flugkopfball' },
+    { value:'volley',label:'Volley' }, { value:'side-volley',label:'Seitvolley' }, { value:'bicycle-kick',label:'Fallrückzieher' }, { value:'flying-header',label:'Flugkopfball' },
     { value:'fake-shot',label:'Schussfinte' }, { value:'wall-jump',label:'Mauer · Sprung' },
     { value:'keeper-punch',label:'Torwart · fausten' }, { value:'keeper-smother',label:'Torwart · abfangen' },
   ];

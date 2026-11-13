@@ -18,8 +18,11 @@ export function tryBallControl(m: ArcadeMatch): void {
   const speed = len2(m.ball.vx, m.ball.vy);
   let candidate: ArcadeActor | undefined;
   let candidateScore = Number.POSITIVE_INFINITY;
+  const striker = m.football.pendingKick?.actorId;
   for (const actor of m.actors) {
     if (!actor.active || (m.ball.controlledTouch < 0.14 && actor.player.id === m.ball.lastTouchPlayerId)) continue;
+    // A player who has committed to a strike at this ball (volley, side volley, scissor kick, diving header) hits it; he does not kill it first.
+    if (striker === actor.player.id) continue;
     const intended = actor.player.id === m.intendedReceiverId;
     // A defender gets exactly one try at a pass in flight, and not every defender goes for it; no tick-parity gate any more.
     const interceptsFlight = !intended && !!m.lastPasser && !m.lastPasser.received && actor.side !== m.lastPasser.side;

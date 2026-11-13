@@ -1,7 +1,7 @@
 import { MatchCheckpoint, PlayerActionState, PendingKick } from '../../../models/match.model';
 import { clamp } from '../../util';
 import { ACTION_CONTACT_TICKS } from '../action-timing';
-import { ArcadeActor, distance } from '../match-types';
+import { ArcadeActor, FIELD_LENGTH, FIELD_WIDTH, PITCH, distance } from '../match-types';
 import { MATCH_TUNING as T } from '../tuning';
 import type { ArcadeMatch } from '../../services/arcade-match';
 
@@ -42,7 +42,7 @@ export function processPendingKick(m: ArcadeMatch): void {
   const kick = m.football.pendingKick;
   if (!kick) return;
   const actor = m.actors.find((candidate) => candidate.player.id === kick.actorId && candidate.active);
-  const aerial = kick.type === 'volley' || kick.type === 'bicycle-kick' || kick.type === 'flying-header';
+  const aerial = kick.type === 'volley' || kick.type === 'side-volley' || kick.type === 'bicycle-kick' || kick.type === 'flying-header';
   if (!actor || (aerial ? !!m.ball.ownerId : m.ball.ownerId !== actor.player.id)) { m.football.pendingKick = null; return; }
   if (m.tick < kick.contactTick) return;
   m.football.pendingKick = null;
@@ -56,7 +56,12 @@ export function performKick(m: ArcadeMatch, actor: ArcadeActor, kick: PendingKic
       m.pass(actor, !!kick.through, !!kick.lob, kick.power, kick.aimX, kick.aimY, forced, !!kick.sharp, kick.curl ?? 0);
       return;
     case 'cross':
-      if (!m.cross(actor, !!kick.through, kick.power, kick.aimX, kick.aimY, kick.curl ?? 0)) m.pass(actor, !!kick.through, false, kick.power, kick.aimX, kick.aimY);
+      if (!m.cross(actor, !!kick.through, kick.power, kick.aimX, kick.aimY, kick.curl ?? 0)) {
+        // The runner is gone: the cross is still hit, a hopeful ball into the area in front of goal.
+        const direction = m.attackDirection(actor.side);
+        const spotX = (direction > 0 ? FIELD_LENGTH : 0) - direction * PITCH.penaltySpot;
+        m.pass(actor, false, !kick.through, kick.power, spotX - actor.x, FIELD_WIDTH / 2 - actor.y, undefined, false, kick.curl ?? 0);
+      }
       return;
     case 'shoot':
       m.shoot(actor, kick.power, kick.aimX, kick.aimY, !!kick.finesse, !!kick.low, !!kick.chip, !!kick.driven, false, kick.timed ? 0.6 : 1);

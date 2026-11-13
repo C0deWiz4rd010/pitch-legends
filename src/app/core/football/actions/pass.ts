@@ -177,7 +177,7 @@ export function pass(m: ArcadeMatch, actor: ArcadeActor, through: boolean, lob: 
   const trivela = !flat && pressure > 0.25 && canUse(m.statsOf(actor), 'trivela-pass') ? 0.88 : 1;
   const partnerPass = (target ? partnerBonus(m.partnerStrength(actor, target)).passErrorMul : 1) * trivela;
   const error = m.hook(actor, HK.passError, ((100 - m.stat(actor,'passing')) / 100 * 0.075 + pressure * 0.045 + weakFoot * 0.018 + fatigue * 0.04) * (humanPass ? 1 : T.ai.passSkill) * (flat ? 1.3 : 1) * partnerPass);
-  const angleError = m.rng.gaussian(0, error * manualFactor * m.composure(actor.side));
+  const angleError = m.rng.normal(0, error * manualFactor * m.composure(actor.side) * T.pass.errorDeviation);
   const cos = Math.cos(angleError);
   const sin = Math.sin(angleError);
   const px = dx / length * cos - dy / length * sin;

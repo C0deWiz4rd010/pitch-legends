@@ -8,7 +8,7 @@ export const ACTION_DURATION_TICKS: Partial<Record<PlayerActionState, number>> =
   'standing-tackle': 20, slide: 38, stumble: 28,
   'keeper-catch': 42, 'keeper-parry': 40, 'keeper-dive': 66,
   'keeper-throw': 27, 'keeper-kick': 29, 'subbed-on': 24, injured: 150,
-  'keeper-punch': 34, 'keeper-smother': 40, volley: 30, 'bicycle-kick': 44, 'flying-header': 36, 'wall-jump': 24, 'fake-shot': 22,
+  'keeper-punch': 34, 'keeper-smother': 40, volley: 30, 'side-volley': 36, 'bicycle-kick': 44, 'flying-header': 36, 'wall-jump': 24, 'fake-shot': 22,
 };
 
 /**
@@ -18,7 +18,7 @@ export const ACTION_DURATION_TICKS: Partial<Record<PlayerActionState, number>> =
  */
 export const ACTION_CONTACT_TICKS: Partial<Record<PlayerActionState, number>> = {
   pass: 3, 'through-pass': 3, lob: 4, shot: 5, 'low-shot': 5, 'finesse-shot': 5, 'chip-shot': 4,
-  volley: 4, 'bicycle-kick': 10, 'flying-header': 12,
+  volley: 4, 'side-volley': 6, 'bicycle-kick': 10, 'flying-header': 12,
 };
 
 export function actionIsPlaying(action: PlayerActionState, startedTick: number, tick: number): boolean {

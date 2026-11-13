@@ -99,7 +99,7 @@ export function tryAerialStrike(m: ArcadeMatch): boolean {
   if (speed < 3 || speed > 26) return false;
   const queued = m.football.queuedAction;
   const passer = m.lastPasser;
-  let plan: { t4: Point; t10: Point; t12: Point } | undefined;
+  let plan: { t4: Point; t6: Point; t10: Point; t12: Point } | undefined;
   for (const actor of m.actors) {
     if (!actor.active || actor.player.positionGroup === 'GK') continue;
     if (Math.abs(actor.x - ball.x) > 4 || Math.abs(actor.y - ball.y) > 4) continue;
@@ -112,12 +112,14 @@ export function tryAerialStrike(m: ArcadeMatch): boolean {
     if (goalDistance > (human ? 34 : 24) || Math.abs(actor.y - FIELD_WIDTH / 2) > 18) continue;
     const skill = (m.stat(actor, 'shooting') - 60) / 8;
     const roll = (kind: string, share: number) => human || hash32(`${passer!.at}|${actor.player.id}|${kind}`) % 100 < share + skill;
-    if (!plan) { const [t4, t10, t12] = m.predictBall([4, 10, 12]); plan = { t4, t10, t12 }; }
+    if (!plan) { const [t4, t6, t10, t12] = m.predictBall([4, 6, 10, 12]); plan = { t4, t6, t10, t12 }; }
     const behind = (ball.x - actor.x) * direction;
     let type: AerialKind | null = null;
     const near = (point: Point) => len2(point.x - actor.x, point.y - actor.y);
     if (goalDistance < 20 && behind < -0.3 && behind > -2.8 && ball.z > 1.1 && plan.t10.z > 1.0 && plan.t10.z < 2.6 && near(plan.t10) < 1.4 && roll('bicycle', T.ai.bicycleShare)) type = 'bicycle-kick';
     else if (goalDistance < 16 && speed >= 5 && ball.z > 0.2 && ball.z < 1.2 && plan.t12.z > 0.25 && plan.t12.z < 1.0 && near(plan.t12) > 0.9 && near(plan.t12) < 2.6 && roll('flying', T.ai.flyingHeaderShare)) type = 'flying-header';
+    // A ball arriving across the body at hip height is met side-on: the side volley.
+    else if (ball.z > 0.7 && ball.z < 1.9 && plan.t6.z > 0.8 && plan.t6.z < 1.6 && near(plan.t6) < 1.15 && Math.abs(ball.vy) > Math.abs(ball.vx) * 0.6 && roll('side-volley', T.ai.sideVolleyShare)) type = 'side-volley';
     else if (ball.z > 0.12 && ball.z < 1.3 && plan.t4.z > 0.12 && plan.t4.z < 1.1 && near(plan.t4) < 0.95 && roll('volley', T.ai.volleyShare)) type = 'volley';
     if (!type) continue;
     let aimY: number;
@@ -151,10 +153,10 @@ export function tryAerialStrike(m: ArcadeMatch): boolean {
 /** The ball is struck: only when it is really within reach at this tick, otherwise the strike misses and the ball runs on. */
 export function strikeAerial(m: ArcadeMatch, actor: ArcadeActor, kick: PendingKick): void {
   const ball = m.ball;
-  const reach = kick.type === 'flying-header' ? 1.8 : kick.type === 'bicycle-kick' ? 1.55 : 1.3;
-  const height = kick.type === 'volley' ? 1.5 : 2.9;
+  const reach = kick.type === 'flying-header' ? 1.8 : kick.type === 'bicycle-kick' ? 1.55 : kick.type === 'side-volley' ? 1.4 : 1.3;
+  const height = kick.type === 'volley' ? 1.5 : kick.type === 'side-volley' ? 1.9 : 2.9;
   const direction = m.attackDirection(actor.side);
-  if (kick.type !== 'volley') m.startRecovery(actor, 40);
+  if (kick.type !== 'volley') m.startRecovery(actor, kick.type === 'side-volley' ? 24 : 40);
   if (len2(ball.x - actor.x, ball.y - actor.y) > reach || ball.z > height || !m.legalRestartTouch(actor)) return;
   if (m.football.offsideCandidates.includes(actor.player.id)) {
     m.stats(actor.side).offsides++;
@@ -176,6 +178,10 @@ export function strikeAerial(m: ArcadeMatch, actor: ArcadeActor, kick: PendingKi
   if (kick.type === 'volley') {
     ball.ownerId = actor.player.id;
     m.shoot(actor, kick.power, kick.aimX, kick.aimY, false, false, false, false, true, accuracy);
+  } else if (kick.type === 'side-volley') {
+    // The whole body goes through the ball: always hit hard, and harder to keep on target.
+    ball.ownerId = actor.player.id;
+    m.shoot(actor, Math.max(kick.power, 0.7), kick.aimX, kick.aimY, false, false, false, true, true, accuracy * T.shot.sideVolleyError);
   } else if (kick.type === 'flying-header') {
     m.headAtGoal(actor, kick.aimY, 1.35, 3, 'flying-header');
   } else {

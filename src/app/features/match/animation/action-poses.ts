@@ -23,6 +23,8 @@ interface KickStyle {
   open?: boolean;
   /** Both feet leave the ground. */
   hop?: number;
+  /** How far the body leans away from the kicking leg in the air (1 is the volley). */
+  lean?: number;
 }
 
 const KICK_STYLES: Partial<Record<PlayerActionState, KickStyle>> = {
@@ -34,6 +36,7 @@ const KICK_STYLES: Partial<Record<PlayerActionState, KickStyle>> = {
   'finesse-shot': { follow: 0.66, strength: 1, torso: 0.18, twist: 0.32, knee: 0.4, open: true },
   'chip-shot': { follow: 0.35, strength: 1, torso: -0.12, twist: 0.2, knee: 0.7 },
   volley: { follow: 1.25, strength: 1, torso: -0.2, twist: 0.3, knee: 0.25, hop: 0.12 },
+  'side-volley': { follow: 1.35, strength: 1, torso: -0.3, twist: 0.6, knee: 0.15, hop: 0.2, lean: 2.2 },
 };
 
 /** Kicks with a simulated wind-up: the foot goes back, reaches the ball at the contact tick, follows through. */
@@ -60,7 +63,7 @@ export function poseKick(model: ProceduralFootballer, action: PlayerActionState,
     // A volley is hit in the air: a little hop, leaning away from the leg, with the arms thrown wide.
     const air = Math.sin(Math.min(1, ticks / (contact + 10)) * Math.PI);
     j.hips.position.y += style.hop * air;
-    j.spine.rotation.z += -sign * 0.28 * forward;
+    j.spine.rotation.z += -sign * 0.28 * (style.lean ?? 1) * forward;
     j.leftArm.rotation.z += 0.45 * forward;
     j.rightArm.rotation.z -= 0.45 * forward;
   }

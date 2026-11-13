@@ -414,7 +414,7 @@ function poseFromClip(model: ProceduralFootballer, set: ClipSet, name: string, a
 }
 
 /** Continuous, distance-driven locomotion and simulation-timed action poses. */
-const KICK_ACTIONS: ReadonlySet<string> = new Set(['pass', 'through-pass', 'lob', 'shot', 'low-shot', 'finesse-shot', 'chip-shot', 'keeper-kick', 'knock-on', 'volley']);
+const KICK_ACTIONS: ReadonlySet<string> = new Set(['pass', 'through-pass', 'lob', 'shot', 'low-shot', 'finesse-shot', 'chip-shot', 'keeper-kick', 'knock-on', 'volley', 'side-volley']);
 const BLEND_SECONDS = 0.14;
 const BLEND_TARGET = new THREE.Quaternion();
 // Scratch for keeper and contact IK, which run every frame for several players.

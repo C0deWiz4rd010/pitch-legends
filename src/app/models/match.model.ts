@@ -62,6 +62,7 @@ export type PlayerActionState =
   | 'keeper-punch'
   | 'keeper-smother'
   | 'volley'
+  | 'side-volley'
   | 'bicycle-kick'
   | 'flying-header'
   | 'wall-jump'
@@ -194,7 +195,7 @@ export interface PendingKick {
   actorId: string;
   startTick: number;
   contactTick: number;
-  type: 'pass' | 'shoot' | 'cross' | 'volley' | 'bicycle-kick' | 'flying-header';
+  type: 'pass' | 'shoot' | 'cross' | 'volley' | 'side-volley' | 'bicycle-kick' | 'flying-header';
   power: number;
   aimX: number;
   aimY: number;
