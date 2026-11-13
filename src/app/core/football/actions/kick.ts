@@ -19,11 +19,11 @@ export function executeFootballAction(m: ArcadeMatch, actor: ArcadeActor, action
   }
   const through = action.kind === 'through';
   if ((action.kind === 'lob' || through) && m.inCrossingZone(actor) && m.crossRunner(actor, action.aimX, action.aimY)) {
-    m.scheduleKick(actor, { type: 'cross', through, power: action.power, aimX: action.aimX, aimY: action.aimY }, through ? 'pass' : 'lob');
+    m.scheduleKick(actor, { type: 'cross', through, power: action.power, aimX: action.aimX, aimY: action.aimY, curl: action.curl }, through ? 'pass' : 'lob');
     return;
   }
   const lob = action.kind === 'lob' || (through && !!action.chip);
-  m.scheduleKick(actor, { type: 'pass', through, lob, power: action.power, aimX: action.aimX, aimY: action.aimY, sharp: !!action.sharp && !lob },
+  m.scheduleKick(actor, { type: 'pass', through, lob, power: action.power, aimX: action.aimX, aimY: action.aimY, sharp: !!action.sharp && !lob, curl: action.curl },
     lob && !through ? 'lob' : through ? 'through-pass' : 'pass');
 }
 
@@ -53,10 +53,10 @@ export function performKick(m: ArcadeMatch, actor: ArcadeActor, kick: PendingKic
   const forced = kick.forcedId ? m.actors.find((candidate) => candidate.active && candidate.side === actor.side && candidate.player.id === kick.forcedId) : undefined;
   switch (kick.type) {
     case 'pass':
-      m.pass(actor, !!kick.through, !!kick.lob, kick.power, kick.aimX, kick.aimY, forced, !!kick.sharp);
+      m.pass(actor, !!kick.through, !!kick.lob, kick.power, kick.aimX, kick.aimY, forced, !!kick.sharp, kick.curl ?? 0);
       return;
     case 'cross':
-      if (!m.cross(actor, !!kick.through, kick.power, kick.aimX, kick.aimY)) m.pass(actor, !!kick.through, false, kick.power, kick.aimX, kick.aimY);
+      if (!m.cross(actor, !!kick.through, kick.power, kick.aimX, kick.aimY, kick.curl ?? 0)) m.pass(actor, !!kick.through, false, kick.power, kick.aimX, kick.aimY);
       return;
     case 'shoot':
       m.shoot(actor, kick.power, kick.aimX, kick.aimY, !!kick.finesse, !!kick.low, !!kick.chip, !!kick.driven, false, kick.timed ? 0.6 : 1);

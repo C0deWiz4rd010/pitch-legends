@@ -15,30 +15,37 @@ export function inCrossingZone(m: ArcadeMatch, actor: ArcadeActor): boolean {
 }
 
 /** Delivery to the best-placed runner in the box, timed to arrive at head height (high) or at the feet (driven). */
-export function cross(m: ArcadeMatch, actor: ArcadeActor, driven: boolean, power: number, aimX = 0, aimY = 0): boolean {
-  if (m.ball.ownerId !== actor.player.id) return false;
-  const direction = m.attackDirection(actor.side);
-  const teammates = m.actors.filter(candidate => candidate.active && candidate.side === actor.side && candidate.player.id !== actor.player.id);
-  const runner = m.crossRunner(actor, aimX, aimY);
-  if (!runner) return false;
+/** Where a cross is aimed (ahead of the runner), how fast it leaves and how high. Pure: the aim preview uses it too. */
+export function crossLaunch(actor: ArcadeActor, runner: ArcadeActor, driven: boolean, power: number): { dx: number; dy: number; length: number; speed: number; vz: number } {
   const rough = distance(actor, runner);
   const speed = driven ? clamp(14 + rough * 0.35 + power * 4, 16, 26) : clamp(12 + rough * 0.3 + power * 5, 14, 24);
   const flight = rough / speed;
   const targetX = clamp(runner.x + runner.vx * flight * 0.8, 1, FIELD_LENGTH - 1);
   const targetY = clamp(runner.y + runner.vy * flight * 0.8, 1, FIELD_WIDTH - 1);
   const dx = targetX - actor.x, dy = targetY - actor.y, length = len2(dx, dy) || 1;
+  const time = length / speed;
+  // High crosses arrive at about 1.8 m (header height); driven crosses skim the grass.
+  const vz = driven ? 0.6 : clamp((1.7 + 4.905 * time * time) / time, 3, 11);
+  return { dx, dy, length, speed, vz };
+}
+
+export function cross(m: ArcadeMatch, actor: ArcadeActor, driven: boolean, power: number, aimX = 0, aimY = 0, curl = 0): boolean {
+  if (m.ball.ownerId !== actor.player.id) return false;
+  const direction = m.attackDirection(actor.side);
+  const teammates = m.actors.filter(candidate => candidate.active && candidate.side === actor.side && candidate.player.id !== actor.player.id);
+  const runner = m.crossRunner(actor, aimX, aimY);
+  if (!runner) return false;
+  const { dx, dy, length, speed, vz } = crossLaunch(actor, runner, driven, power);
   const pressure = clamp((5 - m.closestOpponent(actor)) / 5, 0, 1);
   const error = m.rng.normal(0, m.hook(actor, HK.passError, (100 - m.stat(actor,'passing')) / 100 * 0.07 + pressure * 0.04));
   const cos = Math.cos(error), sin = Math.sin(error);
   const px = dx / length * cos - dy / length * sin, py = dx / length * sin + dy / length * cos;
-  const time = length / speed;
-  // High crosses arrive at about 1.8 m (header height); driven crosses skim the grass.
-  const vz = driven ? 0.6 : clamp((1.7 + 4.905 * time * time) / time, 3, 11);
   m.registerPass(actor, runner, teammates);
   if (m.isHumanControlled(actor)) m.selectReceiver(runner);
   // Crosses bend in towards goal (an in-swinger), more with a good curve.
   const inward = Math.sign(direction * (FIELD_WIDTH / 2 - actor.y)) || 1;
-  m.releaseBall(actor, px * speed, py * speed, vz, m.hook(actor, HK.curve, 3 * inward));
+  const bend = Math.abs(curl) > CURL_DEADZONE ? curl : inward;
+  m.releaseBall(actor, px * speed, py * speed, vz, m.hook(actor, HK.curve, 3 * bend));
   m.setAction(actor, driven ? 'pass' : 'lob');
   return true;
 }
@@ -83,8 +90,13 @@ export function selectReceiver(m: ArcadeMatch, receiver: ArcadeActor): void {
   m.football.switchCandidate = null;
 }
 
-export function pass(m: ArcadeMatch, actor: ArcadeActor, through: boolean, lob: boolean, power: number, aimX: number, aimY: number, forced?: ArcadeActor, sharp = false): void {
-  if (m.ball.ownerId !== actor.player.id) return;
+/** Stick deflection below this is no curl input. */
+export const CURL_DEADZONE = 0.15;
+
+export interface PassPlan { teammates: ArcadeActor[]; target: ArcadeActor | undefined; dx: number; dy: number; length: number }
+
+/** Who a pass goes to and where exactly it is aimed, before any execution error. Pure: the aim preview uses it too. */
+export function passPlan(m: ArcadeMatch, actor: ArcadeActor, through: boolean, lob: boolean, power: number, aimX: number, aimY: number, forced?: ArcadeActor): PassPlan {
   const aimLength = len2(aimX, aimY) || 1;
   const nx = aimX / aimLength;
   const ny = aimY / aimLength;
@@ -129,6 +141,27 @@ export function pass(m: ArcadeMatch, actor: ArcadeActor, through: boolean, lob: 
   const dx = targetX - actor.x;
   const dy = targetY - actor.y;
   const length = len2(dx, dy) || 1;
+  return { teammates, target, dx, dy, length };
+}
+
+/** Speed and lift of a pass over the planned distance. */
+export function passLaunch(m: ArcadeMatch, actor: ArcadeActor, plan: PassPlan, through: boolean, lob: boolean, power: number, sharp: boolean): { speed: number; vz: number } {
+  const { target, length } = plan;
+  const flat = sharp && !lob;
+  const lofted = lob && through;
+  const baseSpeed = target && !lob
+    ? clamp(8 + length * 0.48 + power * 4.5 + (through ? 2.8 : 0), 12, 25)
+    : (lofted ? 16 : lob ? 14 : through ? 14.5 : 11.8) + power * (lob ? 12 : 13.5) + m.stat(actor,'passing') * 0.025;
+  const speed = flat ? clamp(baseSpeed * 1.32, 15, 31) : baseSpeed;
+  const vz = flat ? 0.05 : lofted ? clamp(length / speed * 4.905 * 0.8 + 0.3, 2.5, 6) : lob ? clamp(length / speed * 4.905 + 0.5, 3, 9) : 0.15;
+  return { speed, vz };
+}
+
+export function pass(m: ArcadeMatch, actor: ArcadeActor, through: boolean, lob: boolean, power: number, aimX: number, aimY: number, forced?: ArcadeActor, sharp = false, curl = 0): void {
+  if (m.ball.ownerId !== actor.player.id) return;
+  const humanPass = m.isHumanControlled(actor);
+  const plan = passPlan(m, actor, through, lob, power, aimX, aimY, forced);
+  const { teammates, target, dx, dy, length } = plan;
   const pressure = clamp((5 - m.closestOpponent(actor)) / 5, 0, 1);
   // Lateral side relative to the passer's facing, so the weak foot survives the change of ends.
   const lateral = actor.facingX * dy - actor.facingY * dx;
@@ -149,15 +182,12 @@ export function pass(m: ArcadeMatch, actor: ArcadeActor, through: boolean, lob: 
   const sin = Math.sin(angleError);
   const px = dx / length * cos - dy / length * sin;
   const py = dx / length * sin + dy / length * cos;
-  const lofted = lob && through;
-  const baseSpeed = target && !lob
-    ? clamp(8 + length * 0.48 + power * 4.5 + (through ? 2.8 : 0), 12, 25)
-    : (lofted ? 16 : lob ? 14 : through ? 14.5 : 11.8) + power * (lob ? 12 : 13.5) + m.stat(actor,'passing') * 0.025;
-  const speed = flat ? clamp(baseSpeed * 1.32, 15, 31) : baseSpeed;
+  const { speed, vz } = passLaunch(m, actor, plan, through, lob, power, sharp);
   m.registerPass(actor, target, teammates);
   if (humanPass && target) m.selectReceiver(target);
-  const vz = flat ? 0.05 : lofted ? clamp(length / speed * 4.905 * 0.8 + 0.3, 2.5, 6) : lob ? clamp(length / speed * 4.905 + 0.5, 3, 9) : 0.15;
-  m.releaseBall(actor, px * speed, py * speed, vz, lob ? m.rng.float(-2, 2) : 0, lob ? -2 : 0);
+  // A human bends the ball himself (curl input); otherwise a lofted ball drifts a little either way.
+  const spin = Math.abs(curl) > CURL_DEADZONE ? curl * (lob ? T.pass.curlLob : T.pass.curlFlat) : lob ? m.rng.float(-2, 2) : 0;
+  m.releaseBall(actor, px * speed, py * speed, vz, spin, lob ? -2 : 0);
   m.setAction(actor, lob && !through ? 'lob' : through ? 'through-pass' : 'pass');
 }
 

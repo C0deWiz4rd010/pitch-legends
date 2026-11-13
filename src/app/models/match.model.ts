@@ -185,6 +185,8 @@ export interface InputFrame {
   tacticY?: number;
   pause?: boolean;
   device?: InputDevice;
+  /** Bend on a pass or cross, -1 to 1: the cross product of the aim and the bend stick on screen, so the ball curls towards the side the bend stick points to. */
+  curl?: number;
 }
 
 /** A kick that has been released but whose ball contact (see ACTION_CONTACT_TICKS) has not happened yet. */
@@ -207,6 +209,8 @@ export interface PendingKick {
   driven?: boolean;
   /** Second shoot press inside the wind-up: the finish is cleaner. */
   timed?: boolean;
+  /** Side spin asked for by the player, -1 to 1 in pitch coordinates. */
+  curl?: number;
 }
 
 export interface MatchCommand extends Required<InputFrame> {
@@ -237,6 +241,7 @@ export const EMPTY_MATCH_COMMAND: MatchCommand = {
   tacticY: 0,
   pause: false,
   device: 'ai',
+  curl: 0,
 };
 
 export interface TeamMatchStats {
@@ -426,7 +431,7 @@ export interface MatchCheckpoint {
     football?: {
       selectionUntilTick: number;
       switchCandidate?: {id:string;sinceTick:number} | null;
-      queuedAction: { kind: 'pass' | 'through' | 'lob' | 'shoot'; expiresTick: number; power: number; aimX: number; aimY: number; finesse: boolean; low: boolean; chip?: boolean; sharp?: boolean; feint?: boolean } | null;
+      queuedAction: { kind: 'pass' | 'through' | 'lob' | 'shoot'; expiresTick: number; power: number; aimX: number; aimY: number; finesse: boolean; low: boolean; chip?: boolean; sharp?: boolean; feint?: boolean; curl?: number } | null;
       offsideCandidates: string[];
       oneTwoRunnerId: string | null;
       oneTwoUntilTick: number;

@@ -248,6 +248,10 @@ export class ThreePitchRenderer {
   private fillBase = 1;
   private rimBase = 1;
   private softDot: THREE.CanvasTexture | null = null;
+  /** Aim preview: the dotted flight of a charged lob or cross, the spot a ball in the air comes down and its height line. */
+  private readonly aimDots: THREE.Points<THREE.BufferGeometry, THREE.PointsMaterial>;
+  private readonly landingRing: THREE.Mesh<THREE.RingGeometry, THREE.MeshBasicMaterial>;
+  private readonly heightLine: THREE.Line<THREE.BufferGeometry, THREE.LineBasicMaterial>;
   private readonly tagPoint = new THREE.Vector3();
   private sampleTime = 0;
   private sampleFrames = 0;
@@ -369,6 +373,17 @@ export class ThreePitchRenderer {
     const turfGeometry = new THREE.BufferGeometry();
     turfGeometry.setAttribute('position', new THREE.Float32BufferAttribute(new Float32Array(64 * 3).fill(-100), 3));
     this.softDot = createSoftDot();
+    this.aimDots = new THREE.Points(new THREE.BufferGeometry().setAttribute('position', new THREE.Float32BufferAttribute(new Float32Array(72 * 3), 3)),
+      new THREE.PointsMaterial({ color: '#fff3b0', size: 0.5, map: this.softDot, alphaTest: 0.02, transparent: true, opacity: 0.9, depthWrite: false, depthTest: false, toneMapped: false }));
+    this.aimDots.frustumCulled = false; this.aimDots.visible = false; this.aimDots.renderOrder = 6;
+    this.scene.add(this.aimDots);
+    this.landingRing = new THREE.Mesh(new THREE.RingGeometry(0.62, 0.78, 32), new THREE.MeshBasicMaterial({ color: '#fff3b0', transparent: true, opacity: 0.8, depthWrite: false, toneMapped: false }));
+    this.landingRing.rotation.x = -Math.PI / 2; this.landingRing.visible = false; this.landingRing.renderOrder = 4;
+    this.scene.add(this.landingRing);
+    this.heightLine = new THREE.Line(new THREE.BufferGeometry().setAttribute('position', new THREE.Float32BufferAttribute(new Float32Array(6), 3)),
+      new THREE.LineBasicMaterial({ color: '#fbf7ce', transparent: true, opacity: 0.5, depthWrite: false, toneMapped: false }));
+    this.heightLine.frustumCulled = false; this.heightLine.visible = false;
+    this.scene.add(this.heightLine);
     this.turf = new THREE.Points(turfGeometry, new THREE.PointsMaterial({ color: '#3f7a3c', size: 0.17, map: this.softDot, alphaTest: 0.02, transparent: true, opacity: 0.9, depthWrite: false }));
     this.turf.frustumCulled = false;
     this.scene.add(this.turf);
@@ -606,6 +621,7 @@ export class ThreePitchRenderer {
     this.selection.visible = !!this.models.get(state.controlledPlayerId)?.mesh.visible;
     this.arrow.visible = this.selection.visible;
     this.updateBall(state, dt, simDt, !!replay);
+    this.updateAim(match, state, !!replay || !!this.celebration);
     if (this.referee) {
       this.referee.model.mesh.visible = this.quality !== 'low';
       if (this.quality !== 'low') this.referee.update((state.ball.x - FIELD_LENGTH / 2) * mirror, state.ball.y - FIELD_WIDTH / 2, simDt, this.poseClock, state.tick, match.config.camera.reducedMotion);
@@ -1308,6 +1324,50 @@ export class ThreePitchRenderer {
     bodies.name = heads.name = 'crowd';
     bodies.visible = heads.visible = this.quality !== 'low';
     this.stadium.add(bodies, heads);
+  }
+
+  /**
+   * Reading aids for balls in the air: while a lob or cross is charged its flight is dotted in (as much of it as the assist
+   * level shows); once a ball is up, a ring marks where it comes down and a thin line drops from the ball to the grass.
+   */
+  private updateAim(match: ArcadeMatch, state: VisualState, hidden: boolean): void {
+    const direction = state.attackDirection;
+    const preview = hidden ? null : match.aimPreview();
+    this.aimDots.visible = !!preview;
+    let ringX = 0, ringZ = 0, ring = false, pulse = 1;
+    if (preview) {
+      const position = this.aimDots.geometry.getAttribute('position') as THREE.BufferAttribute;
+      const out = position.array as Float32Array, source = preview.points;
+      for (let index = 0; index < preview.count; index++) {
+        out[index * 3] = (source[index * 3] - FIELD_LENGTH / 2) * direction;
+        out[index * 3 + 1] = source[index * 3 + 2];
+        out[index * 3 + 2] = source[index * 3 + 1] - FIELD_WIDTH / 2;
+      }
+      position.needsUpdate = true;
+      this.aimDots.geometry.setDrawRange(0, preview.count);
+      if (preview.landing) {
+        const last = (preview.count - 1) * 3;
+        ringX = out[last]; ringZ = out[last + 2]; ring = true;
+      }
+    }
+    const landing = hidden || preview ? null : match.flightLanding();
+    const airborne = !!landing && state.ball.z > 1;
+    this.heightLine.visible = airborne;
+    if (airborne) {
+      const line = this.heightLine.geometry.getAttribute('position') as THREE.BufferAttribute;
+      const ball = this.ball.position;
+      line.setXYZ(0, ball.x, ball.y, ball.z); line.setXYZ(1, ball.x, 0.03, ball.z);
+      line.needsUpdate = true;
+      ringX = (landing!.x - FIELD_LENGTH / 2) * direction; ringZ = landing!.y - FIELD_WIDTH / 2; ring = true;
+      // The ring closes in as the ball comes down.
+      pulse = 1 + Math.min(1, landing!.seconds) * 0.8;
+    }
+    this.landingRing.visible = ring;
+    if (ring) {
+      this.landingRing.position.set(ringX, 0.03, ringZ);
+      this.landingRing.scale.setScalar(pulse);
+      this.landingRing.material.opacity = preview ? 0.85 : 0.6;
+    }
   }
 
   private updateBall(state: VisualState, dt: number, simDt: number, replay: boolean): void {

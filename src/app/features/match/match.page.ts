@@ -44,6 +44,7 @@ import { ratingColor } from '../../shared/rating-color';
 import { playerName } from '../../core/ratings';
 import { I18nService } from '../../core/services/i18n.service';
 import { IMPACT_TIME, impactTimeScale } from './impact-time';
+import { aimFromSticks } from './aim-input';
 import { ARCADE_MATCH_TUNING, ArcadeMatch, FIELD_LENGTH, MATCH_TICK, ShootoutPrompt } from '../../core/services/arcade-match';
 import { AudioService } from '../../core/services/audio.service';
 import { GraphicsPrefsService } from '../../core/services/graphics-prefs.service';
@@ -1264,16 +1265,20 @@ export class MatchPage implements OnDestroy {
       this.pendingPassAttempt = stats.passesAttempted;
     }
     this.previousLearningPass = pass;
+    const sprint = pressed('sprint'), through = pressed('through'), lob = pressed('lob'), shoot = pressed('shoot');
+    // While a kick is charged the right stick aims it (and the left one bends it); otherwise it picks a team-mate.
+    const aim = aimFromSticks(pass || through || lob || shoot, pickX, pickY, moveX, moveY);
     const command: MatchCommand = {
       moveX,
       moveY,
-      aimX: moveX,
-      aimY: moveY,
-      sprint: pressed('sprint'),
+      aimX: aim.aimX,
+      aimY: aim.aimY,
+      curl: aim.curl,
+      sprint,
       pass,
-      through: pressed('through'),
-      lob: pressed('lob'),
-      shoot: pressed('shoot'),
+      through,
+      lob,
+      shoot,
       skill: pressed('skill'),
       switchPlayer: pressed('switch'),
       keeperRush: pressed('through'),
@@ -1281,8 +1286,8 @@ export class MatchPage implements OnDestroy {
       ultimate: pressed('ultimate'),
       modifier: pressed('modifier'),
       request: pressed('request'),
-      pickX: pickKeyX || pickX,
-      pickY: pickKeyY || pickY,
+      pickX: pickKeyX || (aim.aiming ? 0 : pickX),
+      pickY: pickKeyY || (aim.aiming ? 0 : pickY),
       tacticX: 0,
       tacticY: 0,
       pause: false,

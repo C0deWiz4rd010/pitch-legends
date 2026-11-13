@@ -88,6 +88,11 @@ export const MATCH_TUNING = {
     /** Error multiplier per assist level. */
     assistError: { assisted: 0.72, balanced: 0.92, manual: 1.18 } as Record<AssistPreset, number>,
   },
+  pass: {
+    /** Side spin a full curl input puts on a lofted and on a flat ball. */
+    curlLob: 3.5,
+    curlFlat: 2.2,
+  },
   run: {
     /** How long a requested run in behind lasts. */
     requestTicks: 120,

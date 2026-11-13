@@ -70,6 +70,8 @@ import { callFoul, jumpWall, applyPendingCards } from '../football/rules/fouls';
 import { updateAdvantage } from '../football/rules/advantage';
 import { setRestart, updateRestart, legalRestartTouch, resetKickoff, handleBoundary } from '../football/rules/restarts';
 
+import { FlightLanding, FlightPath, aimPreview, flightLanding } from '../football/aim-preview';
+
 export { ARCADE_MATCH_TUNING } from '../football/tuning';
 
 export { FIELD_LENGTH, FIELD_WIDTH, GOAL_HEIGHT, GOAL_WIDTH, MATCH_TICK, PITCH, applyPitch } from '../football/match-types';
@@ -1170,6 +1172,8 @@ export class ArcadeMatch {
         kind, expiresTick: this.tick + 11, power: this.charge(this.actionHeld[kind], kind === 'shoot' ? 0.9 : 0.8),
         aimX, aimY, chip: input.lob || this.previousInput.lob, finesse: input.skill || this.previousInput.skill, low: this.actionHeld.shoot < 0.14,
         sharp: modifier && (kind === 'pass' || kind === 'through'), feint: modifier && kind === 'shoot',
+        // The screen is mirrored along the pitch when the side attacks from right to left, and with it the sense of the bend.
+        curl: clamp(input.curl, -1, 1) * this.currentAttackDirection,
       };
       if (this.ball.ownerId === actor.player.id) {
         this.executeFootballAction(actor, action);
@@ -1220,7 +1224,7 @@ export class ArcadeMatch {
 
   inCrossingZone(actor: ArcadeActor): boolean { return inCrossingZone(this, actor); }
 
-  cross(actor: ArcadeActor, driven: boolean, power: number, aimX = 0, aimY = 0): boolean { return cross(this, actor, driven, power, aimX, aimY); }
+  cross(actor: ArcadeActor, driven: boolean, power: number, aimX = 0, aimY = 0, curl = 0): boolean { return cross(this, actor, driven, power, aimX, aimY, curl); }
 
   crossRunner(actor: ArcadeActor, aimX: number, aimY: number): ArcadeActor | undefined { return crossRunner(this, actor, aimX, aimY); }
 
@@ -1228,11 +1232,17 @@ export class ArcadeMatch {
 
   selectReceiver(receiver: ArcadeActor): void { return selectReceiver(this, receiver); }
 
+  /** The flight a held lob or cross would take right now; null when nothing is being charged. Presentation only. */
+  aimPreview(): FlightPath | null { return aimPreview(this); }
+
+  /** Where a ball in the air comes down; null for a ball on the ground or at somebody's feet. Presentation only. */
+  flightLanding(): FlightLanding | null { return flightLanding(this); }
+
   charge(value: number, maximum: number): number {
     return clamp(0.3 + value / maximum * 0.7, 0.3, 1);
   }
 
-  pass(actor: ArcadeActor, through: boolean, lob: boolean, power: number, aimX: number, aimY: number, forced?: ArcadeActor, sharp = false): void { return pass(this, actor, through, lob, power, aimX, aimY, forced, sharp); }
+  pass(actor: ArcadeActor, through: boolean, lob: boolean, power: number, aimX: number, aimY: number, forced?: ArcadeActor, sharp = false, curl = 0): void { return pass(this, actor, through, lob, power, aimX, aimY, forced, sharp, curl); }
 
   shoot(actor: ArcadeActor, power: number, aimX: number, aimY: number, finesse: boolean, low: boolean, chip = false, driven = false, forceVolley = false, accuracy = 1): void { return shoot(this, actor, power, aimX, aimY, finesse, low, chip, driven, forceVolley, accuracy); }
 
