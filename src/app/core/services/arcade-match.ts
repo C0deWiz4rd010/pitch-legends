@@ -72,6 +72,8 @@ import { setRestart, updateRestart, legalRestartTouch, resetKickoff, handleBound
 
 import { FlightLanding, FlightPath, aimPreview, flightLanding } from '../football/aim-preview';
 
+import { KNOCK_SPEED, resolveContacts } from '../football/actions/duel';
+
 export { ARCADE_MATCH_TUNING } from '../football/tuning';
 
 export { FIELD_LENGTH, FIELD_WIDTH, GOAL_HEIGHT, GOAL_WIDTH, MATCH_TICK, PITCH, applyPitch } from '../football/match-types';
@@ -1741,7 +1743,8 @@ export class ArcadeMatch {
   }
 
   resolvePlayerCollisions(): void {
-    this.collisions.resolve(this.actors);
+    this.collisions.resolve(this.actors, KNOCK_SPEED);
+    if (this.collisions.contacts.length) resolveContacts(this, this.collisions.contacts);
   }
 
   /**

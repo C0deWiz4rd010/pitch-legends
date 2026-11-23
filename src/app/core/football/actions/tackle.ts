@@ -4,6 +4,7 @@ import { HK } from '../../rpg/effects';
 import { canUse } from '../../rpg/stat-block';
 import { ARCADE_MATCH_TUNING, MATCH_TUNING as T } from '../tuning';
 import type { ArcadeMatch } from '../../services/arcade-match';
+import { runningAlongside, shoulderCharge } from './duel';
 
 export function resolvePressureTackles(m: ArcadeMatch, dt: number): void {
   const owner = m.owner();
@@ -16,6 +17,8 @@ export function resolvePressureTackles(m: ArcadeMatch, dt: number): void {
     const pressing = m.teamOf(defender.side).tactics.pressing;
     const press = pressing === 'gegenpress' ? 1.45 : pressing === 'high' ? 1.2 : 1;
     if (m.rng.bool(dt * m.hook(defender, HK.pressTackle, 0.22 + m.stat(defender,'defending') / 115) * press)) {
+      // Running side by side with the carrier: a shoulder-to-shoulder duel instead of a tackle.
+      if (runningAlongside(defender, owner)) { shoulderCharge(m, defender, owner); continue; }
       const slideChance = pressing === 'gegenpress' ? 0.08 : pressing === 'high' ? 0.04 : pressing === 'medium' ? 0.01 : 0.004;
       m.attemptTackle(defender, m.rng.bool(slideChance));
     }
@@ -31,6 +34,8 @@ export function attemptTackle(m: ArcadeMatch, actor: ArcadeActor, sliding: boole
   const gap = distance(actor, owner);
   // A slide can be started from further out: the lunge carries the player forward and, when short, leaves him on the floor.
   if (gap > (sliding ? T.tackle.slideLungeReach : reach)) return;
+  // The standing tackle of a player running beside the carrier is a shoulder charge.
+  if (!sliding && runningAlongside(actor, owner)) { shoulderCharge(m, actor, owner); return; }
   actor.tackleCooldown = sliding ? 1.15 : 0.45;
   m.setAction(actor, sliding ? 'slide' : 'standing-tackle');
   // A keeper who has the ball in his own area is protected: going in on him is mostly a foul.
