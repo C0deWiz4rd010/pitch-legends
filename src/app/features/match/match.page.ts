@@ -46,6 +46,12 @@ import { I18nService } from '../../core/services/i18n.service';
 import { IMPACT_TIME, impactTimeScale } from './impact-time';
 import { aimFromSticks } from './aim-input';
 import { pickReplayShot } from './replay-director';
+import { INTRO_SECONDS, INTRO_SECONDS_REDUCED } from './intro-director';
+import { resolveMatchKits } from '../../core/kit-visuals';
+import { contrastRatio, mixHex } from '../../core/visual-identity';
+import { ShotMapComponent } from '../../shared/components/shot-map.component';
+import { XgTimelineComponent } from '../../shared/components/xg-timeline.component';
+import type { ShotRecord } from '../../models/match.model';
 import { ARCADE_MATCH_TUNING, ArcadeMatch, FIELD_LENGTH, FIELD_WIDTH, MATCH_TICK, ShootoutPrompt } from '../../core/services/arcade-match';
 import { AudioService } from '../../core/services/audio.service';
 import { GraphicsPrefsService } from '../../core/services/graphics-prefs.service';
@@ -99,8 +105,8 @@ const EMPTY_MATCH_VIEW: MatchViewState = {
 
 @Component({
   selector: 'app-match',
-  host: { '[class.practice-mode]': 'practice', '[class.live-match]': "phase() === 'match'" },
-  imports: [RouterLink, DecimalPipe, ClubCrestComponent, MiniKitComponent, ManagerPortraitComponent, SubstitutionPanelComponent, ConfirmDialogComponent, HeatmapComponent, ShootoutBoardComponent, FocusMeterComponent, ShootoutPanelComponent],
+  host: { '[class.practice-mode]': 'practice', '[class.live-match]': "phase() === 'match' || phase() === 'intro'", '[class.intro-mode]': "phase() === 'intro'" },
+  imports: [RouterLink, DecimalPipe, ClubCrestComponent, MiniKitComponent, ManagerPortraitComponent, SubstitutionPanelComponent, ConfirmDialogComponent, HeatmapComponent, ShootoutBoardComponent, FocusMeterComponent, ShootoutPanelComponent, ShotMapComponent, XgTimelineComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './match.page.html',
   styleUrls: ['./match.page.scss', './live-match.scss'],
@@ -170,13 +176,14 @@ export class MatchPage implements OnDestroy {
   protected readonly subInId = signal('');
   protected readonly confirmAction = signal<'forfeit' | 'simulate' | null>(null);
   protected readonly showMinimap = signal(true);
-  protected readonly reportTab = signal<'overview' | 'stats' | 'ratings' | 'heatmap' | 'signatures' | 'timeline'>('overview');
+  protected readonly reportTab = signal<'overview' | 'stats' | 'ratings' | 'heatmap' | 'chances' | 'signatures' | 'timeline'>('overview');
   protected readonly heatmapPlayerId = signal('');
   protected readonly reportTabs = [
     { key: 'overview', de: 'Übersicht', en: 'Overview' },
     { key: 'stats', de: 'Statistik', en: 'Stats' },
     { key: 'ratings', de: 'Noten', en: 'Ratings' },
     { key: 'heatmap', de: 'Heatmap', en: 'Heatmap' },
+    { key: 'chances', de: 'Chancen', en: 'Chances' },
     { key: 'signatures', de: 'Signaturen', en: 'Signatures' },
     { key: 'timeline', de: 'Verlauf', en: 'Timeline' },
   ] as const;
@@ -243,6 +250,8 @@ export class MatchPage implements OnDestroy {
   private lastAudioEvent = 0;
   private lastCrowdIntensity = -1;
   private introTimer: ReturnType<typeof setTimeout> | null = null;
+  /** Seconds of the walk-on drawn so far; it only counts once the stadium is ready. */
+  private introElapsed = 0;
   private gamepadSeen = false;
   private touchPointer: number | null = null;
   private touchOrigin = { x: 0, y: 0 };
@@ -349,6 +358,12 @@ export class MatchPage implements OnDestroy {
   private readonly keyDown = (event: KeyboardEvent) => {
     if (this.controlHelp.visible()) return;
     if((event.target as HTMLElement | null)?.closest('input,textarea,select,[contenteditable="true"]')) return;
+    // Any confirming key, or the pass key that takes the kick-off, cuts the walk-on short.
+    if (this.phase() === 'intro' && !event.repeat && ['Enter', 'NumpadEnter', 'Space', 'Escape', 'KeyJ'].includes(event.code)) {
+      event.preventDefault();
+      this.skipIntro();
+      return;
+    }
     if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].includes(event.code)) event.preventDefault();
     // Freely bound keys such as / or ' must not open the browser's quick find mid-match.
     else if (this.phase() === 'match' && !event.ctrlKey && !event.metaKey && BINDABLE_ACTIONS.some((action) => keysFor(this.controlPrefs.prefs(), action).includes(event.code))) event.preventDefault();
@@ -399,7 +414,8 @@ export class MatchPage implements OnDestroy {
     });
     effect(() => {
       const canvas = this.canvasRef();
-      if (this.phase() === 'match' && canvas && !this.renderer && this.arcade) this.startAnimation(canvas.nativeElement);
+      // The stadium is built during the walk-on already, so the match starts without a loading pause.
+      if ((this.phase() === 'match' || this.phase() === 'intro') && canvas && !this.renderer && this.arcade) this.startAnimation(canvas.nativeElement);
     });
     effect(() => {
       const helpVisible = this.controlHelp.visible();
@@ -630,8 +646,9 @@ export class MatchPage implements OnDestroy {
     this.saveCheckpoint();
     this.phase.set('intro');
     this.audio.startMusic();
-    // Long enough for the line-ups to run in; the intro can be skipped at any time.
-    this.introTimer = setTimeout(() => this.skipIntro(), 5200);
+    // The walk-on ends itself once it has been shown (see loop); this is only the way out when the 3D view never starts.
+    this.introElapsed = 0;
+    this.introTimer = setTimeout(() => this.skipIntro(), 30_000);
   }
 
   protected resumeMatch(): void {
@@ -704,7 +721,7 @@ export class MatchPage implements OnDestroy {
         this.renderer = renderer;
         canvas.addEventListener('webglcontextlost', () => this.pauseFor(this.i18n.pick('Grafik unterbrochen. Nach der Wiederherstellung kannst du weiterspielen.', 'Graphics interrupted. You can continue once they are restored.')), { once: true });
         renderer.setCosmetics(this.meta.worn());
-        await renderer.prepare(match);
+        await renderer.prepare(match, this.phase() === 'intro');
         if (this.disposed || this.arcade !== match || this.renderer !== renderer) return;
       } catch {
         this.graphicsError.set(this.i18n.locale() === 'de' ? 'Die 3D-Grafik konnte nicht gestartet werden. Aktiviere Hardwarebeschleunigung und versuche es erneut.' : 'Could not start 3D graphics. Enable hardware acceleration and try again.');
@@ -722,11 +739,20 @@ export class MatchPage implements OnDestroy {
   }
 
   private loop(timestamp: number): void {
-    if (!this.arcade || this.phase() !== 'match') return;
+    if (!this.arcade || (this.phase() !== 'match' && this.phase() !== 'intro')) return;
     if (!this.lastTs) this.lastTs = timestamp;
     const rawDelta = Math.max(0, (timestamp - this.lastTs) / 1000);
     const renderDelta = Math.min(rawDelta, 0.05);
     this.lastTs = timestamp;
+    if (this.phase() === 'intro') {
+      // The walk-on: nothing is simulated, the renderer stages the teams; at its end the referee blows for kick-off.
+      this.introElapsed += renderDelta;
+      this.renderer?.renderIntro(this.arcade, this.introElapsed, renderDelta);
+      const length = this.arcade.config.camera.reducedMotion ? INTRO_SECONDS_REDUCED : INTRO_SECONDS;
+      if (this.introElapsed >= length) this.zone.run(() => this.skipIntro());
+      this.raf = requestAnimationFrame((time) => this.loop(time));
+      return;
+    }
     if (this.arcade.phase === 'goalReplay') {
       this.replayElapsed += renderDelta;
       const frames = this.arcade.replaySnapshots();
@@ -1188,6 +1214,16 @@ export class MatchPage implements OnDestroy {
   }
 
   protected matchStats(side: 'home' | 'away') { return side === 'home' ? this.arcade?.homeStats : this.arcade?.awayStats; }
+  /** Shots of the match so far, for the half-time charts. */
+  protected shotsSoFar(): readonly ShotRecord[] { return this.arcade?.shotLog ?? []; }
+  /** The shirts of both sides as chart colours; a shirt that would vanish on the dark panel is lightened. */
+  protected readonly chartColors = computed(() => {
+    const home = this.homeTeam(), away = this.awayTeam();
+    if (!home || !away) return { home: '#54f28b', away: '#ff7c8f' };
+    const kits = resolveMatchKits(home, away);
+    const readable = (kit: typeof kits.home) => contrastRatio(kit.shirt, '#0b1d26') >= 3 ? kit.shirt : contrastRatio(kit.secondary, '#0b1d26') >= 3 ? kit.secondary : mixHex(kit.shirt, '#f4f4df', 0.6);
+    return { home: readable(kits.home), away: readable(kits.away) };
+  });
 
   protected motmName(): string {
     const result = this.result();

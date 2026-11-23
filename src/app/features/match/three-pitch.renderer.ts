@@ -31,6 +31,7 @@ import { SCUFF_HEIGHT, SCUFF_WIDTH, WEAR_HEIGHT, WEAR_WIDTH, stampScuff, stampWe
 import { PitchSurface, createPitchSurface, snowCover } from './pitch-surface';
 import { puddleSpots } from '../../core/football/weather';
 import { Ground, createGround } from './stadium/ground';
+import { INTRO_SECONDS, introPlacement, introShot } from './intro-director';
 import { CosmeticDef } from '../../core/meta/legend-path';
 import { CosmeticSlot } from '../../models/meta.model';
 import { KitPattern } from '../../models/visual.model';
@@ -45,6 +46,8 @@ export const CAMERA_PRESETS: Record<MatchCameraPreset, { pitch: number; fov: num
   /** Close behind the player you control: low, tight, and the ball only a little in the picture. */
   player: { pitch: 36, fov: 44, width: 0.52, follow: 1 },
 };
+/** The HUD speaks the typeface of the menus (IBM Plex Mono is the body font of the design tokens). */
+export const HUD_FONT = "'IBM Plex Mono', Consolas, ui-monospace, monospace";
 const AURA_FLASH = new THREE.Color('#ffffff');
 const BALL_PANEL = '#1c3651';
 const BALL_BODY = '#fcfaf1';
@@ -129,6 +132,9 @@ export class ThreePitchRenderer {
   /** Camera of the goal replay, chosen by the page from what happened (see replay-director). */
   private replayShot: ReplayShot = 'broadcast';
   private celebration: { scorerId: string; elapsed: number } | null = null;
+  /** The walk-on before kick-off: set while the page draws the intro instead of the match. */
+  private intro: { elapsed: number } | null = null;
+  private readonly introPlayers: PlayerRuntimeSnapshot[] = [];
   private pitchMaterial: THREE.MeshStandardMaterial | THREE.MeshBasicMaterial | null = null;
   private sunHeight = 75;
   private minimap = true;
@@ -178,6 +184,7 @@ export class ThreePitchRenderer {
   private readonly switchRing: THREE.Mesh<THREE.BufferGeometry, THREE.MeshBasicMaterial>;
   /** Shirt number and position group per player, for the markers the HUD draws. */
   private readonly hudInfo = new Map<string, { number: number; keeper: boolean }>();
+  private readonly playerNames = new Map<string, string>();
   /** Where the four corners of the picture meet the grass (scene x and z), for the view outline on the minimap. */
   private readonly viewCorners = new Float32Array(8);
   private readonly power: THREE.Mesh<THREE.RingGeometry, THREE.MeshBasicMaterial>;
@@ -458,7 +465,8 @@ export class ThreePitchRenderer {
   }
 
   /** Call before releasing the kickoff screen, including after a new fixture loads. */
-  async prepare(match: ArcadeMatch): Promise<void> {
+  /** `intro`: the warm-up frames already show the walk-on, so the match view never flashes up before it. */
+  async prepare(match: ArcadeMatch, intro = false): Promise<void> {
     if (this.disposed) return;
     // The baked animation clips are optional: without them the procedural poses carry on.
     await loadClipSet();
@@ -477,10 +485,11 @@ export class ThreePitchRenderer {
     finally {this.renderer.setRenderTarget(null);warmTarget.dispose();culling.forEach((value,object)=>object.frustumCulled=value);}
     // Upload geometry, bone textures and shadow targets before the match clock starts.
     const state = match.renderState();
-    this.render(match, { previous: state, current: state, alpha: 1, deltaSeconds: 1 / 60 });
+    const warm = () => intro ? this.renderIntro(match, 0, 1 / 60) : this.render(match, { previous: state, current: state, alpha: 1, deltaSeconds: 1 / 60 });
+    warm();
     await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
     if (this.disposed) return;
-    this.render(match, { previous: state, current: state, alpha: 1, deltaSeconds: 1 / 60 });
+    warm();
     // A software driver can still be compiling/rasterizing after render() returns.
     // Finish that one-time work behind the loading screen, never inside live play.
     if(this.software) this.renderer.getContext().finish();
@@ -505,6 +514,32 @@ export class ThreePitchRenderer {
     this.celebration = { scorerId, elapsed };
     try { this.render(match, { previous: snapshot as never, current: snapshot as never, alpha: 1, deltaSeconds }, snapshot); }
     finally { this.celebration = null; }
+  }
+
+  /**
+   * The walk-on: both teams jog out of the tunnel and line up while the camera comes down to them and rides along the row;
+   * every player's number and name floats above him. Only drawn: the match itself has not started and is not touched.
+   */
+  renderIntro(match: ArcadeMatch, elapsed: number, deltaSeconds: number): void {
+    const base = match.renderState();
+    const mirror = base.attackDirection, reduced = match.config.camera.reducedMotion;
+    const at = reduced ? INTRO_SECONDS : elapsed;
+    let home = 0, away = 0;
+    base.players.forEach((player, index) => {
+      const spot = introPlacement(player.side === 'home' ? home++ : away++, player.side === 'home', at);
+      const shown = Object.assign(this.introPlayers[index] ??= {} as PlayerRuntimeSnapshot, player);
+      shown.x = spot.x * mirror + FIELD_LENGTH / 2; shown.y = spot.z + FIELD_WIDTH / 2;
+      shown.vx = spot.vx * mirror; shown.vy = spot.vz;
+      shown.facingX = spot.facingX * mirror; shown.facingY = spot.facingZ;
+      shown.action = spot.arrived ? 'idle' : 'jog';
+      shown.animationDistance = spot.distance;
+      shown.contact = undefined; shown.actionTarget = undefined;
+    });
+    this.introPlayers.length = base.players.length;
+    const state = { ...base, tick: Math.round(elapsed * 60), players: this.introPlayers } as unknown as MatchSnapshot;
+    this.intro = { elapsed };
+    try { this.render(match, { previous: state as never, current: state as never, alpha: 1, deltaSeconds }, state); }
+    finally { this.intro = null; }
   }
 
   render(match: ArcadeMatch, frame?: MatchRenderFrame, replay?: MatchSnapshot): void {
@@ -650,7 +685,7 @@ export class ThreePitchRenderer {
     this.aura.instanceMatrix.needsUpdate = true;
     if (this.aura.instanceColor) this.aura.instanceColor.needsUpdate = true;
     this.shadow.instanceMatrix.needsUpdate = true;
-    this.selection.visible = !!this.models.get(state.controlledPlayerId)?.mesh.visible;
+    this.selection.visible = !this.intro && !!this.models.get(state.controlledPlayerId)?.mesh.visible;
     this.arrow.visible = this.selection.visible;
     // The next switch candidate is only of interest while the other side or nobody has the ball.
     const hunting = !replay && !this.celebration && match.config.controllerMode === 'human' && match.rule.phase === 'playing' && match.owner()?.side !== match.controlledSide;
@@ -879,6 +914,16 @@ export class ThreePitchRenderer {
     }
     const next=advanceBroadcastCamera({x:this.cameraX,z:this.cameraZ,width:this.viewWidth},{x:targetX,z:targetZ,width:targetWidth},dt,replay);
     this.cameraX=next.x;this.cameraZ=next.z;this.viewWidth=next.width;
+    if (this.intro) {
+      const shot = introShot(this.intro.elapsed, reduced);
+      this.camera.fov = shot.fov;
+      this.camera.position.set(shot.x, shot.y, shot.z);
+      this.camera.lookAt(shot.lookX, shot.lookY, shot.lookZ);
+      this.updateFrustum();
+      this.sun.target.position.set(0, 0, -6);
+      this.sun.position.set(-35, this.sunHeight, 19);
+      return;
+    }
     const celebration = this.celebration ? state.players.find(player => player.id === this.celebration!.scorerId) : undefined;
     let fov = preset.fov, pitch = preset.pitch, width = this.viewWidth, focusX = this.cameraX, focusZ = this.cameraZ, stand = preset.follow;
     if (celebration && !reduced) {
@@ -1039,6 +1084,7 @@ export class ThreePitchRenderer {
       this.referee = null;
       this.auraRarity.clear();
       this.hudInfo.clear();
+      this.playerNames.clear();
       disposeTree(this.stadium);
       this.stadium.clear();
       this.goalNets.length = 0;
@@ -1068,6 +1114,7 @@ export class ThreePitchRenderer {
       if (actor.side === match.controlledSide && this.cosmetics.cheer !== undefined) model.cheer = this.cosmetics.cheer;
       this.models.set(actor.player.id, model);
       this.hudInfo.set(actor.player.id, { number: actor.player.kitNumber, keeper: actor.player.positionGroup === 'GK' });
+      this.playerNames.set(actor.player.id, (actor.player.lastName || actor.player.firstName).toLocaleUpperCase());
       this.scene.add(model.mesh);
       const rarity = dnaOf(actor.player).rarity;
       if (atLeast(rarity, AURA_FROM)) this.auraRarity.set(actor.player.id, rarity);
@@ -1464,7 +1511,7 @@ export class ThreePitchRenderer {
     const x = (this.tagPoint.x * 0.5 + 0.5) * w, y = (-this.tagPoint.y * 0.5 + 0.5) * h;
     const stamina = Math.max(0, Math.min(1, actor.stamina / 100));
     ctx.textAlign = 'center';
-    ctx.font = `700 ${11 * s}px system-ui, sans-serif`;
+    ctx.font = `700 ${11 * s}px ${HUD_FONT}`;
     ctx.lineWidth = 3 * s;
     ctx.strokeStyle = 'rgba(5,15,22,.85)';
     ctx.strokeText(actor.player.lastName.toUpperCase(), x, y - 7 * s);
@@ -1478,12 +1525,42 @@ export class ThreePitchRenderer {
     ctx.textAlign = 'left';
   }
 
+  /** Walk-on: number and name of every player who stands in the line, in his team's colours, above his head. */
+  private drawNamePlates(ctx: CanvasRenderingContext2D, state: VisualState, w: number, h: number, s: number): void {
+    ctx.textBaseline = 'middle';
+    ctx.font = `600 ${11 * s}px ${HUD_FONT}`;
+    for (const player of state.players) {
+      const model = this.models.get(player.id), info = this.hudInfo.get(player.id);
+      if (!model || !info || !player.active || player.action !== 'idle') continue;
+      this.tagPoint.set(model.mesh.position.x, model.recipe.height + 0.16, model.mesh.position.z).project(this.camera);
+      if (this.tagPoint.z > 1 || Math.abs(this.tagPoint.x) > 1.05 || Math.abs(this.tagPoint.y) > 1.05) continue;
+      // Plates far from the camera would only be clutter.
+      const distance = this.camera.position.distanceTo(model.mesh.position);
+      if (distance > 16) continue;
+      const x = (this.tagPoint.x * 0.5 + 0.5) * w, y = (-this.tagPoint.y * 0.5 + 0.5) * h;
+      const dot = this.mapDots[player.side], name = this.playerNames.get(player.id) ?? '';
+      const number = String(info.number), numberWidth = ctx.measureText(number).width + 10 * s, width = numberWidth + ctx.measureText(name).width + 14 * s, height = 19 * s;
+      ctx.globalAlpha = Math.min(1, (16 - distance) / 4);
+      ctx.fillStyle = 'rgba(7,20,27,.86)';
+      ctx.beginPath(); ctx.roundRect(x - width / 2, y - height, width, height, 4 * s); ctx.fill();
+      ctx.fillStyle = dot.fill;
+      ctx.beginPath(); ctx.roundRect(x - width / 2, y - height, numberWidth, height, [4 * s, 0, 0, 4 * s]); ctx.fill();
+      ctx.textAlign = 'center';
+      ctx.fillStyle = dot.rim;
+      ctx.fillText(number, x - width / 2 + numberWidth / 2, y - height / 2 + 0.5 * s);
+      ctx.textAlign = 'left';
+      ctx.fillStyle = '#f5f6e9';
+      ctx.fillText(name, x - width / 2 + numberWidth + 7 * s, y - height / 2 + 0.5 * s);
+    }
+    ctx.globalAlpha = 1; ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+  }
+
   /** Team-mates near the ball but outside the picture get a badge with their number at the edge, pointing towards them. */
   private drawMateArrows(ctx: CanvasRenderingContext2D, match: ArcadeMatch, state: VisualState, w: number, h: number, s: number, bottomInset: number): void {
     const dot = this.mapDots[match.controlledSide];
     const ballX = state.ball.x, ballY = state.ball.y, margin = 22 * s;
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.font = `700 ${10 * s}px system-ui, sans-serif`;
+    ctx.font = `700 ${10 * s}px ${HUD_FONT}`;
     for (const player of state.players) {
       if (!player.active || player.side !== match.controlledSide || player.id === state.controlledPlayerId) continue;
       const info = this.hudInfo.get(player.id);
@@ -1519,6 +1596,8 @@ export class ThreePitchRenderer {
     ctx.clearRect(0, 0, w, h);
     // Layout scale from the CSS width, times the canvas-to-CSS pixel ratio.
     const s = Math.max(0.72, Math.min(1.1, this.width / 1000)) * (w / this.width);
+    // The walk-on shows the name plates and nothing of the match HUD.
+    if (this.intro) { this.drawNamePlates(ctx, state, w, h, s); return; }
     const touch = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
     const bottomInset = touch ? 0 : 55;
     const mapW = 150 * s, mapH = mapW * FIELD_WIDTH / FIELD_LENGTH;
@@ -1564,7 +1643,7 @@ export class ThreePitchRenderer {
     if (selected) {
       const left = 18 * s, bottom = touch ? 98 * s : h - 25 * s - bottomInset;
       const label = `${selected.player.kitNumber}  ${selected.player.lastName.toLocaleUpperCase()}`;
-      ctx.font = `600 ${14 * s}px system-ui, sans-serif`;
+      ctx.font = `600 ${14 * s}px ${HUD_FONT}`;
       const labelWidth = Math.max(148 * s, ctx.measureText(label).width + 27 * s);
       ctx.fillStyle = 'rgba(9,26,33,.77)'; ctx.beginPath(); ctx.roundRect(left, bottom - 37 * s, labelWidth, 51 * s, 5 * s); ctx.fill();
       ctx.fillStyle = '#ffe477'; ctx.fillRect(left, bottom - 36 * s, 3 * s, 49 * s);
@@ -1579,7 +1658,7 @@ export class ThreePitchRenderer {
       const bar = h * 0.075;
       ctx.fillStyle = 'rgba(0,0,0,.82)';
       ctx.fillRect(0, 0, w, bar); ctx.fillRect(0, h - bar, w, bar);
-      ctx.font = `700 ${15 * s}px system-ui, sans-serif`; ctx.fillStyle = '#ffde7b';
+      ctx.font = `700 ${15 * s}px ${HUD_FONT}`; ctx.fillStyle = '#ffde7b';
       ctx.fillText('●  REPLAY', 22 * s, bar + 24 * s);
     }
     if (!replay && match.rule.phase !== 'playing' && match.rule.phase !== 'advantage') {
@@ -1589,7 +1668,7 @@ export class ThreePitchRenderer {
         : { kickoff: 'ANSTOSS', freeKick: 'FREISTOSS', corner: 'ECKBALL', throwIn: 'EINWURF', goalKick: 'ABSTOSS', penalty: 'ELFMETER' };
       const label = names[match.rule.phase];
       if (label) {
-        ctx.font = `600 ${13 * s}px system-ui, sans-serif`; ctx.textAlign = 'center';
+        ctx.font = `600 ${13 * s}px ${HUD_FONT}`; ctx.textAlign = 'center';
         const top = touch ? 48 : 122;
         ctx.fillStyle = 'rgba(9,26,33,.72)'; ctx.beginPath(); ctx.roundRect(w / 2 - 94 * s, top, 188 * s, 31 * s, 5 * s); ctx.fill();
         ctx.fillStyle = '#f5efcf'; ctx.fillText(label, w / 2, top + 21 * s); ctx.textAlign = 'left';

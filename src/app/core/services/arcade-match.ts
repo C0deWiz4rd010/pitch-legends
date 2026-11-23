@@ -28,7 +28,7 @@ import {
 import { Team } from '../../models/team.model';
 import { Tactics } from '../../models/tactics.model';
 import { Difficulty } from '../../models/game.model';
-import type { PenaltyShootout, SignatureReport } from '../../models/match.model';
+import type { PenaltyShootout, ShotRecord, SignatureReport } from '../../models/match.model';
 import { playerName, groupForPosition } from '../ratings';
 import { tacticalIntent } from '../football/tactical-intent';
 import { ReplayRing } from '../football/replay-ring';
@@ -159,6 +159,8 @@ export class ArcadeMatch {
   readonly ratings: Record<string, number> = {};
   readonly contributions: Record<string, MatchContribution> = {};
   readonly heatmaps: Record<string, { x: number; y: number; weight: number }[]> = {};
+  /** Every shot with where it was struck and its xG: telemetry for the shot map, outside the state hash. */
+  readonly shotLog: ShotRecord[] = [];
 
   homeScore = 0;
   awayScore = 0;
@@ -756,6 +758,7 @@ export class ArcadeMatch {
         lastSubAt: this.lastSubAt,
         keyframes: structuredClone(this.keyframes),
         heatmaps: structuredClone(this.heatmaps),
+        shots: structuredClone(this.shotLog),
       },
       savedAt: Date.now(),
     };
@@ -820,6 +823,7 @@ export class ArcadeMatch {
     this.keyframes.splice(0, this.keyframes.length, ...structuredClone(checkpoint.runtime.keyframes));
     for (const key of Object.keys(this.heatmaps)) delete this.heatmaps[key];
     Object.assign(this.heatmaps, structuredClone(checkpoint.runtime.heatmaps));
+    this.shotLog.splice(0, this.shotLog.length, ...structuredClone(checkpoint.runtime.shots ?? []));
     this.rng.restore(checkpoint.rngState);
     // A reload in the middle of an interactive shoot-out cannot bring the kicks back: it is settled automatically.
     if (checkpoint.runtime.shootoutPending) {
@@ -1458,6 +1462,13 @@ export class ArcadeMatch {
       this.ratings[assister.player.id] = clamp(this.ratings[assister.player.id] + 0.65, 1, 10);
     }
     this.penaliseConceding(this.opposite(side));
+    // The shot that went in is marked on the shot map (an own goal has none).
+    if (!ownGoal) for (let index = this.shotLog.length - 1; index >= 0; index--) {
+      const shot = this.shotLog[index];
+      if (shot.side !== side) continue;
+      if (this.footballMinute - shot.minute <= 1) shot.goal = true;
+      break;
+    }
     if (ownGoal && lastToucher) {
       this.events.push({
         minute: this.footballMinute, type: 'goal', side, playerId: null, ownGoal: true,
@@ -1665,6 +1676,7 @@ export class ArcadeMatch {
       ratings: { ...this.ratings },
       contributions: structuredClone(this.contributions),
       heatmaps: structuredClone(this.heatmaps),
+      shots: structuredClone(this.shotLog),
       endingFitness: Object.fromEntries(this.actors.map((actor) => [actor.player.id, round(actor.stamina, 1)])),
       played: true,
       ...(this.football.extra ? { extraTime: true } : {}),
@@ -2054,6 +2066,8 @@ export class ArcadeMatch {
 
   /** A shot: credits awake signatures of the shooter and wakes the defenders' reactions. */
   registerShotForSignatures(shooter: ArcadeActor, xG: number): void {
+    const forward = this.attackDirection(shooter.side) > 0;
+    this.shotLog.push({ minute: this.footballMinute, side: shooter.side, playerId: shooter.player.id, x: round(forward ? shooter.x : FIELD_LENGTH - shooter.x, 1), y: round(forward ? shooter.y : FIELD_WIDTH - shooter.y, 1), xG: round(xG, 2), goal: false });
     this.addFocus(shooter.side, 2);
     if (shooter.sig) for (const runtime of shooter.sig) {
       if (!runtime.awake) continue;

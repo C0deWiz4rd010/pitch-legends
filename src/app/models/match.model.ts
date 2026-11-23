@@ -157,6 +157,18 @@ export interface MatchEvent {
   injury?: import('./player.model').InjuryRecord;
 }
 
+/** One shot of a match, for the shot map and the xG timeline. Telemetry: never read back by the simulation. */
+export interface ShotRecord {
+  minute: number;
+  side: Side;
+  playerId: string;
+  /** Where it was struck, in attack-right space (the shooting side always attacks towards x = pitch length). */
+  x: number;
+  y: number;
+  xG: number;
+  goal: boolean;
+}
+
 export interface InputFrame {
   moveX: number;
   moveY: number;
@@ -497,6 +509,8 @@ export interface MatchCheckpoint {
     lastSubAt: number;
     keyframes: MatchKeyframe[];
     heatmaps: Record<string, { x: number; y: number; weight: number }[]>;
+    /** Shots so far (optional: checkpoints from before the shot map have none). */
+    shots?: ShotRecord[];
   };
   savedAt: number;
 }
@@ -534,6 +548,7 @@ export interface MatchResult {
   matchSeed?: number;
   weather?: MatchWeather;
   heatmaps?: Record<string, { x: number; y: number; weight: number }[]>;
+  shots?: ShotRecord[];
   endingFitness?: Record<string, number>;
   extraTime?: boolean;
   shootout?: PenaltyShootout;

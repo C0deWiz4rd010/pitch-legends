@@ -20,6 +20,8 @@
   :host(.live-match) .match-toolbar button { flex-shrink:0; }
   :host(.live-match) .match-toolbar button { box-shadow:none; border:1px solid #648a9280; border-radius:5px; background:#092536df; color:#d8eee9; min-height:34px; font:700 11px system-ui; padding:8px 12px; letter-spacing:.04em; }
   :host(.live-match) .match-toolbar button:hover { border-color:#c8fc5f; color:#c8fc5f; }
+  /* Clear of the app header that overlaps the top of the full-height stage in the career view. */
+  :host(.live-match) .intro-overlay { padding:64px 24px 24px; }
   :host(.live-match) .auto-chip { bottom:65px; border-radius:5px; font:700 11px system-ui; box-shadow:none; }
   :host(.live-match) .quick-wheel, :host(.live-match) .sub-panel { position:absolute; bottom:60px; right:16px; z-index:10; max-width:450px; background:#092536f5; }
 }

@@ -144,27 +144,6 @@
   }
 }
 
-@if (phase() === 'intro') {
-  <section class="intro-screen fade-up">
-    <p class="eyebrow">PIXEL LEAGUE · LIVE</p>
-    <div class="intro-stadium" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div>
-    <div class="intro-teams">
-      <div><app-club-crest [team]="$any(homeTeam())" [size]="76" /><strong>{{ homeTeam()?.name }}</strong><small>{{ homeTeam()?.formation?.name }}</small></div>
-      <b>VS</b>
-      <div><app-club-crest [team]="$any(awayTeam())" [size]="76" /><strong>{{ awayTeam()?.name }}</strong><small>{{ awayTeam()?.formation?.name }}</small></div>
-    </div>
-    <div class="lineups" [attr.aria-label]="i18n.pick('Aufstellung', 'Line-ups')">
-      @for (side of lineups(); track side.id) {
-        <ol>
-          @for (entry of side.players; track entry.id; let i = $index) { <li [style.--i]="i"><b>{{ entry.number }}</b> {{ entry.name }}</li> }
-        </ol>
-      }
-    </div>
-    <p>{{ i18n.pick('SCHIRI', 'REF') }} · M. BYTE · {{ tacticLabel(expectedWeather()).toUpperCase() }}</p>
-    <button class="btn btn--ghost" (click)="skipIntro()">{{ i18n.pick('INTRO ÜBERSPRINGEN', 'SKIP INTRO') }}</button>
-  </section>
-}
-
 @if (phase() === 'simulating') {
   <section class="card sim-screen fade-up" role="status">
     <div class="pixel-spinner" aria-hidden="true"></div>
@@ -184,13 +163,26 @@
   </header>
 }
 
-@if (phase() === 'match' || phase() === 'halftime') {
+@if (phase() === 'match' || phase() === 'halftime' || phase() === 'intro') {
   <section class="match-shell fade-up" [class.match-shell--parked]="phase() === 'halftime'">
     <div class="pitch-panel">
       <div class="canvas-wrap">
         <canvas #pitch aria-label="Live football pitch"></canvas>
         @if (graphicsLoading()) { <div class="graphics-loading" role="status">{{ i18n.pick('Dein Stadion wird vorbereitet …', 'Preparing your stadium …') }}</div> }
         @if (graphicsError()) { <div class="graphics-loading" role="alert"><p>{{ graphicsError() }}</p><a routerLink="/" class="btn btn--primary">← {{ i18n.pick('Zurück', 'Back') }}</a></div> }
+        @if (phase() === 'intro') {
+          <div class="intro-overlay">
+            <div class="intro-card">
+              <span class="intro-kicker">{{ i18n.pick('Einlauf', 'Walk-on') }} · {{ tacticLabel(expectedWeather()) }}</span>
+              <div class="intro-teams">
+                <div><app-club-crest [team]="$any(homeTeam())" [size]="44" /><strong>{{ homeTeam()?.name }}</strong><small>{{ homeTeam()?.formation?.name }}</small></div>
+                <b>{{ i18n.pick('gegen', 'vs') }}</b>
+                <div><app-club-crest [team]="$any(awayTeam())" [size]="44" /><strong>{{ awayTeam()?.name }}</strong><small>{{ awayTeam()?.formation?.name }}</small></div>
+              </div>
+            </div>
+            <button class="intro-skip" (click)="skipIntro()">{{ i18n.pick('Intro überspringen', 'Skip intro') }} <kbd>↵</kbd></button>
+          </div>
+        }
         <div class="rotate-notice"><strong>{{ i18n.pick('GERÄT DREHEN', 'ROTATE DEVICE') }}</strong><span>{{ i18n.pick('Touch-Spiele benötigen das Querformat.', 'Touch matches need landscape.') }}</span></div>
         @if (flash(); as scorer) { @if (!challengeHud()) { <div class="goal-flash" role="status"><strong>{{ i18n.pick('TOR!', 'GOAL!') }}</strong><span>{{ scorer }}</span></div> } }
         @if (challengeHud(); as hud) {
@@ -209,7 +201,7 @@
           [attr.aria-label]="i18n.pick('Vollbild umschalten', 'Toggle fullscreen')"
           (click)="toggleImmersive()"
         >⛶ {{ fullscreenActive() ? i18n.pick('VOLL', 'FULL') : 'FULL' }}</button>
-        @if (!playing()) {
+        @if (!playing() && phase() === 'match') {
           <div class="pause-layer" role="dialog" aria-modal="false" [attr.aria-label]="i18n.pick('Pausenmenü', 'Pause menu')">
             <p class="eyebrow">{{ i18n.pick('MATCH PAUSIERT', 'MATCH PAUSED') }}</p>
             @if (performanceMessage()) { <span>{{ performanceMessage() }}</span> }
@@ -319,6 +311,10 @@
       <app-substitution-panel [onPitch]="onPitchEntries()" [bench]="benchPlayers()" [remaining]="subsRemaining()" (substitute)="doSubstitute($event)" />
       <button class="btn btn--primary big" (click)="resumeSecondHalf()">{{ arcadeInExtraTime() ? i18n.pick('VERLÄNGERUNG →', 'EXTRA TIME →') : i18n.pick('2. HALBZEIT →', '2ND HALF →') }}</button>
     </div>
+    <div class="card half-charts">
+      <figure><figcaption>{{ i18n.pick('xG-Verlauf', 'xG over time') }}</figcaption><app-xg-timeline [shots]="shotsSoFar()" [minute]="matchView().footballMinute" [homeColor]="chartColors().home" [awayColor]="chartColors().away" [label]="i18n.pick('Erwartete Tore im Verlauf', 'Expected goals over time')" /></figure>
+      <figure><figcaption>{{ i18n.pick('Schüsse', 'Shots') }}</figcaption><app-shot-map [shots]="shotsSoFar()" [homeColor]="chartColors().home" [awayColor]="chartColors().away" [label]="i18n.pick('Schusskarte', 'Shot map')" /></figure>
+    </div>
   </section>
 }
 
@@ -384,6 +380,13 @@
               </label>
               <app-heatmap [points]="heatmapPoints(report)" [label]="i18n.pick('Heatmap des gewählten Spielers', 'Heatmap of the selected player')" />
               <small class="muted">{{ i18n.pick('Die eigene Mannschaft spielt immer nach rechts.', 'Your side always attacks to the right.') }}</small>
+            </article>
+          }
+          @case ('chances') {
+            <article class="card chances-card">
+              <figure><figcaption>{{ i18n.pick('xG-Verlauf', 'xG over time') }}</figcaption><app-xg-timeline [shots]="report.shots ?? []" [minute]="report.extraTime ? 120 : 90" [homeColor]="chartColors().home" [awayColor]="chartColors().away" [label]="i18n.pick('Erwartete Tore im Verlauf', 'Expected goals over time')" /></figure>
+              <figure><figcaption>{{ i18n.pick('Schusskarte', 'Shot map') }} · {{ homeTeam()?.shortName }} → · ← {{ awayTeam()?.shortName }}</figcaption><app-shot-map [shots]="report.shots ?? []" [homeColor]="chartColors().home" [awayColor]="chartColors().away" [label]="i18n.pick('Schusskarte', 'Shot map')" /></figure>
+              <small class="muted">{{ i18n.pick('Größere Punkte waren bessere Chancen, gefüllte Punkte sind Tore.', 'Bigger dots were better chances, filled dots are goals.') }}</small>
             </article>
           }
           @case ('signatures') {
