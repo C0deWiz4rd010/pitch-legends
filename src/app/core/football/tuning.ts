@@ -16,7 +16,7 @@ export const ARCADE_MATCH_TUNING = {
   aiFirstTouchAssist: 10,
   aiIntendedReceiverBonus: 8,
   /** Crowd-backed composure: slightly tighter passing/finishing, cleaner touches and tackles at home. */
-  homeComposure: 0.15,
+  homeComposure: 0.18,
   intendedReceiverControlBias: 0.12,
 } as const;
 

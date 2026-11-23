@@ -7,6 +7,21 @@ import { FIELD_LENGTH, FIELD_WIDTH, len2 } from './match-types';
 
 export interface TacticalIntent { x: number; y: number; action: PlayerActionState; }
 
+/** What the shape of a side depends on beyond the positions: the match situation. */
+export interface ShapeContext {
+  /** Own goals minus the opponents'. */
+  scoreDiff: number;
+  minute: number;
+  /** Ticks since the ball was lost; large when this side has it or lost it long ago. */
+  lostTicks: number;
+  /** Fewer outfield players than the opponents (a red card). */
+  shortHanded: boolean;
+}
+
+const NEUTRAL: ShapeContext = { scoreDiff: 0, minute: 0, lostTicks: 100000, shortHanded: false };
+/** Seconds after losing the ball in which the nearest players hunt it back (counter-press), in ticks. */
+const COUNTER_PRESS_TICKS = 300;
+
 /** What every player of one side needs to know this tick, worked out once instead of for every decision. */
 interface TeamFrame {
   actors: readonly ArcadeActor[];
@@ -20,6 +35,8 @@ interface TeamFrame {
   marks: Map<string, ArcadeActor>;
   deepest: number;
   secondDeepest: number;
+  /** Mean formation depth of the defenders: where the back line stands before the ball moves it. */
+  defHome: number;
   /** Parallel scratch for the ordering of `pressers`. */
   scores: number[];
 }
@@ -48,6 +65,9 @@ function fillFrame(frame: TeamFrame, actors: readonly ArcadeActor[], team: Team,
     } else if (other.player.positionGroup !== 'GK') frame.teammates.push(other);
   }
   frame.deepest = deepest; frame.secondDeepest = secondDeepest;
+  let defSum = 0, defCount = 0;
+  for (const mate of frame.teammates) if (mate.player.positionGroup === 'DEF') { defSum += direction > 0 ? mate.homeX : FIELD_LENGTH - mate.homeX; defCount++; }
+  frame.defHome = defCount ? defSum / defCount : 22 * FIELD_LENGTH / 105;
   // Nearest to the ball first, minus his pressing instruction; a small insertion sort on parallel arrays.
   const scores = frame.scores;
   let anyMarker = false;
@@ -78,7 +98,7 @@ function fillFrame(frame: TeamFrame, actors: readonly ArcadeActor[], team: Team,
 
 /** The frame of this tick; a call without a tick (tests, tools) never leaves a frame behind to be reused. */
 function frameFor(actors: readonly ArcadeActor[], team: Team, ball: ArcadeBall, side: string, direction: 1 | -1, tick: number): TeamFrame {
-  const frame = FRAMES[side] ??= { actors, tick: -1, side, opponents: [], teammates: [], pressers: [], marks: new Map(), deepest: 0, secondDeepest: 0, scores: [] };
+  const frame = FRAMES[side] ??= { actors, tick: -1, side, opponents: [], teammates: [], pressers: [], marks: new Map(), deepest: 0, secondDeepest: 0, defHome: 0, scores: [] };
   if (tick > 0 && frame.tick === tick && frame.actors === actors) return frame;
   fillFrame(frame, actors, team, ball, side, direction, tick);
   if (tick <= 0) frame.tick = -1;
@@ -87,7 +107,7 @@ function frameFor(actors: readonly ArcadeActor[], team: Team, ball: ArcadeBall, 
 
 /** Pure team shape: decisions share positional information and obey individual duties. */
 export function tacticalIntent(actor: ArcadeActor, owner: ArcadeActor | undefined, ball: ArcadeBall,
-  actors: readonly ArcadeActor[], team: Team, direction: 1 | -1, tick = 0, level: Difficulty = 'normal'): TacticalIntent {
+  actors: readonly ArcadeActor[], team: Team, direction: 1 | -1, tick = 0, level: Difficulty = 'normal', context: ShapeContext = NEUTRAL): TacticalIntent {
   const t = team.tactics;
   // Distances below were tuned on 105 × 68 m; on the five-a-side cage they shrink with the pitch.
   // On the full pitch both factors are exactly 1, so the result is unchanged there.
@@ -118,10 +138,17 @@ export function tacticalIntent(actor: ArcadeActor, owner: ArcadeActor | undefine
       return {x:clamp(ball.x+ball.vx*horizon,1,FIELD_LENGTH-1),y:clamp(ball.y+ball.vy*horizon,1,FIELD_WIDTH-1),action:'press'};
     }
   }
+  // The match situation: protecting a late lead, chasing a late deficit, a man down.
+  const protecting = reads && context.scoreDiff > 0 && context.minute >= 75;
+  const chasing = reads && context.scoreDiff < 0 && context.minute >= 80;
   if (!ownBall) {
     let count = t.pressing === 'low' ? 1 : t.pressing === 'gegenpress' ? 3 : 2;
     // Pressing triggers: a carrier on the touchline or one who has just lost control of the ball is pounced on by one more player.
     if (reads && owner && count < 4 && (Math.abs(owner.y - FIELD_WIDTH / 2) > FIELD_WIDTH / 2 - 6 * sy || owner.action === 'heavy-touch')) count++;
+    // Counter-press: just after losing the ball high up the pitch, one more player hunts it before the team drops off.
+    if (reads && t.pressing !== 'low' && context.lostTicks < COUNTER_PRESS_TICKS && ballDepth > FIELD_LENGTH / 2) count++;
+    if (chasing) count++;
+    if (protecting || context.shortHanded) count = Math.max(1, count - 1);
     const rank = frame.pressers.indexOf(actor);
     if (rank < count && rank >= 0 && (t.pressing !== 'low' || ballDepth < 60 * sx || !owner)) {
       const cover = rank === 0 ? 0 : -direction * (2.5 + rank) * sx;
@@ -129,6 +156,34 @@ export function tacticalIntent(actor: ArcadeActor, owner: ArcadeActor | undefine
     }
     depth += clamp((ballDepth-FIELD_LENGTH/2)*.35,-13*sx,9*sx);
     depth = Math.min(depth, Math.max(12*sx, ballDepth-5*sx));
+    /** How far the back line moves as one (step-up or dropping off); applied after the individual duties below. */
+    let lineShift = 0;
+    if (reads) {
+      // One block: the whole side shifts towards the ball, narrows, and nobody stands further ahead of the back line
+      // than the block is long. A lead late on or a man down makes it deeper and tighter.
+      const squeeze = context.shortHanded ? 0.8 : 0.88;
+      y = FIELD_WIDTH / 2 + (actor.homeY - FIELD_WIDTH / 2) * width * squeeze + (ball.y - FIELD_WIDTH / 2) * 0.3;
+      // The back line steps up together when the carrier has turned towards his own goal, has just lost control, or the
+      // ball is played back: it squeezes the space and leaves runners offside.
+      const turned = !!owner && owner.facingX * direction > 0.5;
+      const backPass = !owner && ball.lastTouch !== actor.side && ball.vx * direction > 4;
+      const stepUp = owner?.action === 'heavy-touch' || turned || backPass ? 5 * sx : 0;
+      const defLine = Math.min(frame.defHome + mentality + line + clamp((ballDepth - FIELD_LENGTH / 2) * .35, -13 * sx, 9 * sx), Math.max(12 * sx, ballDepth - 5 * sx))
+        + stepUp - (protecting ? 3 * sx : 0);
+      const blockLength = ((t.pressing === 'gegenpress' ? 30 : t.pressing === 'low' ? 34 : 32) - (protecting || context.shortHanded ? 4 : 0)) * sx;
+      if (actor.player.positionGroup === 'DEF') {
+        lineShift = stepUp - (protecting ? 3 * sx : 0);
+        // The defender who leaves the line to press is covered: his neighbours tuck in towards the gap he left.
+        const first = frame.pressers[0];
+        if (first && first !== actor && first.player.positionGroup === 'DEF' && Math.abs(first.homeY - actor.homeY) < 20 * sy) {
+          y += (first.homeY - y) * 0.25;
+          depth -= 1.5 * sx;
+        }
+      } else {
+        depth = Math.min(depth, defLine + blockLength);
+        if (actor.player.positionGroup === 'MID') depth = Math.max(depth, defLine + 7 * sx);
+      }
+    }
     // Recovery run: whoever was ahead of the ball when it was lost races back behind it (the long way home makes him sprint).
     if (reads && owner && actor.player.positionGroup !== 'GK' && homeDepth < ballDepth + 6 * sx && (direction > 0 ? actor.x : FIELD_LENGTH - actor.x) > ballDepth + 4 * sx) {
       depth = Math.min(depth, Math.max(10 * sx, ballDepth - 9 * sx));
@@ -156,6 +211,8 @@ export function tacticalIntent(actor: ArcadeActor, owner: ArcadeActor | undefine
         y += (owner.y + (danger.y - owner.y) * 0.45 - y) * 0.6;
       }
     }
+    // The line moves as one, whatever each defender's own job: never past the ball, never into the six-yard box.
+    if (lineShift) depth = Math.min(depth + lineShift, Math.max(10 * sx, ballDepth - 3 * sx));
     if (t.offsideTrap && actor.player.positionGroup === 'DEF' && ballDepth > FIELD_WIDTH/2) depth = clamp(ballDepth-8*sx+line,20*sx,FIELD_LENGTH/2+.5);
   } else {
     action = 'formation';
@@ -204,6 +261,11 @@ export function tacticalIntent(actor: ArcadeActor, owner: ArcadeActor | undefine
       }
     }
     if (t.counterAttack && actor.player.positionGroup === 'ATT') depth+=8*sx;
+    // Chasing the game late on: midfielders and forwards push up, the full-backs join in; the centre-backs stay as cover.
+    if (chasing && actor.player.positionGroup !== 'DEF') depth += 5 * sx;
+    if (chasing && actor.player.positionGroup === 'DEF' && Math.abs(actor.homeY - FIELD_WIDTH / 2) > 16 * sy) depth += 4 * sx;
+    // Seeing a lead out: fewer bodies forward.
+    if (protecting && actor.player.positionGroup !== 'ATT') depth -= 4 * sx;
     if (t.buildUp === 'play-out-of-defence' && ballDepth<40*sx) {depth=Math.min(depth,ballDepth+12*sx);y=FIELD_WIDTH/2+(actor.homeY-FIELD_WIDTH/2)*1.1;}
     if (t.buildUp === 'long-ball' && actor.player.positionGroup === 'ATT') depth=Math.max(depth,72*sx);
     const lastLine = Math.max(ballDepth,opponents.length > 1 ? frame.secondDeepest : FIELD_LENGTH);

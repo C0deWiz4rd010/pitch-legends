@@ -1,4 +1,5 @@
-import { tacticalIntent } from '../tactical-intent';
+import { ShapeContext, tacticalIntent } from '../tactical-intent';
+import type { Side } from '../../../models/match.model';
 import { clamp } from '../../util';
 import { ArcadeActor, FIELD_LENGTH, FIELD_WIDTH, distance, len2 } from '../match-types';
 import { closestOpponentDistance, passLanePressure } from '../pitch-analysis';
@@ -129,7 +130,7 @@ export function chooseAiIntent(m: ArcadeMatch, actor: ArcadeActor): void {
       return;
     }
   }
-  const intent = tacticalIntent(actor, owner, m.ball, m.actors, team, direction, m.tick, m.aiLevel(actor.side));
+  const intent = tacticalIntent(actor, owner, m.ball, m.actors, team, direction, m.tick, m.aiLevel(actor.side), shapeContext(m, actor.side));
   m.setAction(actor, intent.action);
   actor.intentX = intent.x;
   actor.intentY = intent.y;
@@ -137,6 +138,31 @@ export function chooseAiIntent(m: ArcadeMatch, actor: ArcadeActor): void {
     actor.intentX = clamp(actor.x + direction * 12, 1, FIELD_LENGTH - 1);
     actor.intentY = clamp(actor.y + (actor.y < FIELD_WIDTH / 2 ? -1 : 1) * 3, 2, FIELD_WIDTH - 2);
   }
+}
+
+/** The match situation a side's shape depends on: score, time, a recent loss of the ball, a man down. */
+const SHAPE_CACHE = new WeakMap<ArcadeMatch, { tick: number; home: ShapeContext | null; away: ShapeContext | null }>();
+
+/** Once per tick and side: every AI decision of that tick shares it. */
+function shapeContext(m: ArcadeMatch, side: Side): ShapeContext {
+  let cache = SHAPE_CACHE.get(m);
+  if (!cache || cache.tick !== m.tick) SHAPE_CACHE.set(m, cache = { tick: m.tick, home: null, away: null });
+  return cache[side] ??= computeShapeContext(m, side);
+}
+
+function computeShapeContext(m: ArcadeMatch, side: Side): ShapeContext {
+  const other: Side = side === 'home' ? 'away' : 'home';
+  let own = 0, theirs = 0;
+  for (const actor of m.actors) {
+    if (!actor.active || actor.player.positionGroup === 'GK') continue;
+    if (actor.side === side) own++; else theirs++;
+  }
+  return {
+    scoreDiff: side === 'home' ? m.homeScore - m.awayScore : m.awayScore - m.homeScore,
+    minute: m.footballMinute,
+    lostTicks: m.lastOwnerSide === other ? m.tick - m.possessionGainedTick[other] : 100000,
+    shortHanded: own < theirs,
+  };
 }
 
 /** The team-mate whose pass gains most threat once the chance of losing the ball is counted, or null when nobody is a sound option. */

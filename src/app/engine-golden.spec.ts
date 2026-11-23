@@ -8,21 +8,21 @@ import { smallSidedTeam } from './core/football/small-sided';
  * A deliberate gameplay change updates the table below in the same commit (the failure prints the new values).
  */
 const GOLDEN: Record<string, string> = {
-  'auto-101': '98fc04f1',
-  'auto-202': 'caf58a4b',
-  'auto-303': '3da7eb55',
-  'auto-404': 'e9f0171e',
-  'auto-505': 'ae8a29a3',
-  'auto-606': 'f7898126',
-  'auto-easy': '509d1d36',
-  'auto-hard': '4ee954fe',
-  'auto-no-effects': 'cb2113a5',
-  'auto-rain': '92fad9f9',
-  'auto-small': '50e9366c',
-  'auto-snow': 'ec51b1c2',
-  'play-assisted': 'f5565bc2',
-  'play-balanced': '8085b762',
-  'play-manual': '1ca7d59f',
+  'auto-101': '5a02f95c',
+  'auto-202': '53919913',
+  'auto-303': 'cd9d36ad',
+  'auto-404': '67c431b5',
+  'auto-505': 'fd25e86e',
+  'auto-606': 'fa9c53a8',
+  'auto-easy': '051b9c1e',
+  'auto-hard': '04cb2c07',
+  'auto-no-effects': '701d14f9',
+  'auto-rain': '8f166f3a',
+  'auto-small': 'fd9c46db',
+  'auto-snow': '87929e19',
+  'play-assisted': '089dd1bc',
+  'play-balanced': '716454d2',
+  'play-manual': 'ed0cf961',
 };
 
 type Case = { name: string; config: Partial<MatchConfig>; scripted?: boolean; smallSided?: boolean; ticks?: number };
