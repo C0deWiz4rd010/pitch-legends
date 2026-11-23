@@ -11,9 +11,13 @@
   :host(.live-match) .canvas-wrap { width:100%; height:100dvh; min-height:0; aspect-ratio:auto; border:0; box-shadow:none; }
   :host(.live-match) .practice-bar { position:absolute; inset:0 0 auto; z-index:7; height:44px; box-sizing:border-box; padding:10px 20px; background:linear-gradient(#071a26ec,#071a2680); font:11px system-ui; }
   :host(.live-match) .scoreboard { position:absolute; z-index:6; left:50%; top:55px; translate:-50% 0; width:360px; padding:8px 14px; margin:0; min-height:54px; border:1px solid #ffffff24; border-radius:8px; background:#092536ee; box-shadow:0 5px 24px #03101855; }
-  :host(.live-match) .sb-score { gap:12px; }
-  :host(.live-match) .sb-score span { font:800 30px system-ui; color:#f6f8e9; }
-  :host(.live-match) .sb-score b { font:700 11px system-ui; background:transparent; color:#c8fc5f; padding:3px; }
+  :host(.live-match) .scoreboard { overflow:hidden; padding:6px 10px; background:linear-gradient(180deg,#0d2e3ff2,#071c28f2); }
+  :host(.live-match) .scoreboard::before, :host(.live-match) .scoreboard::after { content:''; position:absolute; top:0; bottom:0; width:5px; }
+  :host(.live-match) .scoreboard::before { left:0; background:var(--sb-home,#54f28b); }
+  :host(.live-match) .scoreboard::after { right:0; background:var(--sb-away,#ff7c8f); }
+  :host(.live-match) .sb-score { gap:8px; }
+  :host(.live-match) .sb-score span { min-width:38px; padding:2px 6px; border-radius:6px; background:#ffffff12; font:800 28px system-ui; color:#f6f8e9; text-align:center; font-variant-numeric:tabular-nums; }
+  :host(.live-match) .sb-score b { padding:4px 9px; border-radius:999px; background:#c8fc5f; color:#0b2418; font:800 11px system-ui; letter-spacing:.04em; white-space:nowrap; }
   :host(.live-match) .sb-team { gap:7px; font:800 12px system-ui; letter-spacing:.06em; }
   :host(.live-match) .crest.sm { border:0; box-shadow:none; width:30px; height:30px; }
   :host(.live-match) .match-toolbar { position:absolute; z-index:7; bottom:0; left:0; right:0; margin:0; padding:9px 16px; justify-content:safe center; flex-wrap:nowrap; overflow-x:auto; background:linear-gradient(transparent,#071a26f5 25%); gap:8px; }

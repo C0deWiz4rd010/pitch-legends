@@ -154,10 +154,10 @@
 }
 
 @if (phase() === 'match' || phase() === 'halftime' || phase() === 'result') {
-  <header class="scoreboard fade-up">
-    <div class="sb-team"><app-club-crest class="crest sm" [team]="$any(homeTeam())" [size]="36" /><strong>{{ homeTeam()?.shortName }}</strong></div>
+  <header class="scoreboard fade-up" [style.--sb-home]="chartColors().home" [style.--sb-away]="chartColors().away">
+    <div class="sb-team"><app-club-crest class="crest sm" [team]="$any(homeTeam())" [size]="36" /><strong>{{ homeTeam()?.shortName }}</strong>@if (redCards('home').length) { <span class="sb-reds" [attr.aria-label]="i18n.pick('Rote Karten', 'Red cards') + ': ' + redCards('home').length">@for (card of redCards('home'); track card) { <i></i> }</span> }</div>
     <div class="sb-score" [attr.aria-label]="homeScore() + ':' + awayScore() + ', ' + minuteLabel()"><span>{{ homeScore() }}</span><b>{{ minuteLabel() }} · {{ periodLabel() }}</b><span>{{ awayScore() }}</span></div>
-    <div class="sb-team right"><strong>{{ awayTeam()?.shortName }}</strong><app-club-crest class="crest sm" [team]="$any(awayTeam())" [size]="36" /></div>
+    <div class="sb-team right">@if (redCards('away').length) { <span class="sb-reds" [attr.aria-label]="i18n.pick('Rote Karten', 'Red cards') + ': ' + redCards('away').length">@for (card of redCards('away'); track card) { <i></i> }</span> }<strong>{{ awayTeam()?.shortName }}</strong><app-club-crest class="crest sm" [team]="$any(awayTeam())" [size]="36" /></div>
     @if (matchView().restartSeconds > 0 && phase() === 'match') { <span class="stoppage-board restart-timer" [attr.aria-label]="i18n.pick('Standard wird automatisch ausgeführt in ', 'Restart is taken automatically in ') + matchView().restartSeconds">{{ matchView().restartSeconds }}</span> }
     @if (matchView().stoppage > 0 && phase() === 'match') { <span class="stoppage-board" [attr.aria-label]="i18n.pick('Nachspielzeit ', 'Added time ') + matchView().stoppage">+{{ matchView().stoppage }}</span> }
   </header>
@@ -170,6 +170,15 @@
         <canvas #pitch aria-label="Live football pitch"></canvas>
         @if (graphicsLoading()) { <div class="graphics-loading" role="status">{{ i18n.pick('Dein Stadion wird vorbereitet …', 'Preparing your stadium …') }}</div> }
         @if (graphicsError()) { <div class="graphics-loading" role="alert"><p>{{ graphicsError() }}</p><a routerLink="/" class="btn btn--primary">← {{ i18n.pick('Zurück', 'Back') }}</a></div> }
+        @if (lowerThird(); as banner) {
+          @if (phase() === 'match' && matchPhase() !== 'goalReplay') {
+            <div class="lower-third" role="status" [attr.data-kind]="banner.kind" [style.--lt-team]="banner.side === 'away' ? chartColors().away : chartColors().home">
+              <span class="lt-kicker"><i aria-hidden="true"></i>{{ banner.kicker }}</span>
+              <strong>{{ banner.title }}</strong>
+              <small>{{ banner.detail }}</small>
+            </div>
+          }
+        }
         @if (phase() === 'intro') {
           <div class="intro-overlay">
             <div class="intro-card">

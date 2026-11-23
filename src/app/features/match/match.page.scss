@@ -152,6 +152,8 @@ kbd { min-width: 68px; padding: 5px; border: 1px solid var(--border); background
   box-shadow: 4px 4px 0 var(--ink-shadow);
 }
 .sb-team { display: flex; align-items: center; gap: 10px; font-family: var(--font-display); }
+.sb-reds { display: inline-flex; gap: 3px; }
+.sb-reds i { width: 7px; height: 10px; border-radius: 1px; background: #ff3b4f; box-shadow: 0 0 0 1px rgba(0, 0, 0, .35); }
 .sb-team.right { justify-content: flex-end; }
 .sb-score { display: flex; align-items: center; gap: 16px; }
 .sb-score span { font: 28px var(--font-display); }
@@ -435,3 +437,19 @@ canvas { display: block; width: 100%; height: 100%; image-rendering: auto; touch
 /* The line chart scales its labels with it: kept to a reading width, the pitch may use the whole card. */
 .chances-card figure:first-child { max-width: 520px; }
 @media (max-width: 760px) { .half-charts { grid-template-columns: 1fr; } }
+
+/* Broadcast captions: what just happened, bottom left above the player card. */
+.lower-third { position: absolute; z-index: 6; left: 18px; bottom: 150px; display: grid; gap: 2px; min-width: 230px; max-width: min(420px, 60%); padding: 9px 16px 10px 14px; border-left: 5px solid var(--lt-team, var(--accent)); border-radius: 0 8px 8px 0; background: linear-gradient(90deg, rgba(6, 20, 27, .94), rgba(6, 20, 27, .8)); color: #f4f6ea; pointer-events: none; animation: lower-third-in .45s cubic-bezier(.2, .9, .3, 1) both; }
+.lower-third strong { font: 800 18px var(--font-body); letter-spacing: .01em; }
+.lower-third small { color: #b7cbd0; font: 600 12px var(--font-body); }
+.lt-kicker { display: flex; align-items: center; gap: 7px; color: var(--accent); font: 700 11px var(--font-body); letter-spacing: .12em; text-transform: uppercase; }
+.lt-kicker i { width: 9px; height: 9px; border-radius: 50%; background: var(--lt-team, var(--accent)); }
+.lower-third[data-kind='yellow'] .lt-kicker { color: #ffd84d; }
+.lower-third[data-kind='yellow'] .lt-kicker i, .lower-third[data-kind='red'] .lt-kicker i { width: 8px; height: 11px; border-radius: 1px; }
+.lower-third[data-kind='yellow'] .lt-kicker i { background: #ffd84d; }
+.lower-third[data-kind='red'] .lt-kicker { color: #ff6b7a; }
+.lower-third[data-kind='red'] .lt-kicker i { background: #ff3b4f; }
+.lower-third[data-kind='goal'] strong { font-size: 22px; }
+@keyframes lower-third-in { from { opacity: 0; transform: translateX(-24px); } }
+:host-context(body.reduce-motion) .lower-third { animation: none; }
+@media (pointer: coarse) { .lower-third { top: 46px; bottom: auto; left: 10px; min-width: 0; } }

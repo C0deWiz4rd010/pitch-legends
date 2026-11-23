@@ -46,6 +46,7 @@ import { I18nService } from '../../core/services/i18n.service';
 import { IMPACT_TIME, impactTimeScale } from './impact-time';
 import { aimFromSticks } from './aim-input';
 import { pickReplayShot } from './replay-director';
+import { LowerThird, LowerThirdQueue, lowerThirdFor } from './lower-third';
 import { INTRO_SECONDS, INTRO_SECONDS_REDUCED } from './intro-director';
 import { resolveMatchKits } from '../../core/kit-visuals';
 import { contrastRatio, mixHex } from '../../core/visual-identity';
@@ -161,6 +162,10 @@ export class MatchPage implements OnDestroy {
   protected readonly playing = signal(true);
   protected readonly speed = signal(1);
   protected readonly flash = signal<string | null>(null);
+  /** The broadcast caption on screen (goal, card, substitution, injury), and the ones waiting for their turn. */
+  protected readonly lowerThird = signal<LowerThird | null>(null);
+  private readonly lowerThirds = new LowerThirdQueue();
+  private lowerThirdEvent = 0;
   protected readonly performanceMessage = signal('');
   protected readonly inputDevice = signal<InputDevice>('keyboard');
   protected readonly autoEnabled = signal(false);
@@ -642,6 +647,7 @@ export class MatchPage implements OnDestroy {
     this.prevAway = this.arcade.awayScore;
     this.revealed.set([...this.arcade.events]);
     this.lastAudioEvent = this.arcade.events.length;
+    this.resetLowerThirds();
     this.initializeMatchProjection();
     this.saveCheckpoint();
     this.phase.set('intro');
@@ -668,6 +674,7 @@ export class MatchPage implements OnDestroy {
     this.prevAway = this.arcade.awayScore;
     this.revealed.set([...this.arcade.events]);
     this.lastAudioEvent = this.arcade.events.length;
+    this.resetLowerThirds();
     this.initializeMatchProjection();
     if (this.arcade.phase === 'halftime') {
       this.phase.set('halftime');
@@ -899,6 +906,7 @@ export class MatchPage implements OnDestroy {
     if (eventChanged) this.revealed.set([...this.arcade.events]);
     for (let index = this.lastAudioEvent; index < this.arcade.events.length; index++) this.audio.matchEvent(this.arcade.events[index]);
     this.lastAudioEvent = this.arcade.events.length;
+    this.queueLowerThirds(timestamp);
     const controlledStats = this.arcade.controlledSide === 'home' ? this.arcade.homeStats : this.arcade.awayStats;
     if (this.pendingPassAttempt >= 0 && controlledStats.passesAttempted > this.pendingPassAttempt) {
       if (!this.practice) this.controlHelp.complete('pass');
@@ -971,6 +979,38 @@ export class MatchPage implements OnDestroy {
       if ((event.messageKey === 'match.post' || flyingSave) && timestamp - this.impactAt > IMPACT_TIME.cooldown * 1000) this.impactAt = timestamp;
     }
     this.impactEventCount = events.length;
+  }
+
+  private resetLowerThirds(): void {
+    this.lowerThirds.clear();
+    this.lowerThirdEvent = this.arcade?.events.length ?? 0;
+    this.lowerThird.set(null);
+  }
+
+  /**
+   * New goals, cards, substitutions and injuries become captions, one after the other. The loop does not run this during a
+   * goal replay, so the scorer's caption comes up once the replay is over.
+   */
+  private queueLowerThirds(timestamp: number): void {
+    const match = this.arcade;
+    if (!match || this.challenge) return;
+    for (let index = this.lowerThirdEvent; index < match.events.length; index++) {
+      const banner = lowerThirdFor(match.events[index], {
+        pick: (de, en) => this.i18n.pick(de, en),
+        teamName: (side) => (side === 'home' ? match.home : match.away).shortName,
+        score: `${match.homeScore}:${match.awayScore}`,
+        shots: match.shotLog,
+      });
+      if (banner) this.lowerThirds.push(banner);
+    }
+    this.lowerThirdEvent = match.events.length;
+    // A goal turns into its replay in the same frame: the scorer's caption waits until play resumes, so it is seen in full.
+    if (this.lowerThirds.advance(timestamp, match.phase === 'goalReplay')) this.lowerThird.set(this.lowerThirds.current);
+  }
+
+  /** Red cards of a side so far, for the marks on the scoreboard. */
+  protected redCards(side: 'home' | 'away'): number[] {
+    return Array.from({ length: this.matchStats(side)?.reds ?? 0 }, (_, index) => index);
   }
 
   private celebrate(side: 'home' | 'away'): void {
