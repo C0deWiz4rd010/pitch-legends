@@ -3,6 +3,7 @@ import { clamp } from '../../util';
 import { ArcadeActor, distance, len2 } from '../match-types';
 import { canUse } from '../../rpg/stat-block';
 import type { ArcadeMatch } from '../../services/arcade-match';
+import { aiTakeOn } from '../ai/attack';
 
 /**
  * Direction relative to the carrier picks the move: none = body feint, sideways = ball roll,
@@ -74,14 +75,9 @@ export function performSkill(m: ArcadeMatch, actor: ArcadeActor, dx: number, dy:
 
 /** Good dribblers take a defender on when one closes down from the front. */
 export function tryAiSkill(m: ArcadeMatch, actor: ArcadeActor, pressureDistance: number): boolean {
-  if (actor.skillCooldown > 0 || m.stat(actor,'dribbling') < 68 || pressureDistance < 1.2 || pressureDistance > 3.4) return false;
-  const opponent = m.actors.filter(other => other.active && other.side !== actor.side && other.player.positionGroup !== 'GK')
-    .sort((a, b) => distance(a, actor) - distance(b, actor))[0];
-  if (!opponent || (opponent.x - actor.x) * actor.facingX + (opponent.y - actor.y) * actor.facingY <= 0) return false;
-  const level = m.aiLevel(actor.side);
-  if (!m.rng.bool(level === 'hard' ? .28 : level === 'easy' ? .08 : .16)) return false;
-  const away = (actor.facingX * (opponent.y - actor.y) - actor.facingY * (opponent.x - actor.x)) > 0 ? -1 : 1;
-  m.performSkill(actor, -actor.facingY * away, actor.facingX * away);
+  const move = aiTakeOn(m, actor, pressureDistance);
+  if (!move) return false;
+  m.performSkill(actor, move.dx, move.dy);
   return true;
 }
 

@@ -6,6 +6,7 @@ import { keeperPositionIntent } from '../keeper-ai';
 import { keeperClaimTarget, keeperDistribute, keeperIsAlone } from './keeper';
 import { actionValue, dribbleSuccess, expectedThreat, passCompletion } from '../xt';
 import { MATCH_TUNING as T } from '../tuning';
+import { attackStyle, planShot, wantsOneTwo } from './attack';
 import type { ArcadeMatch } from '../../services/arcade-match';
 
 export function chooseAiIntent(m: ArcadeMatch, actor: ArcadeActor): void {
@@ -33,20 +34,18 @@ export function chooseAiIntent(m: ArcadeMatch, actor: ArcadeActor): void {
     const shotValue = goalDistance < shotRange && shootingLane ? m.shotValue(actor) : 0;
     const level = m.aiLevel(actor.side);
     // Phase H balance: a little more willing to shoot (about 11 shots per team instead of 9), see the wider shot dispersion.
-    const shotThreshold = level === 'easy' ? .16 : level === 'hard' ? .09 : .098;
+    const style = attackStyle(actor);
+    // A driven striker pulls the trigger earlier, a team player waits for the better chance.
+    const shotThreshold = (level === 'easy' ? .16 : level === 'hard' ? .09 : .098) + style.shotBias;
     const captain = team.tactics.captainId === actor.player.id;
     const patience = team.tactics.tempo === 'slow' ? .16 : team.tactics.tempo === 'fast' ? .40 : .26;
     if (actor.player.positionGroup === 'GK') {
       keeperDistribute(m, actor, direction, pressureDistance);
-    } else if (goalDistance < shotRange && shootingLane && shotValue >= shotThreshold && !m.betterPlacedTeammate(actor, shotValue)) {
-      const keeper = m.actors.find(other=>other.active && other.side!==actor.side && other.player.positionGroup==='GK');
-      const farCorner = keeper && keeper.y > FIELD_WIDTH/2 ? -.78 : .78;
-      const level = m.aiLevel(actor.side);
-      const accuracy = level === 'easy' ? .45 : level === 'hard' ? .10 : .25;
-      const power = m.rng.float(.50,.93);
-      const aimY = clamp(farCorner+m.rng.float(-accuracy,accuracy),-1,1);
-      const finesse = goalDistance > 18 && m.stat(actor,'shooting') > 72, low = goalDistance < 14;
-      m.scheduleKick(actor, { type: 'shoot', power, aimX: direction, aimY, finesse, low }, finesse ? 'finesse-shot' : low ? 'low-shot' : 'shot');
+    } else if (goalDistance < shotRange && shootingLane && shotValue >= shotThreshold && !m.betterPlacedTeammate(actor, shotValue, style.unselfish)) {
+      const plan = planShot(m, actor, goalDistance);
+      const finesse = plan.kind === 'finesse', low = plan.kind === 'placed', chip = plan.kind === 'chip', driven = plan.kind === 'power' && m.stat(actor, 'shooting') > 66;
+      m.scheduleKick(actor, { type: 'shoot', power: plan.power, aimX: direction, aimY: plan.aimY, finesse, low, chip, driven },
+        chip ? 'chip-shot' : finesse ? 'finesse-shot' : low ? 'low-shot' : 'shot');
     } else if (m.tryAiSkill(actor, pressureDistance)) {
       // Took the defender on.
     } else {
@@ -75,8 +74,8 @@ export function chooseAiIntent(m: ArcadeMatch, actor: ArcadeActor): void {
           const long = gap > 30 || (team.tactics.buildUp === 'long-ball' && forward > 15);
           m.scheduleKick(actor, { type: 'pass', through, lob: long, power: clamp(.25 + gap * .012, .3, .85), aimX: target.x - actor.x, aimY: target.y - actor.y, forcedId: target.player.id },
             long && !through ? 'lob' : through ? 'through-pass' : 'pass');
-          // Give-and-go: a short forward pass in the opposition half is sometimes followed by a run for the return ball.
-          if (!through && !long && forward > 2 && gap < 22 && goalDistance < FIELD_LENGTH * 0.62 && (!m.football.oneTwoReturn || m.football.oneTwoReturn.untilTick < m.tick) && m.rng.bool(level === 'hard' ? .2 : level === 'easy' ? .05 : .13)) {
+          // Give-and-go: a short forward pass to a marked team-mate in the opposition half, with room ahead to run into.
+          if (!through && !long && forward > 2 && gap < 22 && goalDistance < FIELD_LENGTH * 0.62 && (!m.football.oneTwoReturn || m.football.oneTwoReturn.untilTick < m.tick) && wantsOneTwo(m, actor, target, closestOpponentDistance(target, m.actors))) {
             m.football.oneTwoRunnerId = actor.player.id;
             m.football.oneTwoUntilTick = m.tick + 150;
             m.football.oneTwoReturn = { receiverId: target.player.id, runnerId: actor.player.id, untilTick: m.tick + 150 };
@@ -161,11 +160,11 @@ export function bestPassOption(m: ArcadeMatch, actor: ArcadeActor, direction: 1 
 }
 
 /** A clearly better chance for a free team-mate turns a speculative shot into a cut-back. */
-export function betterPlacedTeammate(m: ArcadeMatch, actor: ArcadeActor, ownValue: number): boolean {
+export function betterPlacedTeammate(m: ArcadeMatch, actor: ArcadeActor, ownValue: number, margin = 0.08): boolean {
   for (const mate of m.actors) {
     if (!mate.active || mate.side !== actor.side || mate === actor || mate.player.positionGroup === 'GK') continue;
     if (distance(mate, actor) > 22 || m.passLanePressure(actor, mate) > 0 || m.isOffside(mate, actor)) continue;
-    if (m.shotValue(mate) > ownValue + 0.08) return true;
+    if (m.shotValue(mate) > ownValue + margin) return true;
   }
   return false;
 }

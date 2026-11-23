@@ -1286,7 +1286,7 @@ export class ArcadeMatch {
 
   bestPassOption(actor: ArcadeActor, direction: 1 | -1): { target: ArcadeActor; value: number } | null { return bestPassOption(this, actor, direction); }
 
-  betterPlacedTeammate(actor: ArcadeActor, ownValue: number): boolean { return betterPlacedTeammate(this, actor, ownValue); }
+  betterPlacedTeammate(actor: ArcadeActor, ownValue: number, margin = 0.08): boolean { return betterPlacedTeammate(this, actor, ownValue, margin); }
 
   tryAiSkill(actor: ArcadeActor, pressureDistance: number): boolean { return tryAiSkill(this, actor, pressureDistance); }
 
